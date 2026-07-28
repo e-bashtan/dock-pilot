@@ -176,7 +176,7 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 			"-d", dbName,
 		},
 		Env: []string{"PGPASSWORD=" + password},
-	}, r, io.Discard, &stderr)
+	}, filterRestoreSQL(r), io.Discard, &stderr)
 	if err != nil {
 		return err
 	}
@@ -188,6 +188,33 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+// Newer pg_dump (PG17+) emits SET lines that older servers reject under ON_ERROR_STOP.
+var restoreSkipLine = regexp.MustCompile(`(?i)^\s*(SET\s+transaction_timeout\b|SELECT\s+pg_catalog\.set_config\(\s*'transaction_timeout')`)
+
+// filterRestoreSQL drops session settings unknown to older Postgres (e.g. 16).
+func filterRestoreSQL(r io.Reader) io.Reader {
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		sc := bufio.NewScanner(r)
+		sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			if restoreSkipLine.MatchString(line) {
+				continue
+			}
+			if _, err := io.WriteString(pw, line+"\n"); err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+		}
+		if err := sc.Err(); err != nil {
+			_ = pw.CloseWithError(err)
+		}
+	}()
+	return pr
 }
 
 // openSQLDump returns a reader for a plain SQL dump, transparently gunzipping if needed.

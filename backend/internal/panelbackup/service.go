@@ -178,6 +178,16 @@ func (s *Service) CreateFullBackup(ctx context.Context) (FullBackupInfo, error) 
 }
 
 func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest) error {
+	return s.RestoreFullBackupWithLog(ctx, req, nil)
+}
+
+func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullRequest, logFn func(level, message string)) error {
+	log := func(level, message string) {
+		if logFn != nil {
+			logFn(level, message)
+		}
+	}
+
 	key := strings.TrimSpace(req.S3Key)
 	if key == "" {
 		return fmt.Errorf("%w: s3_key is required", ErrInvalidInput)
@@ -186,6 +196,7 @@ func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest)
 	if err != nil {
 		return err
 	}
+	log("info", "Downloading "+key)
 	body, err := s3util.Download(ctx, cfg, key)
 	if err != nil {
 		return err
@@ -198,6 +209,7 @@ func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest)
 	}
 	defer gz.Close()
 
+	log("info", "Extracting bundle")
 	tr := tar.NewReader(gz)
 	var panelSQL []byte
 	managed := map[string][]byte{}
@@ -223,6 +235,7 @@ func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest)
 			if err != nil {
 				return err
 			}
+			log("info", fmt.Sprintf("Found panel dump (%d bytes)", len(panelSQL)))
 		case strings.HasPrefix(name, "managed/") && strings.HasSuffix(name, ".sql.gz"):
 			base := path.Base(name)
 			dbName := strings.TrimSuffix(base, ".sql.gz")
@@ -231,8 +244,9 @@ func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest)
 				return err
 			}
 			managed[dbName] = plain
+			log("info", fmt.Sprintf("Found managed dump %s (%d bytes)", dbName, len(plain)))
 		case name == "secrets.env" || name == "manifest.json":
-			// secrets.env is for offline restore; online restore keeps current .env
+			log("info", "Skipping "+path.Base(name)+" (online restore keeps current .env)")
 			continue
 		}
 	}
@@ -240,14 +254,23 @@ func (s *Service) RestoreFullBackup(ctx context.Context, req RestoreFullRequest)
 	if len(panelSQL) == 0 {
 		return fmt.Errorf("%w: panel dump missing from bundle", ErrInvalidInput)
 	}
+	log("info", "Restoring panel database…")
 	if err := s.restorePanelSQL(ctx, bytes.NewReader(panelSQL)); err != nil {
 		return fmt.Errorf("restore panel database: %w", err)
 	}
+	log("info", "Panel database restored")
+
+	if len(managed) == 0 {
+		log("info", "No managed databases in bundle")
+	}
 	for dbName, sql := range managed {
+		log("info", "Restoring managed database "+dbName+"…")
 		if _, err := s.pgdb.RestoreManagedDump(ctx, dbName, bytes.NewReader(sql), true, true); err != nil {
 			return fmt.Errorf("restore managed database %s: %w", dbName, err)
 		}
+		log("info", "Managed database "+dbName+" restored")
 	}
+	log("info", "Full restore completed — redeploy sites from git if needed")
 	return nil
 }
 

@@ -355,6 +355,34 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  streamPgBackupRestore: (
+    id: string,
+    params: {
+      schedule_id: string;
+      s3_key: string;
+      target_database_name?: string;
+      create_database?: boolean;
+      drop_existing?: boolean;
+    },
+  ) => {
+    const q = new URLSearchParams({
+      schedule_id: params.schedule_id,
+      s3_key: params.s3_key,
+    });
+    if (params.target_database_name) {
+      q.set("target_database_name", params.target_database_name);
+    }
+    if (params.create_database === false) {
+      q.set("create_database", "false");
+    }
+    if (params.drop_existing) {
+      q.set("drop_existing", "true");
+    }
+    return new EventSource(
+      streamURL(`/api/databases/${id}/backups/restore/stream?${q}`),
+    );
+  },
+
   restorePgBackupFromFile: async (
     id: string,
     form: {
@@ -401,6 +429,41 @@ export const api = {
     return res.json() as Promise<PgDatabase>;
   },
 
+  streamPgBackupRestoreFromFile: (
+    id: string,
+    form: {
+      file: File;
+      target_database_name: string;
+      create_database?: boolean;
+      drop_existing?: boolean;
+    },
+    signal?: AbortSignal,
+  ) => {
+    const body = new FormData();
+    body.append("file", form.file);
+    body.append("target_database_name", form.target_database_name);
+    body.append(
+      "create_database",
+      form.create_database === false ? "false" : "true",
+    );
+    body.append(
+      "drop_existing",
+      form.drop_existing ? "true" : "false",
+    );
+    return fetch(
+      `${getApiBase()}/api/databases/${id}/restore-upload?stream=1`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          Accept: "text/event-stream",
+        },
+        body,
+        signal,
+      },
+    );
+  },
+
   getPanelBackupSettings: () =>
     request<PanelBackupSettings>("/api/backups/settings"),
 
@@ -421,6 +484,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  streamFullPanelBackupRestore: (s3Key: string) =>
+    new EventSource(
+      streamURL(
+        `/api/backups/full/restore/stream?s3_key=${encodeURIComponent(s3Key)}`,
+      ),
+    ),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

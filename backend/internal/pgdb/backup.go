@@ -335,6 +335,15 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 }
 
 func (s *Service) RestoreBackup(ctx context.Context, instanceID uuid.UUID, req RestoreRequest) (DatabaseResponse, error) {
+	return s.RestoreBackupWithLog(ctx, instanceID, req, nil)
+}
+
+func (s *Service) RestoreBackupWithLog(ctx context.Context, instanceID uuid.UUID, req RestoreRequest, logFn func(level, message string)) (DatabaseResponse, error) {
+	log := func(level, message string) {
+		if logFn != nil {
+			logFn(level, message)
+		}
+	}
 	inst, err := s.requireInstance(ctx, instanceID)
 	if err != nil {
 		return DatabaseResponse{}, err
@@ -358,6 +367,7 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID uuid.UUID, req R
 		targetName = databaseNameFromS3Key(schedule.S3Prefix, key)
 	}
 
+	log("info", "Downloading "+key)
 	body, err := downloadFromS3(ctx, cfg, key)
 	if err != nil {
 		return DatabaseResponse{}, err
@@ -368,23 +378,33 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID uuid.UUID, req R
 		TargetDatabaseName: targetName,
 		CreateDatabase:     req.CreateDatabase,
 		DropExisting:       req.DropExisting,
-	}, body)
+	}, body, log)
 }
 
 func (s *Service) RestoreFromUpload(ctx context.Context, instanceID uuid.UUID, opts RestoreUploadOptions, body io.Reader) (DatabaseResponse, error) {
+	return s.RestoreFromUploadWithLog(ctx, instanceID, opts, body, nil)
+}
+
+func (s *Service) RestoreFromUploadWithLog(ctx context.Context, instanceID uuid.UUID, opts RestoreUploadOptions, body io.Reader, logFn func(level, message string)) (DatabaseResponse, error) {
 	inst, err := s.requireInstance(ctx, instanceID)
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
-	return s.restoreDumpInto(ctx, inst, opts, body)
+	return s.restoreDumpInto(ctx, inst, opts, body, logFn)
 }
 
-func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts RestoreUploadOptions, body io.Reader) (DatabaseResponse, error) {
+func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts RestoreUploadOptions, body io.Reader, logFn func(level, message string)) (DatabaseResponse, error) {
+	log := func(level, message string) {
+		if logFn != nil {
+			logFn(level, message)
+		}
+	}
 	targetName := strings.TrimSpace(opts.TargetDatabaseName)
 	if err := validateDBName(targetName); err != nil {
 		return DatabaseResponse{}, err
 	}
 
+	log("info", "Reading dump…")
 	dump, closer, err := openSQLDump(body)
 	if err != nil {
 		return DatabaseResponse{}, err
@@ -402,6 +422,7 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 
 	createDB := opts.CreateDatabase
 	if opts.DropExisting {
+		log("info", "Dropping existing database "+targetName)
 		_ = s.execSQL(ctx, inst, "postgres", fmt.Sprintf(
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
 			quoteLiteral(targetName),
@@ -420,6 +441,7 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		if err != nil {
 			return DatabaseResponse{}, err
 		}
+		log("info", "Creating database "+targetName)
 		if err := s.execSQL(ctx, inst, "postgres", fmt.Sprintf("CREATE DATABASE %s OWNER %s", dbIdent, ownerIdent)); err != nil {
 			if !strings.Contains(strings.ToLower(err.Error()), "already exists") {
 				return DatabaseResponse{}, err
@@ -427,6 +449,7 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		}
 	}
 
+	log("info", "Applying SQL dump into "+targetName+"…")
 	if err := s.restoreDatabase(ctx, inst, targetName, dump); err != nil {
 		return DatabaseResponse{}, fmt.Errorf("restore dump: %w", err)
 	}
@@ -441,8 +464,10 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		if cerr != nil {
 			return DatabaseResponse{}, cerr
 		}
+		log("info", "Restore completed: "+targetName)
 		return toDatabaseResponse(created), nil
 	}
+	log("info", "Restore completed: "+targetName)
 	return toDatabaseResponse(row), nil
 }
 

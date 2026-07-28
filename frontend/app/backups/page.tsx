@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  BackupJobLog,
+  appendBackupLog,
+  resetBackupLogs,
+  type BackupJobLogLine,
+} from "@/components/BackupJobLog";
 import { PostgresBackupsPanel } from "@/components/PostgresBackupsPanel";
 import { api, ApiError } from "@/lib/api";
 import { browserTimezone, listTimezones } from "@/lib/timezone";
@@ -29,6 +35,12 @@ export default function BackupsPage() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [restoreKey, setRestoreKey] = useState<string | null>(null);
+  const [restoreJob, setRestoreJob] = useState<{
+    session: number;
+  } | null>(null);
+  const [restoreLogs, setRestoreLogs] = useState<BackupJobLogLine[]>([]);
+  const [restoreStatus, setRestoreStatus] = useState("running");
+  const restoreLogsRef = useRef<BackupJobLogLine[]>([]);
 
   const [enabled, setEnabled] = useState(false);
   const [hour, setHour] = useState(3);
@@ -386,6 +398,15 @@ export default function BackupsPage() {
             </table>
           </div>
         )}
+        {restoreJob ? (
+          <BackupJobLog
+            key={restoreJob.session}
+            embedded
+            title={t("backups.restoreLog")}
+            logs={restoreLogs}
+            status={restoreStatus}
+          />
+        ) : null}
       </div>
 
       <div style={{ marginTop: "2rem" }}>
@@ -411,10 +432,49 @@ export default function BackupsPage() {
         onCancel={() => setRestoreKey(null)}
         onConfirm={() => {
           if (!restoreKey) return;
-          run(async () => {
-            await api.restoreFullPanelBackup({ s3_key: restoreKey });
-            setRestoreKey(null);
+          const key = restoreKey;
+          setRestoreKey(null);
+          resetBackupLogs(restoreLogsRef, setRestoreLogs);
+          setRestoreStatus("running");
+          setRestoreJob((prev) => ({
+            session: (prev?.session ?? 0) + 1,
+          }));
+
+          const es = api.streamFullPanelBackupRestore(key);
+          es.addEventListener("log", (ev) => {
+            try {
+              const data = JSON.parse((ev as MessageEvent).data) as {
+                level?: string;
+                message?: string;
+                at?: string;
+              };
+              appendBackupLog(
+                restoreLogsRef,
+                setRestoreLogs,
+                data.level ?? "info",
+                data.message ?? "",
+                data.at ?? new Date().toISOString(),
+              );
+            } catch {
+              /* ignore */
+            }
           });
+          es.addEventListener("done", (ev) => {
+            try {
+              const data = JSON.parse((ev as MessageEvent).data) as {
+                status?: string;
+              };
+              setRestoreStatus(data.status ?? "succeeded");
+            } catch {
+              setRestoreStatus("failed");
+            }
+            es.close();
+            void load();
+          });
+          es.onerror = () => {
+            setRestoreStatus("failed");
+            es.close();
+          };
         }}
       />
     </div>

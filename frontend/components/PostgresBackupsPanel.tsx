@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import {
+  BackupJobLog,
+  appendBackupLog,
+  consumeFetchSSE,
+  resetBackupLogs,
+  type BackupJobLogLine,
+} from "@/components/BackupJobLog";
 import { api, ApiError } from "@/lib/api";
 import { browserTimezone, listTimezones } from "@/lib/timezone";
 import { useI18n } from "@/lib/i18n/context";
@@ -14,6 +21,70 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const CUSTOM_TARGET = "__custom__";
+
+function RestoreTargetPicker({
+  id,
+  databases,
+  value,
+  onChange,
+  disabled,
+  required,
+  t,
+}: {
+  id: string;
+  databases: PgDatabase[];
+  value: string;
+  onChange: (name: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  t: (key: string, params?: Record<string, string>) => string;
+}) {
+  const inList = databases.some((d) => d.name === value);
+  const selectValue = inList ? value : CUSTOM_TARGET;
+
+  return (
+    <div className="field">
+      <label className="label" htmlFor={id}>
+        {t("databases.restoreTarget")}
+      </label>
+      <select
+        id={id}
+        className="select"
+        value={databases.length === 0 ? CUSTOM_TARGET : selectValue}
+        disabled={disabled}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === CUSTOM_TARGET) {
+            onChange("");
+            return;
+          }
+          onChange(next);
+        }}
+      >
+        {databases.map((d) => (
+          <option key={d.id} value={d.name}>
+            {d.name}
+          </option>
+        ))}
+        <option value={CUSTOM_TARGET}>{t("databases.restoreTargetCustom")}</option>
+      </select>
+      {!inList || databases.length === 0 ? (
+        <input
+          className="input"
+          style={{ marginTop: "0.5rem" }}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={t("databases.restoreTargetCustomPlaceholder")}
+          required={required}
+          pattern="[A-Za-z_][A-Za-z0-9_]*"
+          disabled={disabled}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
   const { t, formatDateTime } = useI18n();
   const id = instanceId;
@@ -24,6 +95,20 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [restoreBackup, setRestoreBackup] = useState<PgBackup | null>(null);
+  const [restoreJob, setRestoreJob] = useState<{
+    session: number;
+  } | null>(null);
+  const [restoreLogs, setRestoreLogs] = useState<BackupJobLogLine[]>([]);
+  const [restoreStatus, setRestoreStatus] = useState("running");
+  const [restoreRunning, setRestoreRunning] = useState(false);
+  const restoreLogsRef = useRef<BackupJobLogLine[]>([]);
+  const [uploadJob, setUploadJob] = useState<{
+    session: number;
+  } | null>(null);
+  const [uploadRunning, setUploadRunning] = useState(false);
+  const [uploadLogs, setUploadLogs] = useState<BackupJobLogLine[]>([]);
+  const [uploadStatus, setUploadStatus] = useState("running");
+  const uploadLogsRef = useRef<BackupJobLogLine[]>([]);
 
   const [scheduleDbId, setScheduleDbId] = useState("");
   const [scheduleHour, setScheduleHour] = useState(3);
@@ -60,6 +145,8 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
       setSchedules(sched);
       setBackupDbId((prev) => prev || dbs[0]?.id || "");
       setBackupScheduleId((prev) => prev || sched[0]?.id || "");
+      setRestoreTarget((prev) => prev || dbs[0]?.name || "");
+      setUploadTarget((prev) => prev || dbs[0]?.name || "");
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
@@ -214,7 +301,12 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
                         type="button"
                         className="btn btn-secondary"
                         disabled={busy}
-                        onClick={() => setRestoreBackup(b)}
+                        onClick={() => {
+                          if (b.database_name) {
+                            setRestoreTarget(b.database_name);
+                          }
+                          setRestoreBackup(b);
+                        }}
                       >
                         {t("databases.restore")}
                       </button>
@@ -225,6 +317,17 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
             </table>
           </div>
         )}
+        {restoreJob ? (
+          <div style={{ padding: "0 1.25rem 1.25rem" }}>
+            <BackupJobLog
+              key={restoreJob.session}
+              embedded
+              title={t("backups.restoreLog")}
+              logs={restoreLogs}
+              status={restoreStatus}
+            />
+          </div>
+        ) : null}
       </div>
 
       <form
@@ -475,18 +578,17 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
 
       <div className="card" style={{ marginTop: "1rem" }}>
         <h2 className="section-title">{t("databases.restoreOptions")}</h2>
+        <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+          {t("databases.restoreOptionsHint")}
+        </p>
         <div className="form-grid">
-          <div className="field">
-            <label className="label" htmlFor="pg-restore-target">
-              {t("databases.restoreTarget")}
-            </label>
-            <input
-              id="pg-restore-target"
-              className="input"
-              value={restoreTarget}
-              onChange={(e) => setRestoreTarget(e.target.value)}
-            />
-          </div>
+          <RestoreTargetPicker
+            id="pg-restore-target"
+            databases={databases}
+            value={restoreTarget}
+            onChange={setRestoreTarget}
+            t={t}
+          />
         </div>
         <div className="field" style={{ marginTop: "0.75rem" }}>
           <label className="label checkbox-row">
@@ -515,17 +617,47 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
         style={{ marginTop: "1rem" }}
         onSubmit={(e) => {
           e.preventDefault();
-          if (!uploadFile || !uploadTarget.trim()) return;
-          run(async () => {
-            await api.restorePgBackupFromFile(id, {
-              file: uploadFile,
-              target_database_name: uploadTarget.trim(),
-              create_database: uploadCreate,
-              drop_existing: uploadDrop,
-            });
-            setUploadFile(null);
-            setUploadTarget("");
-          });
+          if (!uploadFile || !uploadTarget.trim() || uploadRunning) return;
+          const file = uploadFile;
+          const target = uploadTarget.trim();
+          const createDatabase = uploadCreate;
+          const dropExisting = uploadDrop;
+          setUploadRunning(true);
+          resetBackupLogs(uploadLogsRef, setUploadLogs);
+          setUploadStatus("running");
+          setUploadJob((prev) => ({
+            session: (prev?.session ?? 0) + 1,
+          }));
+          void (async () => {
+            try {
+              const res = await api.streamPgBackupRestoreFromFile(id, {
+                file,
+                target_database_name: target,
+                create_database: createDatabase,
+                drop_existing: dropExisting,
+              });
+              const status = await consumeFetchSSE(res, (level, message, at) => {
+                appendBackupLog(uploadLogsRef, setUploadLogs, level, message, at);
+              });
+              setUploadStatus(status);
+              if (status === "succeeded") {
+                setUploadFile(null);
+                setUploadTarget("");
+              }
+            } catch (err) {
+              appendBackupLog(
+                uploadLogsRef,
+                setUploadLogs,
+                "error",
+                err instanceof Error ? err.message : "restore failed",
+              );
+              setUploadStatus("failed");
+            } finally {
+              setUploadRunning(false);
+              void load();
+              void refreshBackups();
+            }
+          })();
         }}
       >
         <h2 className="section-title">{t("databases.restoreFromFile")}</h2>
@@ -544,21 +676,18 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
               accept=".sql,.sql.gz,.gz"
               onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
               required
+              disabled={uploadRunning}
             />
           </div>
-          <div className="field">
-            <label className="label" htmlFor="pg-upload-target">
-              {t("databases.restoreTarget")}
-            </label>
-            <input
-              id="pg-upload-target"
-              className="input"
-              value={uploadTarget}
-              onChange={(e) => setUploadTarget(e.target.value)}
-              required
-              pattern="[A-Za-z_][A-Za-z0-9_]*"
-            />
-          </div>
+          <RestoreTargetPicker
+            id="pg-upload-target"
+            databases={databases}
+            value={uploadTarget}
+            onChange={setUploadTarget}
+            disabled={uploadRunning}
+            required
+            t={t}
+          />
         </div>
         <div className="field" style={{ marginTop: "0.75rem" }}>
           <label className="label checkbox-row">
@@ -566,6 +695,7 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
               type="checkbox"
               checked={uploadCreate}
               onChange={(e) => setUploadCreate(e.target.checked)}
+              disabled={uploadRunning}
             />
             <span>{t("databases.createOnRestore")}</span>
           </label>
@@ -576,6 +706,7 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
               type="checkbox"
               checked={uploadDrop}
               onChange={(e) => setUploadDrop(e.target.checked)}
+              disabled={uploadRunning}
             />
             <span>{t("databases.dropOnRestore")}</span>
           </label>
@@ -584,11 +715,20 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
           <button
             type="submit"
             className="btn"
-            disabled={busy || !uploadFile || !uploadTarget.trim()}
+            disabled={busy || uploadRunning || !uploadFile || !uploadTarget.trim()}
           >
             {t("databases.restoreUpload")}
           </button>
         </div>
+        {uploadJob ? (
+          <BackupJobLog
+            key={uploadJob.session}
+            embedded
+            title={t("backups.restoreLog")}
+            logs={uploadLogs}
+            status={uploadStatus}
+          />
+        ) : null}
       </form>
 
       <ConfirmDialog
@@ -600,18 +740,64 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
         busy={busy}
         onCancel={() => setRestoreBackup(null)}
         onConfirm={() => {
-          if (!restoreBackup?.s3_key || !restoreBackup.schedule_id) return;
+          if (!restoreBackup?.s3_key || !restoreBackup.schedule_id || restoreRunning) return;
           const target = restoreTarget.trim() || restoreBackup.database_name;
-          run(async () => {
-            await api.restorePgBackup(id, {
-              schedule_id: restoreBackup.schedule_id!,
-              s3_key: restoreBackup.s3_key,
-              target_database_name: target,
-              create_database: restoreCreate,
-              drop_existing: restoreDrop,
-            });
-            setRestoreBackup(null);
+          const scheduleId = restoreBackup.schedule_id;
+          const s3Key = restoreBackup.s3_key;
+          const createDatabase = restoreCreate;
+          const dropExisting = restoreDrop;
+          setRestoreBackup(null);
+          setRestoreRunning(true);
+          resetBackupLogs(restoreLogsRef, setRestoreLogs);
+          setRestoreStatus("running");
+          setRestoreJob((prev) => ({
+            session: (prev?.session ?? 0) + 1,
+          }));
+
+          const es = api.streamPgBackupRestore(id, {
+            schedule_id: scheduleId,
+            s3_key: s3Key,
+            target_database_name: target,
+            create_database: createDatabase,
+            drop_existing: dropExisting,
           });
+          es.addEventListener("log", (ev) => {
+            try {
+              const data = JSON.parse((ev as MessageEvent).data) as {
+                level?: string;
+                message?: string;
+                at?: string;
+              };
+              appendBackupLog(
+                restoreLogsRef,
+                setRestoreLogs,
+                data.level ?? "info",
+                data.message ?? "",
+                data.at ?? new Date().toISOString(),
+              );
+            } catch {
+              /* ignore */
+            }
+          });
+          es.addEventListener("done", (ev) => {
+            try {
+              const data = JSON.parse((ev as MessageEvent).data) as {
+                status?: string;
+              };
+              setRestoreStatus(data.status ?? "succeeded");
+            } catch {
+              setRestoreStatus("failed");
+            }
+            setRestoreRunning(false);
+            es.close();
+            void load();
+            void refreshBackups();
+          });
+          es.onerror = () => {
+            setRestoreStatus("failed");
+            setRestoreRunning(false);
+            es.close();
+          };
         }}
       />
     </div>

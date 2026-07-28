@@ -529,6 +529,64 @@ func (h *DatabasesHandler) RestoreBackup(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, row)
 }
 
+func (h *DatabasesHandler) StreamRestoreBackup(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+
+	scheduleID, err := parseUUID(r.URL.Query().Get("schedule_id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	s3Key := strings.TrimSpace(r.URL.Query().Get("s3_key"))
+	if s3Key == "" {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+
+	req := pgdb.RestoreRequest{
+		ScheduleID:         scheduleID,
+		S3Key:              s3Key,
+		TargetDatabaseName: strings.TrimSpace(r.URL.Query().Get("target_database_name")),
+		CreateDatabase:     r.URL.Query().Get("create_database") != "false",
+		DropExisting:       r.URL.Query().Get("drop_existing") == "true",
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	writeLog := func(level, message string) {
+		payload, _ := json.Marshal(map[string]string{
+			"level":   level,
+			"message": message,
+			"at":      time.Now().UTC().Format(time.RFC3339),
+		})
+		_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", payload)
+		flusher.Flush()
+	}
+
+	_, err = h.svc.RestoreBackupWithLog(r.Context(), id, req, writeLog)
+	if err != nil {
+		writeLog("error", err.Error())
+		_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"failed\"}\n\n")
+		flusher.Flush()
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"succeeded\"}\n\n")
+	flusher.Flush()
+}
+
 const maxRestoreUploadBytes = 512 << 20 // 512 MiB
 
 func (h *DatabasesHandler) RestoreUpload(w http.ResponseWriter, r *http.Request) {
@@ -569,12 +627,50 @@ func (h *DatabasesHandler) RestoreUpload(w http.ResponseWriter, r *http.Request)
 		DropExisting:       formBool(r.FormValue("drop_existing"), false),
 	}
 
-	row, err := h.svc.RestoreFromUpload(r.Context(), id, opts, file)
-	if err != nil {
-		writeError(w, err)
+	wantStream := r.URL.Query().Get("stream") == "1" ||
+		strings.Contains(r.Header.Get("Accept"), "text/event-stream")
+
+	if !wantStream {
+		row, err := h.svc.RestoreFromUpload(r.Context(), id, opts, file)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, row)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	writeLog := func(level, message string) {
+		payload, _ := json.Marshal(map[string]string{
+			"level":   level,
+			"message": message,
+			"at":      time.Now().UTC().Format(time.RFC3339),
+		})
+		_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", payload)
+		flusher.Flush()
+	}
+
+	writeLog("info", fmt.Sprintf("Uploading %s (%d bytes)…", header.Filename, header.Size))
+	_, err = h.svc.RestoreFromUploadWithLog(r.Context(), id, opts, file, writeLog)
+	if err != nil {
+		writeLog("error", err.Error())
+		_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"failed\"}\n\n")
+		flusher.Flush()
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"succeeded\"}\n\n")
+	flusher.Flush()
 }
 
 func formBool(v string, def bool) bool {

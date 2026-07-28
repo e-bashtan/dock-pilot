@@ -100,6 +100,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 				r.Get("/full", h.Backups.ListFull)
 				r.Post("/full", h.Backups.CreateFull)
 				r.Post("/full/restore", h.Backups.RestoreFull)
+				r.Get("/full/restore/stream", h.Backups.StreamRestoreFull)
 			})
 
 			r.Route("/databases", func(r chi.Router) {
@@ -137,6 +138,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 					r.Get("/backups", h.Databases.ListBackups)
 					r.Post("/backups", h.Databases.ManualBackup)
 					r.Post("/backups/restore", h.Databases.RestoreBackup)
+					r.Get("/backups/restore/stream", h.Databases.StreamRestoreBackup)
 					r.Post("/restore-upload", h.Databases.RestoreUpload)
 				})
 			})
