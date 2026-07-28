@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { HealthBadge } from "@/components/HealthBadge";
+import { PostgresHealthSummary } from "@/components/PostgresHealthSummary";
 import { ServerStatusPanel } from "@/components/ServerStatusPanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, ApiError } from "@/lib/api";
@@ -46,6 +47,7 @@ export default function SitesPage() {
   return (
     <div>
       <ServerStatusPanel />
+      <PostgresHealthSummary />
 
       <div className="page-header">
         <h1>{t("sites.title")}</h1>

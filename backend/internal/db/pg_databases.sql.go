@@ -12,64 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createPgBackup = `-- name: CreatePgBackup :one
-INSERT INTO pdb_backups (
-    instance_id, database_id, schedule_id, database_name, status,
-    s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, message
-) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
-) RETURNING id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at
-`
-
-type CreatePgBackupParams struct {
-	InstanceID       uuid.UUID   `json:"instance_id"`
-	DatabaseID       pgtype.UUID `json:"database_id"`
-	ScheduleID       pgtype.UUID `json:"schedule_id"`
-	DatabaseName     string      `json:"database_name"`
-	Status           string      `json:"status"`
-	S3Endpoint       string      `json:"s3_endpoint"`
-	S3Region         string      `json:"s3_region"`
-	S3Bucket         string      `json:"s3_bucket"`
-	S3Key            string      `json:"s3_key"`
-	S3ForcePathStyle bool        `json:"s3_force_path_style"`
-	Message          string      `json:"message"`
-}
-
-func (q *Queries) CreatePgBackup(ctx context.Context, arg CreatePgBackupParams) (PdbBackup, error) {
-	row := q.db.QueryRow(ctx, createPgBackup,
-		arg.InstanceID,
-		arg.DatabaseID,
-		arg.ScheduleID,
-		arg.DatabaseName,
-		arg.Status,
-		arg.S3Endpoint,
-		arg.S3Region,
-		arg.S3Bucket,
-		arg.S3Key,
-		arg.S3ForcePathStyle,
-		arg.Message,
-	)
-	var i PdbBackup
-	err := row.Scan(
-		&i.ID,
-		&i.InstanceID,
-		&i.DatabaseID,
-		&i.ScheduleID,
-		&i.DatabaseName,
-		&i.Status,
-		&i.S3Endpoint,
-		&i.S3Region,
-		&i.S3Bucket,
-		&i.S3Key,
-		&i.S3ForcePathStyle,
-		&i.SizeBytes,
-		&i.Message,
-		&i.CreatedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
 const createPgBackupSchedule = `-- name: CreatePgBackupSchedule :one
 INSERT INTO pdb_backup_schedules (
     instance_id, database_id, enabled, hour, minute, timezone,
@@ -244,15 +186,6 @@ func (q *Queries) CreatePgRole(ctx context.Context, arg CreatePgRoleParams) (Pdb
 	return i, err
 }
 
-const deletePgBackup = `-- name: DeletePgBackup :exec
-DELETE FROM pdb_backups WHERE id = $1
-`
-
-func (q *Queries) DeletePgBackup(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deletePgBackup, id)
-	return err
-}
-
 const deletePgBackupSchedule = `-- name: DeletePgBackupSchedule :exec
 DELETE FROM pdb_backup_schedules WHERE id = $1
 `
@@ -301,33 +234,6 @@ type DeletePgRoleGrantParams struct {
 func (q *Queries) DeletePgRoleGrant(ctx context.Context, arg DeletePgRoleGrantParams) error {
 	_, err := q.db.Exec(ctx, deletePgRoleGrant, arg.RoleID, arg.DatabaseID)
 	return err
-}
-
-const getPgBackup = `-- name: GetPgBackup :one
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups WHERE id = $1
-`
-
-func (q *Queries) GetPgBackup(ctx context.Context, id uuid.UUID) (PdbBackup, error) {
-	row := q.db.QueryRow(ctx, getPgBackup, id)
-	var i PdbBackup
-	err := row.Scan(
-		&i.ID,
-		&i.InstanceID,
-		&i.DatabaseID,
-		&i.ScheduleID,
-		&i.DatabaseName,
-		&i.Status,
-		&i.S3Endpoint,
-		&i.S3Region,
-		&i.S3Bucket,
-		&i.S3Key,
-		&i.S3ForcePathStyle,
-		&i.SizeBytes,
-		&i.Message,
-		&i.CreatedAt,
-		&i.FinishedAt,
-	)
-	return i, err
 }
 
 const getPgBackupSchedule = `-- name: GetPgBackupSchedule :one
@@ -533,98 +439,6 @@ func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUI
 	return items, nil
 }
 
-const listPgBackups = `-- name: ListPgBackups :many
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups WHERE instance_id = $1 ORDER BY created_at DESC LIMIT $2
-`
-
-type ListPgBackupsParams struct {
-	InstanceID uuid.UUID `json:"instance_id"`
-	Limit      int32     `json:"limit"`
-}
-
-func (q *Queries) ListPgBackups(ctx context.Context, arg ListPgBackupsParams) ([]PdbBackup, error) {
-	rows, err := q.db.Query(ctx, listPgBackups, arg.InstanceID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PdbBackup{}
-	for rows.Next() {
-		var i PdbBackup
-		if err := rows.Scan(
-			&i.ID,
-			&i.InstanceID,
-			&i.DatabaseID,
-			&i.ScheduleID,
-			&i.DatabaseName,
-			&i.Status,
-			&i.S3Endpoint,
-			&i.S3Region,
-			&i.S3Bucket,
-			&i.S3Key,
-			&i.S3ForcePathStyle,
-			&i.SizeBytes,
-			&i.Message,
-			&i.CreatedAt,
-			&i.FinishedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listPgBackupsByDatabaseName = `-- name: ListPgBackupsByDatabaseName :many
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups
-WHERE instance_id = $1 AND database_name = $2
-ORDER BY created_at DESC
-`
-
-type ListPgBackupsByDatabaseNameParams struct {
-	InstanceID   uuid.UUID `json:"instance_id"`
-	DatabaseName string    `json:"database_name"`
-}
-
-func (q *Queries) ListPgBackupsByDatabaseName(ctx context.Context, arg ListPgBackupsByDatabaseNameParams) ([]PdbBackup, error) {
-	rows, err := q.db.Query(ctx, listPgBackupsByDatabaseName, arg.InstanceID, arg.DatabaseName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []PdbBackup{}
-	for rows.Next() {
-		var i PdbBackup
-		if err := rows.Scan(
-			&i.ID,
-			&i.InstanceID,
-			&i.DatabaseID,
-			&i.ScheduleID,
-			&i.DatabaseName,
-			&i.Status,
-			&i.S3Endpoint,
-			&i.S3Region,
-			&i.S3Bucket,
-			&i.S3Key,
-			&i.S3ForcePathStyle,
-			&i.SizeBytes,
-			&i.Message,
-			&i.CreatedAt,
-			&i.FinishedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listPgDatabases = `-- name: ListPgDatabases :many
 SELECT id, instance_id, name, owner_role, created_at FROM pdb_databases WHERE instance_id = $1 ORDER BY name ASC
 `
@@ -779,56 +593,6 @@ func (q *Queries) ListPgRoles(ctx context.Context, instanceID uuid.UUID) ([]PdbR
 		return nil, err
 	}
 	return items, nil
-}
-
-const updatePgBackup = `-- name: UpdatePgBackup :one
-UPDATE pdb_backups SET
-    status = COALESCE($2, status),
-    s3_key = COALESCE($3, s3_key),
-    size_bytes = COALESCE($4, size_bytes),
-    message = COALESCE($5, message),
-    finished_at = COALESCE($6, finished_at)
-WHERE id = $1
-RETURNING id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at
-`
-
-type UpdatePgBackupParams struct {
-	ID         uuid.UUID          `json:"id"`
-	Status     pgtype.Text        `json:"status"`
-	S3Key      pgtype.Text        `json:"s3_key"`
-	SizeBytes  pgtype.Int8        `json:"size_bytes"`
-	Message    pgtype.Text        `json:"message"`
-	FinishedAt pgtype.Timestamptz `json:"finished_at"`
-}
-
-func (q *Queries) UpdatePgBackup(ctx context.Context, arg UpdatePgBackupParams) (PdbBackup, error) {
-	row := q.db.QueryRow(ctx, updatePgBackup,
-		arg.ID,
-		arg.Status,
-		arg.S3Key,
-		arg.SizeBytes,
-		arg.Message,
-		arg.FinishedAt,
-	)
-	var i PdbBackup
-	err := row.Scan(
-		&i.ID,
-		&i.InstanceID,
-		&i.DatabaseID,
-		&i.ScheduleID,
-		&i.DatabaseName,
-		&i.Status,
-		&i.S3Endpoint,
-		&i.S3Region,
-		&i.S3Bucket,
-		&i.S3Key,
-		&i.S3ForcePathStyle,
-		&i.SizeBytes,
-		&i.Message,
-		&i.CreatedAt,
-		&i.FinishedAt,
-	)
-	return i, err
 }
 
 const updatePgBackupSchedule = `-- name: UpdatePgBackupSchedule :one

@@ -2,9 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 )
@@ -27,6 +31,32 @@ func (h *DatabasesHandler) ListInstances(w http.ResponseWriter, r *http.Request)
 		rows = []pgdb.InstanceResponse{}
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *DatabasesHandler) HealthAll(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.svc.HealthAll(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if rows == nil {
+		rows = []pgdb.HealthResult{}
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *DatabasesHandler) Health(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	row, err := h.svc.Health(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
 }
 
 func (h *DatabasesHandler) CreateInstance(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +99,49 @@ func (h *DatabasesHandler) DeployInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, row)
+}
+
+func (h *DatabasesHandler) StreamDeploy(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, fmt.Errorf("streaming not supported"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	writeLog := func(level, message string) {
+		payload, _ := json.Marshal(map[string]string{
+			"level":   level,
+			"message": message,
+			"at":      time.Now().UTC().Format(time.RFC3339),
+		})
+		_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", payload)
+		flusher.Flush()
+	}
+
+	row, err := h.svc.DeployInstanceWithLog(r.Context(), id, writeLog)
+	if err != nil {
+		writeLog("error", err.Error())
+		_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"failed\"}\n\n")
+		flusher.Flush()
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"status":    row.Status,
+		"host_port": row.HostPort,
+	})
+	_, _ = fmt.Fprintf(w, "event: done\ndata: %s\n\n", payload)
+	flusher.Flush()
 }
 
 func (h *DatabasesHandler) StopInstance(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +223,52 @@ func (h *DatabasesHandler) DeleteDatabase(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DatabasesHandler) ListTables(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	dbID, err := parseUUID(chi.URLParam(r, "dbId"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	rows, err := h.svc.ListPublicTables(r.Context(), id, dbID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if rows == nil {
+		rows = []pgdb.TableInfo{}
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
+func (h *DatabasesHandler) SelectTable(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	dbID, err := parseUUID(chi.URLParam(r, "dbId"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	var req pgdb.SelectTableRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	row, err := h.svc.SelectFromTable(r.Context(), id, dbID, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
 }
 
 func (h *DatabasesHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +373,20 @@ func (h *DatabasesHandler) ConnectionInfo(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, row)
 }
 
+func (h *DatabasesHandler) AdminCredentials(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+	row, err := h.svc.AdminCredentials(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
+}
+
 func (h *DatabasesHandler) ListSchedules(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(chi.URLParam(r, "id"))
 	if err != nil {
@@ -338,7 +471,16 @@ func (h *DatabasesHandler) ListBackups(w http.ResponseWriter, r *http.Request) {
 		writeError(w, pgdb.ErrInvalidInput)
 		return
 	}
-	rows, err := h.svc.ListBackups(r.Context(), id, 50)
+	var scheduleID *uuid.UUID
+	if raw := strings.TrimSpace(r.URL.Query().Get("schedule_id")); raw != "" {
+		sid, err := parseUUID(raw)
+		if err != nil {
+			writeError(w, pgdb.ErrInvalidInput)
+			return
+		}
+		scheduleID = &sid
+	}
+	rows, err := h.svc.ListBackups(r.Context(), id, scheduleID, 100)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -374,20 +516,74 @@ func (h *DatabasesHandler) RestoreBackup(w http.ResponseWriter, r *http.Request)
 		writeError(w, pgdb.ErrInvalidInput)
 		return
 	}
-	backupID, err := parseUUID(chi.URLParam(r, "backupId"))
-	if err != nil {
-		writeError(w, pgdb.ErrInvalidInput)
-		return
-	}
 	var req pgdb.RestoreRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, pgdb.ErrInvalidInput)
 		return
 	}
-	row, err := h.svc.RestoreBackup(r.Context(), id, backupID, req)
+	row, err := h.svc.RestoreBackup(r.Context(), id, req)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, row)
+}
+
+const maxRestoreUploadBytes = 512 << 20 // 512 MiB
+
+func (h *DatabasesHandler) RestoreUpload(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, pgdb.ErrInvalidInput)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxRestoreUploadBytes+1024)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeError(w, fmt.Errorf("%w: upload too large or invalid multipart form", pgdb.ErrInvalidInput))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, fmt.Errorf("%w: file is required", pgdb.ErrInvalidInput))
+		return
+	}
+	defer file.Close()
+
+	name := strings.ToLower(header.Filename)
+	if !strings.HasSuffix(name, ".sql") && !strings.HasSuffix(name, ".sql.gz") && !strings.HasSuffix(name, ".gz") {
+		writeError(w, fmt.Errorf("%w: expected .sql or .sql.gz file", pgdb.ErrInvalidInput))
+		return
+	}
+
+	target := strings.TrimSpace(r.FormValue("target_database_name"))
+	if target == "" {
+		writeError(w, fmt.Errorf("%w: target_database_name is required", pgdb.ErrInvalidInput))
+		return
+	}
+
+	opts := pgdb.RestoreUploadOptions{
+		TargetDatabaseName: target,
+		CreateDatabase:     formBool(r.FormValue("create_database"), true),
+		DropExisting:       formBool(r.FormValue("drop_existing"), false),
+	}
+
+	row, err := h.svc.RestoreFromUpload(r.Context(), id, opts, file)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
+}
+
+func formBool(v string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
+	}
 }

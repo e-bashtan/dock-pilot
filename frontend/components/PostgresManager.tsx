@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { HealthBadge } from "@/components/HealthBadge";
+import { PostgresDeployLog } from "@/components/PostgresDeployLog";
+import { PostgresHealthPanel } from "@/components/PostgresHealthPanel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, ApiError } from "@/lib/api";
 import { browserTimezone, listTimezones } from "@/lib/timezone";
@@ -9,12 +12,16 @@ import { useI18n } from "@/lib/i18n/context";
 import type {
   PgBackup,
   PgBackupSchedule,
+  PgConnectionInfo,
   PgDatabase,
+  PgHealth,
   PgInstance,
+  PgQueryResult,
   PgRole,
+  PgTableInfo,
 } from "@/lib/types";
 
-type Tab = "databases" | "roles" | "backups";
+type Tab = "databases" | "roles" | "backups" | "deployments";
 
 function formatBytes(n: number): string {
   if (!n || n < 0) return "—";
@@ -35,14 +42,23 @@ export function PostgresManager({
 
   const [tab, setTab] = useState<Tab>("databases");
   const [instance, setInstance] = useState<PgInstance | null>(null);
+  const [health, setHealth] = useState<PgHealth | null>(null);
   const [databases, setDatabases] = useState<PgDatabase[]>([]);
   const [roles, setRoles] = useState<PgRole[]>([]);
   const [schedules, setSchedules] = useState<PgBackupSchedule[]>([]);
   const [backups, setBackups] = useState<PgBackup[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+  const [deploySession, setDeploySession] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [restoreBackup, setRestoreBackup] = useState<PgBackup | null>(null);
+  const [connRole, setConnRole] = useState<PgRole | null>(null);
+  const [connDbId, setConnDbId] = useState("");
+  const [connInfo, setConnInfo] = useState<PgConnectionInfo | null>(null);
+  const [adminInfo, setAdminInfo] = useState<PgConnectionInfo | null>(null);
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   const [dbName, setDbName] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -69,24 +85,38 @@ export function PostgresManager({
   const [restoreTarget, setRestoreTarget] = useState("");
   const [restoreCreate, setRestoreCreate] = useState(true);
   const [restoreDrop, setRestoreDrop] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTarget, setUploadTarget] = useState("");
+  const [uploadCreate, setUploadCreate] = useState(true);
+  const [uploadDrop, setUploadDrop] = useState(false);
+
+  const [expandedDbId, setExpandedDbId] = useState<string | null>(null);
+  const [tablesByDb, setTablesByDb] = useState<Record<string, PgTableInfo[]>>({});
+  const [tablesLoadingDb, setTablesLoadingDb] = useState<string | null>(null);
+  const [queryResult, setQueryResult] = useState<{
+    database: string;
+    table: string;
+    result: PgQueryResult;
+  } | null>(null);
+  const [selectLimit, setSelectLimit] = useState(100);
 
   const tzOptions = useMemo(() => listTimezones(scheduleTz), [scheduleTz]);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [inst, dbs, roleRows, sched, bak] = await Promise.all([
+      const [inst, dbs, roleRows, sched, h] = await Promise.all([
         api.getPgInstance(id),
         api.listPgDatabases(id),
         api.listPgRoles(id),
         api.listPgSchedules(id),
-        api.listPgBackups(id),
+        api.getPgHealth(id).catch(() => null),
       ]);
       setInstance(inst);
       setDatabases(dbs);
       setRoles(roleRows);
       setSchedules(sched);
-      setBackups(bak);
+      setHealth(h);
       setError(null);
       setBackupDbId((prev) => prev || dbs[0]?.id || "");
       setBackupScheduleId((prev) => prev || sched[0]?.id || "");
@@ -95,9 +125,31 @@ export function PostgresManager({
     }
   }, [id, t]);
 
+  const refreshBackups = useCallback(async () => {
+    if (!id || !backupScheduleId) {
+      setBackups([]);
+      return;
+    }
+    try {
+      const bak = await api.listPgBackups(id, backupScheduleId);
+      setBackups(bak);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+    }
+  }, [id, backupScheduleId, t]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    const timer = setInterval(() => {
+      void api.getPgHealth(id).then(setHealth).catch(() => null);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [load, id]);
+
+  useEffect(() => {
+    void refreshBackups();
+  }, [refreshBackups]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -105,6 +157,89 @@ export function PostgresManager({
     try {
       await fn();
       await load();
+      await refreshBackups();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyText = async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadRoleConnection = async (role: PgRole, databaseId: string) => {
+    if (!databaseId) {
+      setConnInfo(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const info = await api.getPgConnection(id, databaseId, role.id);
+      setConnInfo(info);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+      setConnInfo(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openAdminCredentials = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const info = await api.getPgAdminCredentials(id);
+      setAdminInfo(info);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadTables = async (dbId: string) => {
+    setTablesLoadingDb(dbId);
+    setError(null);
+    try {
+      const tables = await api.listPgTables(id, dbId);
+      setTablesByDb((prev) => ({ ...prev, [dbId]: tables }));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+      setTablesByDb((prev) => ({ ...prev, [dbId]: [] }));
+    } finally {
+      setTablesLoadingDb(null);
+    }
+  };
+
+  const toggleDatabase = (dbId: string) => {
+    if (expandedDbId === dbId) {
+      setExpandedDbId(null);
+      return;
+    }
+    setExpandedDbId(dbId);
+    if (!tablesByDb[dbId]) {
+      void loadTables(dbId);
+    }
+  };
+
+  const runSelect = async (db: PgDatabase, table: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.selectPgTable(id, db.id, {
+        table,
+        limit: selectLimit,
+      });
+      setQueryResult({ database: db.name, table, result });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
     } finally {
@@ -138,25 +273,40 @@ export function PostgresManager({
                   instance.status === "running" ? "active" : instance.status
                 }
               />
+              {health ? (
+                <>
+                  {" · "}
+                  <HealthBadge overall={health.overall} />
+                </>
+              ) : null}
             </p>
           </div>
           <div className="page-actions">
             <button
               type="button"
-              className="btn"
+              className="btn btn-secondary"
               disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  await api.deployPgInstance(id);
-                })
-              }
+              onClick={() => void openAdminCredentials()}
             >
-              {busy ? t("databases.deploying") : t("databases.deploy")}
+              {t("databases.showAdmin")}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || deploying}
+              onClick={() => {
+                setError(null);
+                setTab("deployments");
+                setDeploySession((n) => n + 1);
+                setDeploying(true);
+              }}
+            >
+              {deploying ? t("databases.deploying") : t("databases.deploy")}
             </button>
             <button
               type="button"
               className="btn btn-secondary"
-              disabled={busy || instance.status === "stopped" || instance.status === "draft"}
+              disabled={busy || deploying || instance.status === "stopped" || instance.status === "draft"}
               onClick={() =>
                 run(async () => {
                   await api.stopPgInstance(id);
@@ -168,7 +318,7 @@ export function PostgresManager({
             <button
               type="button"
               className="btn btn-danger"
-              disabled={busy}
+              disabled={busy || deploying}
               onClick={() => setConfirmDelete(true)}
             >
               {t("databases.delete")}
@@ -184,8 +334,30 @@ export function PostgresManager({
       ) : null}
       {error && <div className="alert alert-error">{error}</div>}
 
+      <div style={{ marginBottom: "1rem" }}>
+        <PostgresHealthPanel instanceId={id} />
+      </div>
+
+      {createdPassword && (
+        <div className="alert alert-success">
+          <strong>{t("databases.createdPassword")}:</strong>{" "}
+          <code>{createdPassword}</code>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ marginLeft: "0.75rem" }}
+            onClick={() => void copyText("created", createdPassword)}
+          >
+            {copied === "created" ? t("databases.copied") : t("databases.copy")}
+          </button>
+          <p className="muted" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
+            {t("databases.passwordOnce")}
+          </p>
+        </div>
+      )}
+
       <nav className="site-tabs" aria-label={t("databases.title")}>
-        {(["databases", "roles", "backups"] as Tab[]).map((key) => (
+        {(["databases", "roles", "backups", "deployments"] as Tab[]).map((key) => (
           <button
             key={key}
             type="button"
@@ -197,6 +369,31 @@ export function PostgresManager({
         ))}
       </nav>
 
+      {deploySession > 0 ? (
+        <div hidden={tab !== "deployments"}>
+          <div className="card">
+            <h2 className="section-title">{t("databases.deployLog")}</h2>
+            <PostgresDeployLog
+              key={deploySession}
+              instanceId={id}
+              onFinished={() => {
+                setDeploying(false);
+                void load();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "deployments" && deploySession === 0 ? (
+        <div className="card">
+          <h2 className="section-title">{t("databases.deployLog")}</h2>
+          <p className="muted" style={{ margin: 0 }}>
+            {t("databases.noDeployYet")}
+          </p>
+        </div>
+      ) : null}
+
       {tab === "databases" && (
         <>
           <div className="card">
@@ -207,30 +404,126 @@ export function PostgresManager({
               </p>
             ) : (
               <div className="stack-list">
-                {databases.map((db) => (
-                  <div key={db.id} className="stack-item">
-                    <div className="stack-item-main">
-                      <code>{db.name}</code>
-                      <div className="stack-item-meta">
-                        owner: {db.owner_role} · {formatDateTime(db.created_at)}
+                {databases.map((db) => {
+                  const expanded = expandedDbId === db.id;
+                  const tables = tablesByDb[db.id];
+                  const tablesLoading = tablesLoadingDb === db.id;
+                  return (
+                    <div key={db.id}>
+                      <div className="stack-item">
+                        <div className="stack-item-main">
+                          <button
+                            type="button"
+                            className="linkish"
+                            onClick={() => toggleDatabase(db.id)}
+                            aria-expanded={expanded}
+                          >
+                            <code>{db.name}</code>
+                            <span className="muted" style={{ marginLeft: "0.5rem" }}>
+                              {expanded ? "▾" : "▸"} {t("databases.tables")}
+                            </span>
+                          </button>
+                          <div className="stack-item-meta">
+                            owner: {db.owner_role} · {formatDateTime(db.created_at)}
+                          </div>
+                        </div>
+                        <div className="stack-item-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              run(async () => {
+                                await api.deletePgDatabase(id, db.id);
+                                setTablesByDb((prev) => {
+                                  const next = { ...prev };
+                                  delete next[db.id];
+                                  return next;
+                                });
+                                if (expandedDbId === db.id) setExpandedDbId(null);
+                              })
+                            }
+                          >
+                            {t("databases.delete")}
+                          </button>
+                        </div>
                       </div>
+                      {expanded ? (
+                        <div className="db-tables">
+                          {tablesLoading ? (
+                            <p className="muted" style={{ margin: 0 }}>
+                              {t("common.loading")}
+                            </p>
+                          ) : !tables || tables.length === 0 ? (
+                            <p className="muted" style={{ margin: 0 }}>
+                              {t("databases.noTables")}
+                            </p>
+                          ) : (
+                            <>
+                              <div className="field" style={{ marginBottom: "0.75rem" }}>
+                                <label className="label" htmlFor={`select-limit-${db.id}`}>
+                                  {t("databases.selectLimit")}
+                                </label>
+                                <select
+                                  id={`select-limit-${db.id}`}
+                                  className="select"
+                                  value={selectLimit}
+                                  onChange={(e) => setSelectLimit(Number(e.target.value))}
+                                  style={{ maxWidth: "8rem" }}
+                                >
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                  <option value={200}>200</option>
+                                  <option value={500}>500</option>
+                                </select>
+                              </div>
+                              <div className="table-wrap">
+                                <table className="table table-compact">
+                                  <thead>
+                                    <tr>
+                                      <th>{t("databases.tableName")}</th>
+                                      <th>{t("databases.approxRows")}</th>
+                                      <th />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {tables.map((table) => (
+                                      <tr key={table.name}>
+                                        <td>
+                                          <code>{table.name}</code>
+                                        </td>
+                                        <td>{table.approx_rows}</td>
+                                        <td>
+                                          <button
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            disabled={busy}
+                                            onClick={() => void runSelect(db, table.name)}
+                                          >
+                                            SELECT
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ marginTop: "0.5rem" }}
+                                disabled={busy || tablesLoading}
+                                onClick={() => void loadTables(db.id)}
+                              >
+                                {t("databases.refreshTables")}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="stack-item-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            await api.deletePgDatabase(id, db.id);
-                          })
-                        }
-                      >
-                        {t("databases.delete")}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -299,6 +592,20 @@ export function PostgresManager({
                       <button
                         type="button"
                         className="btn btn-secondary"
+                        disabled={busy || databases.length === 0}
+                        onClick={() => {
+                          const dbId = role.grants?.[0]?.database_id || databases[0]?.id || "";
+                          setConnRole(role);
+                          setConnDbId(dbId);
+                          setConnInfo(null);
+                          if (dbId) void loadRoleConnection(role, dbId);
+                        }}
+                      >
+                        {t("databases.showConnection")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
                         disabled={busy}
                         onClick={() =>
                           run(async () => {
@@ -320,10 +627,13 @@ export function PostgresManager({
             onSubmit={(e) => {
               e.preventDefault();
               run(async () => {
-                await api.createPgRole(id, {
+                const created = await api.createPgRole(id, {
                   name: roleName.trim(),
                   password: rolePassword || undefined,
                 });
+                if (created.password) {
+                  setCreatedPassword(created.password);
+                }
                 setRoleName("");
                 setRolePassword("");
               });
@@ -486,10 +796,50 @@ export function PostgresManager({
           </div>
 
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div style={{ padding: "1.25rem 1.25rem 0" }}>
-              <h2 className="section-title">{t("databases.backupsList")}</h2>
+            <div
+              style={{
+                padding: "1.25rem 1.25rem 0",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "1rem",
+                flexWrap: "wrap",
+                alignItems: "flex-end",
+              }}
+            >
+              <div>
+                <h2 className="section-title">{t("databases.backupsList")}</h2>
+                <p className="muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+                  {t("databases.backupsFromS3")}
+                </p>
+              </div>
+              <div className="field" style={{ marginBottom: "0.75rem", minWidth: "14rem" }}>
+                <label className="label" htmlFor="list-schedule">
+                  {t("databases.s3Source")}
+                </label>
+                <select
+                  id="list-schedule"
+                  className="select"
+                  value={backupScheduleId}
+                  onChange={(e) => setBackupScheduleId(e.target.value)}
+                  disabled={!schedules.length}
+                >
+                  {schedules.length === 0 ? (
+                    <option value="">{t("databases.noSchedules")}</option>
+                  ) : (
+                    schedules.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.s3_bucket}/{s.s3_prefix}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
             </div>
-            {backups.length === 0 ? (
+            {!schedules.length ? (
+              <p className="muted" style={{ padding: "0 1.25rem 1.25rem" }}>
+                {t("databases.backupsNeedSchedule")}
+              </p>
+            ) : backups.length === 0 ? (
               <p className="muted" style={{ padding: "0 1.25rem 1.25rem" }}>
                 {t("databases.noBackups")}
               </p>
@@ -499,16 +849,15 @@ export function PostgresManager({
                   <thead>
                     <tr>
                       <th>{t("databases.dbName")}</th>
-                      <th>{t("databases.status")}</th>
                       <th className="col-hide-mobile">{t("databases.size")}</th>
                       <th>{t("databases.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {backups.map((b) => (
-                      <tr key={b.id}>
+                      <tr key={b.s3_key}>
                         <td>
-                          {b.database_name}
+                          {b.database_name || "—"}
                           <div
                             style={{
                               fontSize: "0.75rem",
@@ -527,34 +876,18 @@ export function PostgresManager({
                             {b.s3_key}
                           </div>
                         </td>
-                        <td>
-                          <StatusBadge status={b.status} />
-                          {b.message ? (
-                            <div
-                              style={{
-                                fontSize: "0.75rem",
-                                color: "var(--muted)",
-                                marginTop: "0.25rem",
-                              }}
-                            >
-                              {b.message}
-                            </div>
-                          ) : null}
-                        </td>
                         <td className="col-hide-mobile">
                           {formatBytes(b.size_bytes)}
                         </td>
                         <td>
-                          {b.status === "success" && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              disabled={busy}
-                              onClick={() => setRestoreBackup(b)}
-                            >
-                              {t("databases.restore")}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={busy}
+                            onClick={() => setRestoreBackup(b)}
+                          >
+                            {t("databases.restore")}
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -869,8 +1202,251 @@ export function PostgresManager({
                 <span>{t("databases.dropOnRestore")}</span>
               </label>
             </div>
+            <p className="muted" style={{ marginBottom: 0, fontSize: "0.85rem" }}>
+              {t("databases.restoreOptionsHint")}
+            </p>
           </div>
+
+          <form
+            className="card"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!uploadFile || !uploadTarget.trim()) return;
+              run(async () => {
+                await api.restorePgBackupFromFile(id, {
+                  file: uploadFile,
+                  target_database_name: uploadTarget.trim(),
+                  create_database: uploadCreate,
+                  drop_existing: uploadDrop,
+                });
+                setUploadFile(null);
+                setUploadTarget("");
+              });
+            }}
+          >
+            <h2 className="section-title">{t("databases.restoreFromFile")}</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {t("databases.restoreFromFileHint")}
+            </p>
+            <div className="form-grid">
+              <div className="field">
+                <label className="label" htmlFor="restore-file">
+                  {t("databases.restoreFile")}
+                </label>
+                <input
+                  id="restore-file"
+                  className="input"
+                  type="file"
+                  accept=".sql,.sql.gz,.gz,application/sql,application/gzip"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  required
+                />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="upload-target">
+                  {t("databases.restoreTarget")}
+                </label>
+                <input
+                  id="upload-target"
+                  className="input"
+                  value={uploadTarget}
+                  onChange={(e) => setUploadTarget(e.target.value)}
+                  required
+                  pattern="[A-Za-z_][A-Za-z0-9_]*"
+                  placeholder="my_database"
+                />
+              </div>
+            </div>
+            <div className="field" style={{ marginTop: "0.75rem" }}>
+              <label className="label checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={uploadCreate}
+                  onChange={(e) => setUploadCreate(e.target.checked)}
+                />
+                <span>{t("databases.createOnRestore")}</span>
+              </label>
+            </div>
+            <div className="field">
+              <label className="label checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={uploadDrop}
+                  onChange={(e) => setUploadDrop(e.target.checked)}
+                />
+                <span>{t("databases.dropOnRestore")}</span>
+              </label>
+            </div>
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="btn"
+                disabled={busy || !uploadFile || !uploadTarget.trim()}
+              >
+                {t("databases.restoreUpload")}
+              </button>
+            </div>
+          </form>
         </>
+      )}
+
+      {queryResult && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setQueryResult(null)}
+          role="presentation"
+        >
+          <div
+            className="modal modal-wide card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="pg-query-title"
+          >
+            <h2 id="pg-query-title" className="section-title">
+              {t("databases.selectResult")}: {queryResult.database}.{queryResult.table}
+            </h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              <code>{queryResult.result.sql}</code>
+              {" · "}
+              {t("databases.rowsReturned", {
+                count: String(queryResult.result.rows.length),
+              })}
+            </p>
+            {queryResult.result.columns.length === 0 ? (
+              <p className="muted">{t("databases.emptyResult")}</p>
+            ) : (
+              <div className="table-wrap query-result-wrap">
+                <table className="table table-compact">
+                  <thead>
+                    <tr>
+                      {queryResult.result.columns.map((col) => (
+                        <th key={col}>{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queryResult.result.rows.map((row, i) => (
+                      <tr key={i}>
+                        {row.map((cell, j) => (
+                          <td key={j}>
+                            <code className="query-cell">{cell}</code>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setQueryResult(null)}
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {connRole && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setConnRole(null);
+            setConnInfo(null);
+          }}
+          role="presentation"
+        >
+          <div
+            className="modal card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="pg-conn-title"
+          >
+            <h2 id="pg-conn-title" className="section-title">
+              {t("databases.connectionTitle")}: {connRole.name}
+            </h2>
+            <div className="field">
+              <label className="label" htmlFor="conn-db">
+                {t("databases.selectDatabase")}
+              </label>
+              <select
+                id="conn-db"
+                className="select"
+                value={connDbId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setConnDbId(next);
+                  void loadRoleConnection(connRole, next);
+                }}
+              >
+                <option value="">—</option>
+                {databases.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {connInfo && (
+              <ConnectionFields
+                info={connInfo}
+                copied={copied}
+                onCopy={copyText}
+                t={t}
+              />
+            )}
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setConnRole(null);
+                  setConnInfo(null);
+                }}
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminInfo && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setAdminInfo(null)}
+          role="presentation"
+        >
+          <div
+            className="modal card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="pg-admin-title"
+          >
+            <h2 id="pg-admin-title" className="section-title">
+              {t("databases.adminTitle")}
+            </h2>
+            <ConnectionFields
+              info={adminInfo}
+              copied={copied}
+              onCopy={copyText}
+              t={t}
+            />
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setAdminInfo(null)}
+              >
+                {t("common.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <ConfirmDialog
@@ -900,10 +1476,12 @@ export function PostgresManager({
         busy={busy}
         onCancel={() => setRestoreBackup(null)}
         onConfirm={() => {
-          if (!restoreBackup) return;
+          if (!restoreBackup?.s3_key || !restoreBackup.schedule_id) return;
           const target = restoreTarget.trim() || restoreBackup.database_name;
           run(async () => {
-            await api.restorePgBackup(id, restoreBackup.id, {
+            await api.restorePgBackup(id, {
+              schedule_id: restoreBackup.schedule_id!,
+              s3_key: restoreBackup.s3_key,
               target_database_name: target,
               create_database: restoreCreate,
               drop_existing: restoreDrop,
@@ -913,6 +1491,67 @@ export function PostgresManager({
           });
         }}
       />
+    </div>
+  );
+}
+
+function ConnectionFields({
+  info,
+  copied,
+  onCopy,
+  t,
+}: {
+  info: PgConnectionInfo;
+  copied: string | null;
+  onCopy: (key: string, value: string) => void;
+  t: (key: string, params?: Record<string, string>) => string;
+}) {
+  return (
+    <div className="stack-list" style={{ marginTop: "1rem" }}>
+      <div className="field">
+        <div className="label">{t("databases.connUrl")}</div>
+        <code style={{ display: "block", wordBreak: "break-all", fontSize: "0.8rem" }}>
+          {info.url}
+        </code>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ marginTop: "0.5rem" }}
+          onClick={() => onCopy("url", info.url)}
+        >
+          {copied === "url" ? t("databases.copied") : t("databases.copy")}
+        </button>
+      </div>
+      <div className="form-grid">
+        <div className="field">
+          <div className="label">Host</div>
+          <code>{info.host}</code>
+        </div>
+        <div className="field">
+          <div className="label">{t("databases.port")}</div>
+          <code>{info.port}</code>
+        </div>
+        <div className="field">
+          <div className="label">{t("databases.dbName")}</div>
+          <code>{info.database}</code>
+        </div>
+        <div className="field">
+          <div className="label">{t("databases.roleName")}</div>
+          <code>{info.user}</code>
+        </div>
+      </div>
+      <div className="field">
+        <div className="label">{t("databases.password")}</div>
+        <code style={{ wordBreak: "break-all" }}>{info.password}</code>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ marginTop: "0.5rem", marginLeft: "0.5rem" }}
+          onClick={() => onCopy("password", info.password)}
+        >
+          {copied === "password" ? t("databases.copied") : t("databases.copy")}
+        </button>
+      </div>
     </div>
   );
 }

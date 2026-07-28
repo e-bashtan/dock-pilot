@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
+	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	"github.com/ebash/dock-pilot/backend/internal/secrets"
 	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
 )
@@ -22,14 +22,16 @@ type Service struct {
 	queries  *db.Queries
 	cipher   *secrets.Cipher
 	sites    *sitesvc.Service
+	pgdb     *pgdb.Service
 	telegram *TelegramClient
 }
 
-func NewService(queries *db.Queries, cipher *secrets.Cipher, sites *sitesvc.Service) *Service {
+func NewService(queries *db.Queries, cipher *secrets.Cipher, sites *sitesvc.Service, pgdbSvc *pgdb.Service) *Service {
 	return &Service{
 		queries:  queries,
 		cipher:   cipher,
 		sites:    sites,
+		pgdb:     pgdbSvc,
 		telegram: NewTelegramClient(),
 	}
 }
@@ -107,20 +109,49 @@ func (s *Service) RunCheck(ctx context.Context) error {
 		return err
 	}
 
+	var pgRows []pgdb.HealthResult
+	if s.pgdb != nil {
+		pgRows, err = s.pgdb.HealthAll(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	siteRows, err := s.queries.ListSites(ctx)
 	if err != nil {
 		return err
 	}
-	names := make(map[string]string, len(siteRows))
+	names := make(map[string]string, len(siteRows)+len(pgRows))
 	for _, site := range siteRows {
 		names[site.ID.String()] = site.Name
+	}
+	for _, pg := range pgRows {
+		names[pgHealthKey(pg.InstanceID.String())] = pgDisplayName(pg)
 	}
 
 	prev := decodeOverallMap(settings.LastOverallBySite)
 	now := time.Now().UTC()
 
+	digestItems := make([]digestItem, 0, len(healthRows)+len(pgRows))
+	for _, h := range healthRows {
+		digestItems = append(digestItems, digestItem{
+			Key:     h.SiteID.String(),
+			Kind:    "site",
+			Overall: h.Overall,
+			Message: h.Message,
+		})
+	}
+	for _, h := range pgRows {
+		digestItems = append(digestItems, digestItem{
+			Key:     pgHealthKey(h.InstanceID.String()),
+			Kind:    "postgres",
+			Overall: h.Overall,
+			Message: h.Message,
+		})
+	}
+
 	if settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestTimezone, now) {
-		msg := formatDailyDigest(healthRows, names, now, settings.DailyDigestTimezone)
+		msg := formatDailyDigest(digestItems, names, now, settings.DailyDigestTimezone)
 		if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
 			return fmt.Errorf("daily digest: %w", err)
 		}
@@ -130,31 +161,49 @@ func (s *Service) RunCheck(ctx context.Context) error {
 	}
 
 	if settings.AlertOnIncidentEnabled {
-		for _, h := range healthRows {
-			sid := h.SiteID.String()
-			prevOverall := prev[sid]
-			if isIncidentTransition(prevOverall, h.Overall) {
-				name := names[sid]
-				if name == "" {
-					name = sid
-				}
-				msg := formatIncident(name, h)
-				if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
-					return fmt.Errorf("incident alert: %w", err)
-				}
+		for _, item := range digestItems {
+			prevOverall := prev[item.Key]
+			if !isIncidentTransition(prevOverall, item.Overall) {
+				continue
+			}
+			name := names[item.Key]
+			if name == "" {
+				name = item.Key
+			}
+			msg := formatIncident(name, item)
+			if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
+				return fmt.Errorf("incident alert: %w", err)
 			}
 		}
 	}
 
-	next := make(map[string]string, len(healthRows))
-	for _, h := range healthRows {
-		next[h.SiteID.String()] = h.Overall
+	next := make(map[string]string, len(digestItems))
+	for _, item := range digestItems {
+		next[item.Key] = item.Overall
 	}
 	raw, err := json.Marshal(next)
 	if err != nil {
 		return err
 	}
 	return s.queries.UpdateNotificationLastOverall(ctx, raw)
+}
+
+func pgHealthKey(instanceID string) string {
+	return "pg:" + instanceID
+}
+
+func pgDisplayName(h pgdb.HealthResult) string {
+	if strings.TrimSpace(h.Name) != "" {
+		return "Postgres: " + h.Name
+	}
+	return "Postgres"
+}
+
+type digestItem struct {
+	Key     string
+	Kind    string // site | postgres
+	Overall string
+	Message string
 }
 
 func (s *Service) loadTelegramConfig(ctx context.Context) (db.NotificationSetting, string, error) {
@@ -306,12 +355,12 @@ func isIncidentTransition(prev, current string) bool {
 	return prev == "healthy"
 }
 
-func formatDailyDigest(rows []healthcheck.Result, names map[string]string, now time.Time, tz string) string {
+func formatDailyDigest(rows []digestItem, names map[string]string, now time.Time, tz string) string {
 	localNow := now.In(digestLocation(tz))
 	var b strings.Builder
 	fmt.Fprintf(&b, "<b>DockPilot — ежедневный отчёт</b>\n%s\n\n", localNow.Format("2006-01-02 15:04 MST"))
 	if len(rows) == 0 {
-		b.WriteString("Нет сайтов в панели.")
+		b.WriteString("Нет сайтов и баз в панели.")
 		return b.String()
 	}
 	counts := map[string]int{}
@@ -324,23 +373,28 @@ func formatDailyDigest(rows []healthcheck.Result, names map[string]string, now t
 	fmt.Fprintf(&b, "Авария: %d\n", counts["unhealthy"])
 	fmt.Fprintf(&b, "Неизвестно: %d\n\n", counts["unknown"])
 	for _, h := range rows {
-		name := names[h.SiteID.String()]
+		name := names[h.Key]
 		if name == "" {
-			name = h.SiteID.String()
+			name = h.Key
 		}
 		fmt.Fprintf(&b, "• %s — <b>%s</b>\n  %s\n", escapeHTML(name), h.Overall, escapeHTML(h.Message))
 	}
 	return b.String()
 }
 
-func formatIncident(name string, h healthcheck.Result) string {
+func formatIncident(name string, h digestItem) string {
 	title := "авария"
 	if h.Overall == "degraded" {
 		title = "проблема"
 	}
+	label := "Сайт"
+	if h.Kind == "postgres" {
+		label = "Postgres"
+	}
 	return fmt.Sprintf(
-		"<b>DockPilot — %s</b>\nСайт: %s\nСтатус: <b>%s</b>\n%s",
+		"<b>DockPilot — %s</b>\n%s: %s\nСтатус: <b>%s</b>\n%s",
 		title,
+		label,
 		escapeHTML(name),
 		h.Overall,
 		escapeHTML(h.Message),

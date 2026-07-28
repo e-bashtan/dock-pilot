@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -123,10 +124,23 @@ func (s *Service) CreateInstance(ctx context.Context, req CreateInstanceRequest)
 		}
 		return InstanceResponse{}, err
 	}
-	return toInstanceResponse(row), nil
+	resp := toInstanceResponse(row)
+	resp.Password = password
+	return resp, nil
 }
 
 func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceResponse, error) {
+	return s.DeployInstanceWithLog(ctx, id, nil)
+}
+
+// DeployInstanceWithLog deploys the Postgres container and optionally streams progress lines.
+func (s *Service) DeployInstanceWithLog(ctx context.Context, id uuid.UUID, logFn func(level, message string)) (InstanceResponse, error) {
+	log := func(level, message string) {
+		if logFn != nil {
+			logFn(level, message)
+		}
+	}
+
 	inst, err := s.queries.GetPgInstance(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -135,19 +149,24 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 		return InstanceResponse{}, err
 	}
 
+	log("info", fmt.Sprintf("deploying %s (%s)", inst.Name, inst.Image))
 	_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 		ID: id, Status: "deploying", Message: "pulling image",
 	})
+	log("info", "pulling image "+inst.Image)
 
 	if err := s.docker.Pull(ctx, inst.Image); err != nil {
+		log("error", "pull failed: "+err.Error())
 		_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 			ID: id, Status: "error", Message: err.Error(),
 		})
 		return InstanceResponse{}, err
 	}
+	log("info", "image ready")
 
 	password, err := s.adminPassword(inst)
 	if err != nil {
+		log("error", "decrypt admin password: "+err.Error())
 		return InstanceResponse{}, err
 	}
 
@@ -156,9 +175,11 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 	if publish {
 		if inst.HostPort.Valid && inst.HostPort.Int32 > 0 {
 			hostPort = int(inst.HostPort.Int32)
+			log("info", fmt.Sprintf("using host port %d", hostPort))
 		} else {
 			hostPort, err = s.docker.AllocatePort(ctx)
 			if err != nil {
+				log("error", "allocate port: "+err.Error())
 				_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 					ID: id, Status: "error", Message: err.Error(),
 				})
@@ -171,7 +192,10 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 			if err != nil {
 				return InstanceResponse{}, err
 			}
+			log("info", fmt.Sprintf("allocated host port %d", hostPort))
 		}
+	} else {
+		log("info", "host network mode")
 	}
 
 	vol := s.volumeName(inst)
@@ -179,6 +203,7 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 	_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 		ID: id, Status: "deploying", Message: "starting container",
 	})
+	log("info", fmt.Sprintf("starting container %s (volume %s)", cname, vol))
 
 	_, err = s.docker.Run(ctx, docker.RunOptions{
 		ImageTag:      inst.Image,
@@ -201,20 +226,28 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 		EnsureVolumes: []string{vol},
 	})
 	if err != nil {
+		log("error", "container start failed: "+err.Error())
 		_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 			ID: id, Status: "error", Message: err.Error(),
 		})
 		return InstanceResponse{}, err
 	}
+	log("info", "container started, waiting for postgres…")
 
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := s.waitReady(ctx, inst); err == nil {
 			break
 		}
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			return InstanceResponse{}, ctx.Err()
+		case <-time.After(2 * time.Second):
+			log("info", "waiting for pg_isready…")
+		}
 	}
 	if err := s.waitReady(ctx, inst); err != nil {
+		log("error", "postgres not ready: "+err.Error())
 		_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 			ID: id, Status: "error", Message: "container started but postgres not ready: " + err.Error(),
 		})
@@ -226,6 +259,11 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 	})
 	if err != nil {
 		return InstanceResponse{}, err
+	}
+	if publish {
+		log("info", fmt.Sprintf("postgres is ready on 127.0.0.1:%d", hostPort))
+	} else {
+		log("info", "postgres is ready (host network)")
 	}
 	return toInstanceResponse(inst), nil
 }
@@ -428,6 +466,7 @@ func (s *Service) CreateRole(ctx context.Context, instanceID uuid.UUID, req Crea
 		Name:       row.Name,
 		CreatedAt:  row.CreatedAt,
 		Grants:     []GrantResponse{},
+		Password:   password,
 	}, nil
 }
 
@@ -557,19 +596,43 @@ func (s *Service) ConnectionInfo(ctx context.Context, instanceID, databaseID, ro
 	if err != nil {
 		return ConnectionInfoResponse{}, err
 	}
+	return buildConnectionInfo(inst, database.Name, role.Name, password), nil
+}
+
+func (s *Service) AdminCredentials(ctx context.Context, instanceID uuid.UUID) (ConnectionInfoResponse, error) {
+	inst, err := s.requireInstance(ctx, instanceID)
+	if err != nil {
+		return ConnectionInfoResponse{}, err
+	}
+	password, err := s.adminPassword(inst)
+	if err != nil {
+		return ConnectionInfoResponse{}, err
+	}
+	return buildConnectionInfo(inst, "postgres", inst.AdminUser, password), nil
+}
+
+func buildConnectionInfo(inst db.PdbInstance, database, user, password string) ConnectionInfoResponse {
 	port := int(inst.ContainerPort)
 	if !inst.DockerNetworkHost && inst.HostPort.Valid {
 		port = int(inst.HostPort.Int32)
 	}
 	host := "127.0.0.1"
-	url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s", role.Name, password, host, port, database.Name)
+	connURL := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s",
+		url.PathEscape(user),
+		url.QueryEscape(password),
+		host,
+		port,
+		url.PathEscape(database),
+	)
 	return ConnectionInfoResponse{
 		Host:     host,
 		Port:     port,
-		Database: database.Name,
-		User:     role.Name,
-		URL:      url,
-	}, nil
+		Database: database,
+		User:     user,
+		Password: password,
+		URL:      connURL,
+	}
 }
 
 func (s *Service) requireInstance(ctx context.Context, id uuid.UUID) (db.PdbInstance, error) {

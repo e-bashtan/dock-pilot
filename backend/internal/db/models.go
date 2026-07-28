@@ -44,24 +44,6 @@ type NotificationSetting struct {
 	UpdatedAt                 time.Time          `json:"updated_at"`
 }
 
-type PdbBackup struct {
-	ID               uuid.UUID          `json:"id"`
-	InstanceID       uuid.UUID          `json:"instance_id"`
-	DatabaseID       pgtype.UUID        `json:"database_id"`
-	ScheduleID       pgtype.UUID        `json:"schedule_id"`
-	DatabaseName     string             `json:"database_name"`
-	Status           string             `json:"status"`
-	S3Endpoint       string             `json:"s3_endpoint"`
-	S3Region         string             `json:"s3_region"`
-	S3Bucket         string             `json:"s3_bucket"`
-	S3Key            string             `json:"s3_key"`
-	S3ForcePathStyle bool               `json:"s3_force_path_style"`
-	SizeBytes        int64              `json:"size_bytes"`
-	Message          string             `json:"message"`
-	CreatedAt        time.Time          `json:"created_at"`
-	FinishedAt       pgtype.Timestamptz `json:"finished_at"`
-}
-
 type PdbBackupSchedule struct {
 	ID                   uuid.UUID          `json:"id"`
 	InstanceID           uuid.UUID          `json:"instance_id"`

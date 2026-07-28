@@ -18,6 +18,9 @@ import type {
   UpdateNotificationSettings,
   PgInstance,
   PgDatabase,
+  PgTableInfo,
+  PgQueryResult,
+  PgHealth,
   PgRole,
   PgBackupSchedule,
   PgBackup,
@@ -28,6 +31,7 @@ import type {
   ManualPgBackupRequest,
   RestorePgBackupRequest,
   PgGrant,
+  PgConnectionInfo,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -227,6 +231,10 @@ export const api = {
 
   listPgInstances: () => request<PgInstance[]>("/api/databases"),
 
+  listPgHealth: () => request<PgHealth[]>("/api/databases/health"),
+
+  getPgHealth: (id: string) => request<PgHealth>(`/api/databases/${id}/health`),
+
   createPgInstance: (body: CreatePgInstanceRequest) =>
     request<PgInstance>("/api/databases", {
       method: "POST",
@@ -237,6 +245,9 @@ export const api = {
 
   deployPgInstance: (id: string) =>
     request<PgInstance>(`/api/databases/${id}/deploy`, { method: "POST" }),
+
+  streamPgDeploy: (id: string) =>
+    new EventSource(streamURL(`/api/databases/${id}/deploy/stream`)),
 
   stopPgInstance: (id: string) =>
     request<PgInstance>(`/api/databases/${id}/stop`, { method: "POST" }),
@@ -255,6 +266,19 @@ export const api = {
 
   deletePgDatabase: (id: string, dbId: string) =>
     request<void>(`/api/databases/${id}/databases/${dbId}`, { method: "DELETE" }),
+
+  listPgTables: (id: string, dbId: string) =>
+    request<PgTableInfo[]>(`/api/databases/${id}/databases/${dbId}/tables`),
+
+  selectPgTable: (
+    id: string,
+    dbId: string,
+    body: { table: string; limit?: number },
+  ) =>
+    request<PgQueryResult>(`/api/databases/${id}/databases/${dbId}/select`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   listPgRoles: (id: string) => request<PgRole[]>(`/api/databases/${id}/roles`),
 
@@ -276,6 +300,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getPgConnection: (id: string, databaseId: string, roleId: string) =>
+    request<PgConnectionInfo>(
+      `/api/databases/${id}/connection?database_id=${encodeURIComponent(databaseId)}&role_id=${encodeURIComponent(roleId)}`,
+    ),
+
+  getPgAdminCredentials: (id: string) =>
+    request<PgConnectionInfo>(`/api/databases/${id}/admin-credentials`),
 
   listPgSchedules: (id: string) =>
     request<PgBackupSchedule[]>(`/api/databases/${id}/schedules`),
@@ -301,8 +333,12 @@ export const api = {
       method: "DELETE",
     }),
 
-  listPgBackups: (id: string) =>
-    request<PgBackup[]>(`/api/databases/${id}/backups`),
+  listPgBackups: (id: string, scheduleId?: string) => {
+    const q = scheduleId
+      ? `?schedule_id=${encodeURIComponent(scheduleId)}`
+      : "";
+    return request<PgBackup[]>(`/api/databases/${id}/backups${q}`);
+  },
 
   createPgBackup: (id: string, body: ManualPgBackupRequest) =>
     request<PgBackup>(`/api/databases/${id}/backups`, {
@@ -310,11 +346,57 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  restorePgBackup: (id: string, backupId: string, body: RestorePgBackupRequest) =>
-    request<PgDatabase>(`/api/databases/${id}/backups/${backupId}/restore`, {
+  restorePgBackup: (id: string, body: RestorePgBackupRequest) =>
+    request<PgDatabase>(`/api/databases/${id}/backups/restore`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  restorePgBackupFromFile: async (
+    id: string,
+    form: {
+      file: File;
+      target_database_name: string;
+      create_database?: boolean;
+      drop_existing?: boolean;
+    },
+  ) => {
+    const body = new FormData();
+    body.append("file", form.file);
+    body.append("target_database_name", form.target_database_name);
+    body.append(
+      "create_database",
+      form.create_database === false ? "false" : "true",
+    );
+    body.append(
+      "drop_existing",
+      form.drop_existing ? "true" : "false",
+    );
+    const res = await fetch(
+      `${getApiBase()}/api/databases/${id}/restore-upload`,
+      {
+        method: "POST",
+        headers: authHeaders(),
+        body,
+      },
+    );
+    if (res.status === 401) {
+      clearApiToken();
+      notifyAuthLogout();
+      throw new ApiError("Invalid or missing API token", 401);
+    }
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = await res.json();
+        if (data?.error) message = data.error;
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(message, res.status);
+    }
+    return res.json() as Promise<PgDatabase>;
+  },
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

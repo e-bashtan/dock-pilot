@@ -26,6 +26,7 @@ export default function DatabasesPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [hostPort, setHostPort] = useState("");
   const [networkHost, setNetworkHost] = useState(false);
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +58,9 @@ export default function DatabasesPage() {
         docker_network_host: networkHost,
         ...(hostPort.trim() ? { host_port: Number(hostPort.trim()) } : {}),
       });
+      if (created.password) {
+        setCreatedPassword(created.password);
+      }
       setInstance(created);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : t("databases.loadFailed");
@@ -77,13 +81,25 @@ export default function DatabasesPage() {
 
   if (instance) {
     return (
-      <PostgresManager
-        instanceId={instance.id}
-        onDeleted={() => {
-          setInstance(null);
-          void load();
-        }}
-      />
+      <>
+        {createdPassword && (
+          <div className="alert alert-success" style={{ marginBottom: "1rem" }}>
+            <strong>{t("databases.createdPassword")}:</strong>{" "}
+            <code>{createdPassword}</code>
+            <p className="muted" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
+              {t("databases.passwordOnce")}
+            </p>
+          </div>
+        )}
+        <PostgresManager
+          instanceId={instance.id}
+          onDeleted={() => {
+            setInstance(null);
+            setCreatedPassword(null);
+            void load();
+          }}
+        />
+      </>
     );
   }
 

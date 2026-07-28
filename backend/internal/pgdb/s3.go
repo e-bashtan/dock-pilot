@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -99,6 +101,70 @@ func deleteFromS3(ctx context.Context, cfg s3Config, key string) error {
 		return fmt.Errorf("s3 delete: %w", err)
 	}
 	return nil
+}
+
+type s3Object struct {
+	Key          string
+	Size         int64
+	LastModified time.Time
+}
+
+func listFromS3(ctx context.Context, cfg s3Config, prefix string, limit int) ([]s3Object, error) {
+	client, err := newS3Client(cfg)
+	if err != nil {
+		return nil, err
+	}
+	prefix = strings.Trim(prefix, "/")
+	if prefix != "" {
+		prefix += "/"
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	var out []s3Object
+	var token *string
+	for {
+		resp, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            aws.String(cfg.Bucket),
+			Prefix:            aws.String(prefix),
+			ContinuationToken: token,
+			MaxKeys:           aws.Int32(1000),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("s3 list: %w", err)
+		}
+		for _, obj := range resp.Contents {
+			key := aws.ToString(obj.Key)
+			if key == "" || strings.HasSuffix(key, "/") {
+				continue
+			}
+			lower := strings.ToLower(key)
+			if !strings.HasSuffix(lower, ".sql") && !strings.HasSuffix(lower, ".sql.gz") && !strings.HasSuffix(lower, ".gz") {
+				continue
+			}
+			item := s3Object{Key: key, Size: aws.ToInt64(obj.Size)}
+			if obj.LastModified != nil {
+				item.LastModified = obj.LastModified.UTC()
+			}
+			out = append(out, item)
+		}
+		if !aws.ToBool(resp.IsTruncated) || resp.NextContinuationToken == nil {
+			break
+		}
+		token = resp.NextContinuationToken
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].LastModified.Equal(out[j].LastModified) {
+			return out[i].Key > out[j].Key
+		}
+		return out[i].LastModified.After(out[j].LastModified)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 type countingReader struct {

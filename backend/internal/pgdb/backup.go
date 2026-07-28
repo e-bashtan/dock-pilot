@@ -233,23 +233,42 @@ func (s *Service) DeleteSchedule(ctx context.Context, instanceID, scheduleID uui
 	return s.queries.DeletePgBackupSchedule(ctx, scheduleID)
 }
 
-func (s *Service) ListBackups(ctx context.Context, instanceID uuid.UUID, limit int32) ([]BackupResponse, error) {
+func (s *Service) ListBackups(ctx context.Context, instanceID uuid.UUID, scheduleID *uuid.UUID, limit int32) ([]BackupResponse, error) {
 	if _, err := s.requireInstance(ctx, instanceID); err != nil {
 		return nil, err
 	}
-	if limit <= 0 {
-		limit = 50
+	schedule, err := s.resolveSchedule(ctx, instanceID, scheduleID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return []BackupResponse{}, nil
+		}
+		return nil, err
 	}
-	rows, err := s.queries.ListPgBackups(ctx, db.ListPgBackupsParams{
-		InstanceID: instanceID,
-		Limit:      limit,
-	})
+	cfg, err := s.s3ConfigFromSchedule(schedule)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]BackupResponse, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toBackupResponse(row))
+	if limit <= 0 {
+		limit = 100
+	}
+	objects, err := listFromS3(ctx, cfg, schedule.S3Prefix, int(limit))
+	if err != nil {
+		return nil, err
+	}
+	sid := schedule.ID
+	out := make([]BackupResponse, 0, len(objects))
+	for _, obj := range objects {
+		out = append(out, BackupResponse{
+			S3Key:        obj.Key,
+			DatabaseName: databaseNameFromS3Key(schedule.S3Prefix, obj.Key),
+			Status:       "success",
+			S3Endpoint:   schedule.S3Endpoint,
+			S3Region:     schedule.S3Region,
+			S3Bucket:     schedule.S3Bucket,
+			SizeBytes:    obj.Size,
+			CreatedAt:    obj.LastModified,
+			ScheduleID:   &sid,
+		})
 	}
 	return out, nil
 }
@@ -279,8 +298,8 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 		ForcePathStyle: req.S3ForcePathStyle,
 	}
 	prefix := defaultStr(req.S3Prefix, "dock-pilot/pg-backups")
-	var scheduleID pgtype.UUID
-	var retention int32
+	var scheduleID *uuid.UUID
+	var retention int
 
 	if req.ScheduleID != nil {
 		schedule, err := s.queries.GetPgBackupSchedule(ctx, *req.ScheduleID)
@@ -298,8 +317,9 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 			return BackupResponse{}, err
 		}
 		prefix = schedule.S3Prefix
-		scheduleID = pgtype.UUID{Bytes: schedule.ID, Valid: true}
-		retention = schedule.RetentionCount
+		id := schedule.ID
+		scheduleID = &id
+		retention = int(schedule.RetentionCount)
 	} else if cfg.Bucket == "" || cfg.AccessKey == "" || cfg.SecretKey == "" {
 		return BackupResponse{}, fmt.Errorf("%w: provide schedule_id or S3 settings", ErrInvalidInput)
 	}
@@ -309,73 +329,79 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 		return BackupResponse{}, err
 	}
 	if retention > 0 {
-		_ = s.applyRetention(ctx, inst.ID, database.Name, cfg, int(retention))
+		_ = s.applyRetentionS3(ctx, cfg, prefix, inst.Slug, database.Name, retention)
 	}
-	return toBackupResponse(backup), nil
+	return backup, nil
 }
 
-func (s *Service) RestoreBackup(ctx context.Context, instanceID, backupID uuid.UUID, req RestoreRequest) (DatabaseResponse, error) {
+func (s *Service) RestoreBackup(ctx context.Context, instanceID uuid.UUID, req RestoreRequest) (DatabaseResponse, error) {
 	inst, err := s.requireInstance(ctx, instanceID)
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
-	backup, err := s.queries.GetPgBackup(ctx, backupID)
+	key := strings.TrimSpace(req.S3Key)
+	if key == "" {
+		return DatabaseResponse{}, fmt.Errorf("%w: s3_key is required", ErrInvalidInput)
+	}
+
+	schedule, err := s.resolveSchedule(ctx, instanceID, &req.ScheduleID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return DatabaseResponse{}, ErrNotFound
-		}
 		return DatabaseResponse{}, err
 	}
-	if backup.InstanceID != instanceID {
-		return DatabaseResponse{}, ErrNotFound
-	}
-	if backup.Status != "success" || backup.S3Key == "" {
-		return DatabaseResponse{}, fmt.Errorf("%w: backup is not restorable", ErrInvalidInput)
+	cfg, err := s.s3ConfigFromSchedule(schedule)
+	if err != nil {
+		return DatabaseResponse{}, err
 	}
 
 	targetName := strings.TrimSpace(req.TargetDatabaseName)
 	if targetName == "" {
-		targetName = backup.DatabaseName
-	}
-	if err := validateDBName(targetName); err != nil {
-		return DatabaseResponse{}, err
+		targetName = databaseNameFromS3Key(schedule.S3Prefix, key)
 	}
 
-	cfg := s3Config{
-		Endpoint:       backup.S3Endpoint,
-		Region:         backup.S3Region,
-		Bucket:         backup.S3Bucket,
-		ForcePathStyle: backup.S3ForcePathStyle,
-		AccessKey:      strings.TrimSpace(req.S3AccessKey),
-		SecretKey:      strings.TrimSpace(req.S3SecretKey),
-	}
-	if (cfg.AccessKey == "" || cfg.SecretKey == "") && backup.ScheduleID.Valid {
-		schedule, err := s.queries.GetPgBackupSchedule(ctx, uuid.UUID(backup.ScheduleID.Bytes))
-		if err == nil {
-			scfg, serr := s.s3ConfigFromSchedule(schedule)
-			if serr == nil {
-				cfg.AccessKey = scfg.AccessKey
-				cfg.SecretKey = scfg.SecretKey
-			}
-		}
-	}
-	if cfg.AccessKey == "" || cfg.SecretKey == "" {
-		return DatabaseResponse{}, fmt.Errorf("%w: s3 credentials required to download backup", ErrInvalidInput)
-	}
-
-	body, err := downloadFromS3(ctx, cfg, backup.S3Key)
+	body, err := downloadFromS3(ctx, cfg, key)
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
 	defer body.Close()
 
+	return s.restoreDumpInto(ctx, inst, RestoreUploadOptions{
+		TargetDatabaseName: targetName,
+		CreateDatabase:     req.CreateDatabase,
+		DropExisting:       req.DropExisting,
+	}, body)
+}
+
+func (s *Service) RestoreFromUpload(ctx context.Context, instanceID uuid.UUID, opts RestoreUploadOptions, body io.Reader) (DatabaseResponse, error) {
+	inst, err := s.requireInstance(ctx, instanceID)
+	if err != nil {
+		return DatabaseResponse{}, err
+	}
+	return s.restoreDumpInto(ctx, inst, opts, body)
+}
+
+func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts RestoreUploadOptions, body io.Reader) (DatabaseResponse, error) {
+	targetName := strings.TrimSpace(opts.TargetDatabaseName)
+	if err := validateDBName(targetName); err != nil {
+		return DatabaseResponse{}, err
+	}
+
+	dump, closer, err := openSQLDump(body)
+	if err != nil {
+		return DatabaseResponse{}, err
+	}
+	if closer != nil {
+		defer closer.Close()
+	}
+
+	instanceID := inst.ID
 	existingPanelDB, panelErr := findDatabaseByName(ctx, s.queries, instanceID, targetName)
 	dbIdent, err := quoteIdent(targetName)
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
 
-	if req.DropExisting {
+	createDB := opts.CreateDatabase
+	if opts.DropExisting {
 		_ = s.execSQL(ctx, inst, "postgres", fmt.Sprintf(
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
 			quoteLiteral(targetName),
@@ -386,10 +412,10 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID, backupID uuid.U
 		if panelErr == nil {
 			_ = s.queries.DeletePgDatabase(ctx, existingPanelDB.ID)
 		}
-		req.CreateDatabase = true
+		createDB = true
 	}
 
-	if req.CreateDatabase || panelErr != nil {
+	if createDB || panelErr != nil {
 		ownerIdent, err := quoteIdent(inst.AdminUser)
 		if err != nil {
 			return DatabaseResponse{}, err
@@ -401,7 +427,7 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID, backupID uuid.U
 		}
 	}
 
-	if err := s.restoreDatabase(ctx, inst, targetName, body); err != nil {
+	if err := s.restoreDatabase(ctx, inst, targetName, dump); err != nil {
 		return DatabaseResponse{}, fmt.Errorf("restore dump: %w", err)
 	}
 
@@ -420,24 +446,8 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID, backupID uuid.U
 	return toDatabaseResponse(row), nil
 }
 
-func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database db.PdbDatabase, scheduleID pgtype.UUID, cfg s3Config, prefix string) (db.PdbBackup, error) {
+func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database db.PdbDatabase, scheduleID *uuid.UUID, cfg s3Config, prefix string) (BackupResponse, error) {
 	key := path.Join(strings.Trim(prefix, "/"), inst.Slug, database.Name, time.Now().UTC().Format("20060102-150405")+".sql")
-	backup, err := s.queries.CreatePgBackup(ctx, db.CreatePgBackupParams{
-		InstanceID:       inst.ID,
-		DatabaseID:       pgtype.UUID{Bytes: database.ID, Valid: true},
-		ScheduleID:       scheduleID,
-		DatabaseName:     database.Name,
-		Status:           "running",
-		S3Endpoint:       cfg.Endpoint,
-		S3Region:         cfg.Region,
-		S3Bucket:         cfg.Bucket,
-		S3Key:            key,
-		S3ForcePathStyle: cfg.ForcePathStyle,
-		Message:          "",
-	})
-	if err != nil {
-		return db.PdbBackup{}, err
-	}
 
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
@@ -449,57 +459,85 @@ func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database d
 	size, uploadErr := uploadToS3(ctx, cfg, key, pr)
 	dumpErr := <-errCh
 	_ = pr.Close()
-
-	now := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
 	if dumpErr != nil || uploadErr != nil {
-		msg := firstErr(dumpErr, uploadErr).Error()
-		_, _ = s.queries.UpdatePgBackup(ctx, db.UpdatePgBackupParams{
-			ID:         backup.ID,
-			Status:     pgtype.Text{String: "failed", Valid: true},
-			Message:    pgtype.Text{String: msg, Valid: true},
-			FinishedAt: now,
-		})
-		return db.PdbBackup{}, firstErr(dumpErr, uploadErr)
+		return BackupResponse{}, firstErr(dumpErr, uploadErr)
 	}
 
-	updated, err := s.queries.UpdatePgBackup(ctx, db.UpdatePgBackupParams{
-		ID:         backup.ID,
-		Status:     pgtype.Text{String: "success", Valid: true},
-		S3Key:      pgtype.Text{String: key, Valid: true},
-		SizeBytes:  pgtype.Int8{Int64: size, Valid: true},
-		Message:    pgtype.Text{String: "", Valid: true},
-		FinishedAt: now,
-	})
-	if err != nil {
-		return db.PdbBackup{}, err
-	}
-	return updated, nil
+	now := time.Now().UTC()
+	return BackupResponse{
+		S3Key:        key,
+		DatabaseName: database.Name,
+		Status:       "success",
+		S3Endpoint:   cfg.Endpoint,
+		S3Region:     cfg.Region,
+		S3Bucket:     cfg.Bucket,
+		SizeBytes:    size,
+		CreatedAt:    now,
+		ScheduleID:   scheduleID,
+	}, nil
 }
 
-func (s *Service) applyRetention(ctx context.Context, instanceID uuid.UUID, databaseName string, cfg s3Config, keep int) error {
-	rows, err := s.queries.ListPgBackupsByDatabaseName(ctx, db.ListPgBackupsByDatabaseNameParams{
-		InstanceID:   instanceID,
-		DatabaseName: databaseName,
-	})
+func (s *Service) applyRetentionS3(ctx context.Context, cfg s3Config, prefix, slug, databaseName string, keep int) error {
+	if keep <= 0 {
+		return nil
+	}
+	dbPrefix := path.Join(strings.Trim(prefix, "/"), slug, databaseName)
+	objects, err := listFromS3(ctx, cfg, dbPrefix, 500)
 	if err != nil {
 		return err
 	}
-	success := make([]db.PdbBackup, 0, len(rows))
-	for _, row := range rows {
-		if row.Status == "success" {
-			success = append(success, row)
-		}
-	}
-	if len(success) <= keep {
+	if len(objects) <= keep {
 		return nil
 	}
-	for _, old := range success[keep:] {
-		if old.S3Key != "" {
-			_ = deleteFromS3(ctx, cfg, old.S3Key)
-		}
-		_ = s.queries.DeletePgBackup(ctx, old.ID)
+	for _, old := range objects[keep:] {
+		_ = deleteFromS3(ctx, cfg, old.Key)
 	}
 	return nil
+}
+
+func (s *Service) resolveSchedule(ctx context.Context, instanceID uuid.UUID, scheduleID *uuid.UUID) (db.PdbBackupSchedule, error) {
+	if scheduleID != nil && *scheduleID != uuid.Nil {
+		schedule, err := s.queries.GetPgBackupSchedule(ctx, *scheduleID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return db.PdbBackupSchedule{}, ErrNotFound
+			}
+			return db.PdbBackupSchedule{}, err
+		}
+		if schedule.InstanceID != instanceID {
+			return db.PdbBackupSchedule{}, ErrNotFound
+		}
+		return schedule, nil
+	}
+	rows, err := s.queries.ListPgBackupSchedules(ctx, instanceID)
+	if err != nil {
+		return db.PdbBackupSchedule{}, err
+	}
+	if len(rows) == 0 {
+		return db.PdbBackupSchedule{}, ErrNotFound
+	}
+	return rows[0], nil
+}
+
+func databaseNameFromS3Key(prefix, key string) string {
+	rel := strings.TrimPrefix(strings.Trim(key, "/"), strings.Trim(prefix, "/")+"/")
+	rel = strings.TrimPrefix(rel, "/")
+	parts := strings.Split(rel, "/")
+	switch {
+	case len(parts) >= 3:
+		// prefix/slug/dbname/file.sql
+		return parts[len(parts)-2]
+	case len(parts) == 2:
+		return parts[0]
+	case len(parts) == 1:
+		name := parts[0]
+		name = strings.TrimSuffix(name, ".sql.gz")
+		name = strings.TrimSuffix(name, ".gz")
+		name = strings.TrimSuffix(name, ".sql")
+		return name
+	default:
+		return ""
+	}
 }
 
 func (s *Service) s3ConfigFromSchedule(schedule db.PdbBackupSchedule) (s3Config, error) {
@@ -570,14 +608,15 @@ func (s *Service) runSchedule(ctx context.Context, schedule db.PdbBackupSchedule
 	if len(databases) == 0 {
 		return fmt.Errorf("no databases to back up")
 	}
+	sid := schedule.ID
 	var first error
 	for _, database := range databases {
-		_, err := s.runBackup(ctx, inst, database, pgtype.UUID{Bytes: schedule.ID, Valid: true}, cfg, schedule.S3Prefix)
+		_, err := s.runBackup(ctx, inst, database, &sid, cfg, schedule.S3Prefix)
 		if err != nil && first == nil {
 			first = err
 			continue
 		}
-		_ = s.applyRetention(ctx, inst.ID, database.Name, cfg, int(schedule.RetentionCount))
+		_ = s.applyRetentionS3(ctx, cfg, schedule.S3Prefix, inst.Slug, database.Name, int(schedule.RetentionCount))
 	}
 	return first
 }
@@ -633,26 +672,6 @@ func toScheduleResponse(row db.PdbBackupSchedule) ScheduleResponse {
 		LastStatus:       row.LastStatus,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
-	}
-}
-
-func toBackupResponse(row db.PdbBackup) BackupResponse {
-	return BackupResponse{
-		ID:               row.ID,
-		InstanceID:       row.InstanceID,
-		DatabaseID:       optionalUUID(row.DatabaseID),
-		ScheduleID:       optionalUUID(row.ScheduleID),
-		DatabaseName:     row.DatabaseName,
-		Status:           row.Status,
-		S3Endpoint:       row.S3Endpoint,
-		S3Region:         row.S3Region,
-		S3Bucket:         row.S3Bucket,
-		S3Key:            row.S3Key,
-		S3ForcePathStyle: row.S3ForcePathStyle,
-		SizeBytes:        row.SizeBytes,
-		Message:          row.Message,
-		CreatedAt:        row.CreatedAt,
-		FinishedAt:       optionalTime(row.FinishedAt),
 	}
 }
 

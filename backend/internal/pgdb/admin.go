@@ -1,7 +1,9 @@
 package pgdb
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -153,6 +155,23 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+// openSQLDump returns a reader for a plain SQL dump, transparently gunzipping if needed.
+func openSQLDump(r io.Reader) (io.Reader, io.Closer, error) {
+	br := bufio.NewReader(r)
+	magic, err := br.Peek(2)
+	if err != nil && err != io.EOF {
+		return nil, nil, err
+	}
+	if len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b {
+		gz, err := gzip.NewReader(br)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: invalid gzip dump: %v", ErrInvalidInput, err)
+		}
+		return gz, gz, nil
+	}
+	return br, nil, nil
 }
 
 func validateDBName(name string) error {

@@ -76,11 +76,11 @@ func main() {
 	healthChecker := healthcheck.NewChecker(dockerClient)
 	secretsSvc := secrets.NewService(queries, cipher)
 	sitesSvc := sites.NewService(pool, queries, healthChecker, dockerClient, secretsSvc)
-	notifSvc := notifications.NewService(queries, cipher, sitesSvc)
+	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
+	notifSvc := notifications.NewService(queries, cipher, sitesSvc, pgdbSvc)
 	worker := deployments.NewWorker(queries, dockerClient, nginxMgr, sslMgr, secretsSvc, cfg.Deploy.WorkDir, logger)
 	deploySvc := deployments.NewService(queries, worker)
 	notifWorker := notifications.NewWorker(notifSvc, logger)
-	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
 	pgBackupWorker := pgdb.NewWorker(pgdbSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
 
@@ -93,11 +93,12 @@ func main() {
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
 	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
-		Addr:         cfg.HTTPAddr,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 0,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.HTTPAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       30 * time.Minute, // large SQL dump uploads
+		WriteTimeout:      0,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {

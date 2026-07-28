@@ -95,16 +95,21 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 			r.Route("/databases", func(r chi.Router) {
 				r.Get("/", h.Databases.ListInstances)
 				r.Post("/", h.Databases.CreateInstance)
+				r.Get("/health", h.Databases.HealthAll)
 
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.Databases.GetInstance)
+					r.Get("/health", h.Databases.Health)
 					r.Post("/deploy", h.Databases.DeployInstance)
+					r.Get("/deploy/stream", h.Databases.StreamDeploy)
 					r.Post("/stop", h.Databases.StopInstance)
 					r.Delete("/", h.Databases.DeleteInstance)
 
 					r.Get("/databases", h.Databases.ListDatabases)
 					r.Post("/databases", h.Databases.CreateDatabase)
 					r.Delete("/databases/{dbId}", h.Databases.DeleteDatabase)
+					r.Get("/databases/{dbId}/tables", h.Databases.ListTables)
+					r.Post("/databases/{dbId}/select", h.Databases.SelectTable)
 
 					r.Get("/roles", h.Databases.ListRoles)
 					r.Post("/roles", h.Databases.CreateRole)
@@ -112,6 +117,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 					r.Post("/roles/{roleId}/grants", h.Databases.GrantRole)
 
 					r.Get("/connection", h.Databases.ConnectionInfo)
+					r.Get("/admin-credentials", h.Databases.AdminCredentials)
 
 					r.Get("/schedules", h.Databases.ListSchedules)
 					r.Post("/schedules", h.Databases.CreateSchedule)
@@ -120,7 +126,8 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 
 					r.Get("/backups", h.Databases.ListBackups)
 					r.Post("/backups", h.Databases.ManualBackup)
-					r.Post("/backups/{backupId}/restore", h.Databases.RestoreBackup)
+					r.Post("/backups/restore", h.Databases.RestoreBackup)
+					r.Post("/restore-upload", h.Databases.RestoreUpload)
 				})
 			})
 

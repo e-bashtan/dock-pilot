@@ -51,6 +51,16 @@ export interface SiteHealth {
   checked_at: string;
 }
 
+export interface PgHealth {
+  instance_id: string;
+  name: string;
+  overall: string;
+  message: string;
+  container?: SiteHealthContainer;
+  ready?: boolean;
+  checked_at: string;
+}
+
 export interface SystemDisk {
   path: string;
   total_bytes: number;
@@ -252,6 +262,7 @@ export interface PgInstance {
   container_name: string;
   created_at: string;
   updated_at: string;
+  password?: string;
 }
 
 export interface PgDatabase {
@@ -260,6 +271,18 @@ export interface PgDatabase {
   name: string;
   owner_role: string;
   created_at: string;
+}
+
+export interface PgTableInfo {
+  name: string;
+  approx_rows: number;
+}
+
+export interface PgQueryResult {
+  columns: string[];
+  rows: string[][];
+  sql: string;
+  limit: number;
 }
 
 export interface PgGrant {
@@ -276,6 +299,16 @@ export interface PgRole {
   name: string;
   created_at: string;
   grants: PgGrant[];
+  password?: string;
+}
+
+export interface PgConnectionInfo {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  url: string;
 }
 
 export interface PgBackupSchedule {
@@ -299,21 +332,15 @@ export interface PgBackupSchedule {
 }
 
 export interface PgBackup {
-  id: string;
-  instance_id: string;
-  database_id?: string | null;
-  schedule_id?: string | null;
+  s3_key: string;
   database_name: string;
   status: string;
   s3_endpoint: string;
   s3_region: string;
   s3_bucket: string;
-  s3_key: string;
-  s3_force_path_style: boolean;
   size_bytes: number;
-  message: string;
   created_at: string;
-  finished_at?: string | null;
+  schedule_id?: string | null;
 }
 
 export interface CreatePgInstanceRequest {
@@ -366,9 +393,9 @@ export interface ManualPgBackupRequest {
 }
 
 export interface RestorePgBackupRequest {
+  schedule_id: string;
+  s3_key: string;
   target_database_name?: string;
   create_database?: boolean;
   drop_existing?: boolean;
-  s3_access_key?: string;
-  s3_secret_key?: string;
 }
