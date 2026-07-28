@@ -13,7 +13,7 @@ import (
 )
 
 const createPgBackup = `-- name: CreatePgBackup :one
-INSERT INTO pg_backups (
+INSERT INTO pdb_backups (
     instance_id, database_id, schedule_id, database_name, status,
     s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, message
 ) VALUES (
@@ -35,7 +35,7 @@ type CreatePgBackupParams struct {
 	Message          string      `json:"message"`
 }
 
-func (q *Queries) CreatePgBackup(ctx context.Context, arg CreatePgBackupParams) (PgBackup, error) {
+func (q *Queries) CreatePgBackup(ctx context.Context, arg CreatePgBackupParams) (PdbBackup, error) {
 	row := q.db.QueryRow(ctx, createPgBackup,
 		arg.InstanceID,
 		arg.DatabaseID,
@@ -49,7 +49,7 @@ func (q *Queries) CreatePgBackup(ctx context.Context, arg CreatePgBackupParams) 
 		arg.S3ForcePathStyle,
 		arg.Message,
 	)
-	var i PgBackup
+	var i PdbBackup
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -71,7 +71,7 @@ func (q *Queries) CreatePgBackup(ctx context.Context, arg CreatePgBackupParams) 
 }
 
 const createPgBackupSchedule = `-- name: CreatePgBackupSchedule :one
-INSERT INTO pg_backup_schedules (
+INSERT INTO pdb_backup_schedules (
     instance_id, database_id, enabled, hour, minute, timezone,
     s3_endpoint, s3_region, s3_bucket, s3_prefix,
     encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style,
@@ -98,7 +98,7 @@ type CreatePgBackupScheduleParams struct {
 	RetentionCount       int32       `json:"retention_count"`
 }
 
-func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackupScheduleParams) (PgBackupSchedule, error) {
+func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackupScheduleParams) (PdbBackupSchedule, error) {
 	row := q.db.QueryRow(ctx, createPgBackupSchedule,
 		arg.InstanceID,
 		arg.DatabaseID,
@@ -115,7 +115,7 @@ func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackup
 		arg.S3ForcePathStyle,
 		arg.RetentionCount,
 	)
-	var i PgBackupSchedule
+	var i PdbBackupSchedule
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -141,7 +141,7 @@ func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackup
 }
 
 const createPgDatabase = `-- name: CreatePgDatabase :one
-INSERT INTO pg_databases (instance_id, name, owner_role)
+INSERT INTO pdb_databases (instance_id, name, owner_role)
 VALUES ($1, $2, $3)
 RETURNING id, instance_id, name, owner_role, created_at
 `
@@ -152,9 +152,9 @@ type CreatePgDatabaseParams struct {
 	OwnerRole  string    `json:"owner_role"`
 }
 
-func (q *Queries) CreatePgDatabase(ctx context.Context, arg CreatePgDatabaseParams) (PgDatabase, error) {
+func (q *Queries) CreatePgDatabase(ctx context.Context, arg CreatePgDatabaseParams) (PdbDatabase, error) {
 	row := q.db.QueryRow(ctx, createPgDatabase, arg.InstanceID, arg.Name, arg.OwnerRole)
-	var i PgDatabase
+	var i PdbDatabase
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -166,7 +166,7 @@ func (q *Queries) CreatePgDatabase(ctx context.Context, arg CreatePgDatabasePara
 }
 
 const createPgInstance = `-- name: CreatePgInstance :one
-INSERT INTO pg_instances (
+INSERT INTO pdb_instances (
     name, slug, image, container_port, host_port, docker_network_host,
     admin_user, encrypted_admin_password, status, message
 ) VALUES (
@@ -187,7 +187,7 @@ type CreatePgInstanceParams struct {
 	Message                string      `json:"message"`
 }
 
-func (q *Queries) CreatePgInstance(ctx context.Context, arg CreatePgInstanceParams) (PgInstance, error) {
+func (q *Queries) CreatePgInstance(ctx context.Context, arg CreatePgInstanceParams) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, createPgInstance,
 		arg.Name,
 		arg.Slug,
@@ -200,7 +200,7 @@ func (q *Queries) CreatePgInstance(ctx context.Context, arg CreatePgInstancePara
 		arg.Status,
 		arg.Message,
 	)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -220,7 +220,7 @@ func (q *Queries) CreatePgInstance(ctx context.Context, arg CreatePgInstancePara
 }
 
 const createPgRole = `-- name: CreatePgRole :one
-INSERT INTO pg_roles (instance_id, name, encrypted_password)
+INSERT INTO pdb_roles (instance_id, name, encrypted_password)
 VALUES ($1, $2, $3)
 RETURNING id, instance_id, name, encrypted_password, created_at
 `
@@ -231,9 +231,9 @@ type CreatePgRoleParams struct {
 	EncryptedPassword []byte    `json:"encrypted_password"`
 }
 
-func (q *Queries) CreatePgRole(ctx context.Context, arg CreatePgRoleParams) (PgRole, error) {
+func (q *Queries) CreatePgRole(ctx context.Context, arg CreatePgRoleParams) (PdbRole, error) {
 	row := q.db.QueryRow(ctx, createPgRole, arg.InstanceID, arg.Name, arg.EncryptedPassword)
-	var i PgRole
+	var i PdbRole
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -245,7 +245,7 @@ func (q *Queries) CreatePgRole(ctx context.Context, arg CreatePgRoleParams) (PgR
 }
 
 const deletePgBackup = `-- name: DeletePgBackup :exec
-DELETE FROM pg_backups WHERE id = $1
+DELETE FROM pdb_backups WHERE id = $1
 `
 
 func (q *Queries) DeletePgBackup(ctx context.Context, id uuid.UUID) error {
@@ -254,7 +254,7 @@ func (q *Queries) DeletePgBackup(ctx context.Context, id uuid.UUID) error {
 }
 
 const deletePgBackupSchedule = `-- name: DeletePgBackupSchedule :exec
-DELETE FROM pg_backup_schedules WHERE id = $1
+DELETE FROM pdb_backup_schedules WHERE id = $1
 `
 
 func (q *Queries) DeletePgBackupSchedule(ctx context.Context, id uuid.UUID) error {
@@ -263,7 +263,7 @@ func (q *Queries) DeletePgBackupSchedule(ctx context.Context, id uuid.UUID) erro
 }
 
 const deletePgDatabase = `-- name: DeletePgDatabase :exec
-DELETE FROM pg_databases WHERE id = $1
+DELETE FROM pdb_databases WHERE id = $1
 `
 
 func (q *Queries) DeletePgDatabase(ctx context.Context, id uuid.UUID) error {
@@ -272,7 +272,7 @@ func (q *Queries) DeletePgDatabase(ctx context.Context, id uuid.UUID) error {
 }
 
 const deletePgInstance = `-- name: DeletePgInstance :exec
-DELETE FROM pg_instances WHERE id = $1
+DELETE FROM pdb_instances WHERE id = $1
 `
 
 func (q *Queries) DeletePgInstance(ctx context.Context, id uuid.UUID) error {
@@ -281,7 +281,7 @@ func (q *Queries) DeletePgInstance(ctx context.Context, id uuid.UUID) error {
 }
 
 const deletePgRole = `-- name: DeletePgRole :exec
-DELETE FROM pg_roles WHERE id = $1
+DELETE FROM pdb_roles WHERE id = $1
 `
 
 func (q *Queries) DeletePgRole(ctx context.Context, id uuid.UUID) error {
@@ -290,7 +290,7 @@ func (q *Queries) DeletePgRole(ctx context.Context, id uuid.UUID) error {
 }
 
 const deletePgRoleGrant = `-- name: DeletePgRoleGrant :exec
-DELETE FROM pg_role_grants WHERE role_id = $1 AND database_id = $2
+DELETE FROM pdb_role_grants WHERE role_id = $1 AND database_id = $2
 `
 
 type DeletePgRoleGrantParams struct {
@@ -304,12 +304,12 @@ func (q *Queries) DeletePgRoleGrant(ctx context.Context, arg DeletePgRoleGrantPa
 }
 
 const getPgBackup = `-- name: GetPgBackup :one
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pg_backups WHERE id = $1
+SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups WHERE id = $1
 `
 
-func (q *Queries) GetPgBackup(ctx context.Context, id uuid.UUID) (PgBackup, error) {
+func (q *Queries) GetPgBackup(ctx context.Context, id uuid.UUID) (PdbBackup, error) {
 	row := q.db.QueryRow(ctx, getPgBackup, id)
-	var i PgBackup
+	var i PdbBackup
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -331,12 +331,12 @@ func (q *Queries) GetPgBackup(ctx context.Context, id uuid.UUID) (PgBackup, erro
 }
 
 const getPgBackupSchedule = `-- name: GetPgBackupSchedule :one
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pg_backup_schedules WHERE id = $1
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE id = $1
 `
 
-func (q *Queries) GetPgBackupSchedule(ctx context.Context, id uuid.UUID) (PgBackupSchedule, error) {
+func (q *Queries) GetPgBackupSchedule(ctx context.Context, id uuid.UUID) (PdbBackupSchedule, error) {
 	row := q.db.QueryRow(ctx, getPgBackupSchedule, id)
-	var i PgBackupSchedule
+	var i PdbBackupSchedule
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -362,12 +362,12 @@ func (q *Queries) GetPgBackupSchedule(ctx context.Context, id uuid.UUID) (PgBack
 }
 
 const getPgDatabase = `-- name: GetPgDatabase :one
-SELECT id, instance_id, name, owner_role, created_at FROM pg_databases WHERE id = $1
+SELECT id, instance_id, name, owner_role, created_at FROM pdb_databases WHERE id = $1
 `
 
-func (q *Queries) GetPgDatabase(ctx context.Context, id uuid.UUID) (PgDatabase, error) {
+func (q *Queries) GetPgDatabase(ctx context.Context, id uuid.UUID) (PdbDatabase, error) {
 	row := q.db.QueryRow(ctx, getPgDatabase, id)
-	var i PgDatabase
+	var i PdbDatabase
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -379,12 +379,12 @@ func (q *Queries) GetPgDatabase(ctx context.Context, id uuid.UUID) (PgDatabase, 
 }
 
 const getPgInstance = `-- name: GetPgInstance :one
-SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pg_instances WHERE id = $1
+SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pdb_instances WHERE id = $1
 `
 
-func (q *Queries) GetPgInstance(ctx context.Context, id uuid.UUID) (PgInstance, error) {
+func (q *Queries) GetPgInstance(ctx context.Context, id uuid.UUID) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, getPgInstance, id)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -404,12 +404,12 @@ func (q *Queries) GetPgInstance(ctx context.Context, id uuid.UUID) (PgInstance, 
 }
 
 const getPgInstanceBySlug = `-- name: GetPgInstanceBySlug :one
-SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pg_instances WHERE slug = $1
+SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pdb_instances WHERE slug = $1
 `
 
-func (q *Queries) GetPgInstanceBySlug(ctx context.Context, slug string) (PgInstance, error) {
+func (q *Queries) GetPgInstanceBySlug(ctx context.Context, slug string) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, getPgInstanceBySlug, slug)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -429,12 +429,12 @@ func (q *Queries) GetPgInstanceBySlug(ctx context.Context, slug string) (PgInsta
 }
 
 const getPgRole = `-- name: GetPgRole :one
-SELECT id, instance_id, name, encrypted_password, created_at FROM pg_roles WHERE id = $1
+SELECT id, instance_id, name, encrypted_password, created_at FROM pdb_roles WHERE id = $1
 `
 
-func (q *Queries) GetPgRole(ctx context.Context, id uuid.UUID) (PgRole, error) {
+func (q *Queries) GetPgRole(ctx context.Context, id uuid.UUID) (PdbRole, error) {
 	row := q.db.QueryRow(ctx, getPgRole, id)
-	var i PgRole
+	var i PdbRole
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -446,18 +446,18 @@ func (q *Queries) GetPgRole(ctx context.Context, id uuid.UUID) (PgRole, error) {
 }
 
 const listEnabledPgBackupSchedules = `-- name: ListEnabledPgBackupSchedules :many
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pg_backup_schedules WHERE enabled = true ORDER BY created_at ASC
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE enabled = true ORDER BY created_at ASC
 `
 
-func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PgBackupSchedule, error) {
+func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PdbBackupSchedule, error) {
 	rows, err := q.db.Query(ctx, listEnabledPgBackupSchedules)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgBackupSchedule{}
+	items := []PdbBackupSchedule{}
 	for rows.Next() {
-		var i PgBackupSchedule
+		var i PdbBackupSchedule
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -490,18 +490,18 @@ func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PgBackupS
 }
 
 const listPgBackupSchedules = `-- name: ListPgBackupSchedules :many
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pg_backup_schedules WHERE instance_id = $1 ORDER BY created_at DESC
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE instance_id = $1 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUID) ([]PgBackupSchedule, error) {
+func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUID) ([]PdbBackupSchedule, error) {
 	rows, err := q.db.Query(ctx, listPgBackupSchedules, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgBackupSchedule{}
+	items := []PdbBackupSchedule{}
 	for rows.Next() {
-		var i PgBackupSchedule
+		var i PdbBackupSchedule
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -534,7 +534,7 @@ func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUI
 }
 
 const listPgBackups = `-- name: ListPgBackups :many
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pg_backups WHERE instance_id = $1 ORDER BY created_at DESC LIMIT $2
+SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups WHERE instance_id = $1 ORDER BY created_at DESC LIMIT $2
 `
 
 type ListPgBackupsParams struct {
@@ -542,15 +542,15 @@ type ListPgBackupsParams struct {
 	Limit      int32     `json:"limit"`
 }
 
-func (q *Queries) ListPgBackups(ctx context.Context, arg ListPgBackupsParams) ([]PgBackup, error) {
+func (q *Queries) ListPgBackups(ctx context.Context, arg ListPgBackupsParams) ([]PdbBackup, error) {
 	rows, err := q.db.Query(ctx, listPgBackups, arg.InstanceID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgBackup{}
+	items := []PdbBackup{}
 	for rows.Next() {
-		var i PgBackup
+		var i PdbBackup
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -579,7 +579,7 @@ func (q *Queries) ListPgBackups(ctx context.Context, arg ListPgBackupsParams) ([
 }
 
 const listPgBackupsByDatabaseName = `-- name: ListPgBackupsByDatabaseName :many
-SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pg_backups
+SELECT id, instance_id, database_id, schedule_id, database_name, status, s3_endpoint, s3_region, s3_bucket, s3_key, s3_force_path_style, size_bytes, message, created_at, finished_at FROM pdb_backups
 WHERE instance_id = $1 AND database_name = $2
 ORDER BY created_at DESC
 `
@@ -589,15 +589,15 @@ type ListPgBackupsByDatabaseNameParams struct {
 	DatabaseName string    `json:"database_name"`
 }
 
-func (q *Queries) ListPgBackupsByDatabaseName(ctx context.Context, arg ListPgBackupsByDatabaseNameParams) ([]PgBackup, error) {
+func (q *Queries) ListPgBackupsByDatabaseName(ctx context.Context, arg ListPgBackupsByDatabaseNameParams) ([]PdbBackup, error) {
 	rows, err := q.db.Query(ctx, listPgBackupsByDatabaseName, arg.InstanceID, arg.DatabaseName)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgBackup{}
+	items := []PdbBackup{}
 	for rows.Next() {
-		var i PgBackup
+		var i PdbBackup
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -626,18 +626,18 @@ func (q *Queries) ListPgBackupsByDatabaseName(ctx context.Context, arg ListPgBac
 }
 
 const listPgDatabases = `-- name: ListPgDatabases :many
-SELECT id, instance_id, name, owner_role, created_at FROM pg_databases WHERE instance_id = $1 ORDER BY name ASC
+SELECT id, instance_id, name, owner_role, created_at FROM pdb_databases WHERE instance_id = $1 ORDER BY name ASC
 `
 
-func (q *Queries) ListPgDatabases(ctx context.Context, instanceID uuid.UUID) ([]PgDatabase, error) {
+func (q *Queries) ListPgDatabases(ctx context.Context, instanceID uuid.UUID) ([]PdbDatabase, error) {
 	rows, err := q.db.Query(ctx, listPgDatabases, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgDatabase{}
+	items := []PdbDatabase{}
 	for rows.Next() {
-		var i PgDatabase
+		var i PdbDatabase
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -656,18 +656,18 @@ func (q *Queries) ListPgDatabases(ctx context.Context, instanceID uuid.UUID) ([]
 }
 
 const listPgInstances = `-- name: ListPgInstances :many
-SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pg_instances ORDER BY created_at DESC
+SELECT id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at FROM pdb_instances ORDER BY created_at DESC
 `
 
-func (q *Queries) ListPgInstances(ctx context.Context) ([]PgInstance, error) {
+func (q *Queries) ListPgInstances(ctx context.Context) ([]PdbInstance, error) {
 	rows, err := q.db.Query(ctx, listPgInstances)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgInstance{}
+	items := []PdbInstance{}
 	for rows.Next() {
-		var i PgInstance
+		var i PdbInstance
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -694,18 +694,18 @@ func (q *Queries) ListPgInstances(ctx context.Context) ([]PgInstance, error) {
 }
 
 const listPgRoleGrantsByDatabase = `-- name: ListPgRoleGrantsByDatabase :many
-SELECT id, role_id, database_id, is_owner FROM pg_role_grants WHERE database_id = $1
+SELECT id, role_id, database_id, is_owner FROM pdb_role_grants WHERE database_id = $1
 `
 
-func (q *Queries) ListPgRoleGrantsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]PgRoleGrant, error) {
+func (q *Queries) ListPgRoleGrantsByDatabase(ctx context.Context, databaseID uuid.UUID) ([]PdbRoleGrant, error) {
 	rows, err := q.db.Query(ctx, listPgRoleGrantsByDatabase, databaseID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgRoleGrant{}
+	items := []PdbRoleGrant{}
 	for rows.Next() {
-		var i PgRoleGrant
+		var i PdbRoleGrant
 		if err := rows.Scan(
 			&i.ID,
 			&i.RoleID,
@@ -723,18 +723,18 @@ func (q *Queries) ListPgRoleGrantsByDatabase(ctx context.Context, databaseID uui
 }
 
 const listPgRoleGrantsByRole = `-- name: ListPgRoleGrantsByRole :many
-SELECT id, role_id, database_id, is_owner FROM pg_role_grants WHERE role_id = $1
+SELECT id, role_id, database_id, is_owner FROM pdb_role_grants WHERE role_id = $1
 `
 
-func (q *Queries) ListPgRoleGrantsByRole(ctx context.Context, roleID uuid.UUID) ([]PgRoleGrant, error) {
+func (q *Queries) ListPgRoleGrantsByRole(ctx context.Context, roleID uuid.UUID) ([]PdbRoleGrant, error) {
 	rows, err := q.db.Query(ctx, listPgRoleGrantsByRole, roleID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgRoleGrant{}
+	items := []PdbRoleGrant{}
 	for rows.Next() {
-		var i PgRoleGrant
+		var i PdbRoleGrant
 		if err := rows.Scan(
 			&i.ID,
 			&i.RoleID,
@@ -752,18 +752,18 @@ func (q *Queries) ListPgRoleGrantsByRole(ctx context.Context, roleID uuid.UUID) 
 }
 
 const listPgRoles = `-- name: ListPgRoles :many
-SELECT id, instance_id, name, encrypted_password, created_at FROM pg_roles WHERE instance_id = $1 ORDER BY name ASC
+SELECT id, instance_id, name, encrypted_password, created_at FROM pdb_roles WHERE instance_id = $1 ORDER BY name ASC
 `
 
-func (q *Queries) ListPgRoles(ctx context.Context, instanceID uuid.UUID) ([]PgRole, error) {
+func (q *Queries) ListPgRoles(ctx context.Context, instanceID uuid.UUID) ([]PdbRole, error) {
 	rows, err := q.db.Query(ctx, listPgRoles, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []PgRole{}
+	items := []PdbRole{}
 	for rows.Next() {
-		var i PgRole
+		var i PdbRole
 		if err := rows.Scan(
 			&i.ID,
 			&i.InstanceID,
@@ -782,7 +782,7 @@ func (q *Queries) ListPgRoles(ctx context.Context, instanceID uuid.UUID) ([]PgRo
 }
 
 const updatePgBackup = `-- name: UpdatePgBackup :one
-UPDATE pg_backups SET
+UPDATE pdb_backups SET
     status = COALESCE($2, status),
     s3_key = COALESCE($3, s3_key),
     size_bytes = COALESCE($4, size_bytes),
@@ -801,7 +801,7 @@ type UpdatePgBackupParams struct {
 	FinishedAt pgtype.Timestamptz `json:"finished_at"`
 }
 
-func (q *Queries) UpdatePgBackup(ctx context.Context, arg UpdatePgBackupParams) (PgBackup, error) {
+func (q *Queries) UpdatePgBackup(ctx context.Context, arg UpdatePgBackupParams) (PdbBackup, error) {
 	row := q.db.QueryRow(ctx, updatePgBackup,
 		arg.ID,
 		arg.Status,
@@ -810,7 +810,7 @@ func (q *Queries) UpdatePgBackup(ctx context.Context, arg UpdatePgBackupParams) 
 		arg.Message,
 		arg.FinishedAt,
 	)
-	var i PgBackup
+	var i PdbBackup
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -832,7 +832,7 @@ func (q *Queries) UpdatePgBackup(ctx context.Context, arg UpdatePgBackupParams) 
 }
 
 const updatePgBackupSchedule = `-- name: UpdatePgBackupSchedule :one
-UPDATE pg_backup_schedules SET
+UPDATE pdb_backup_schedules SET
     database_id = CASE WHEN $2::boolean = true THEN NULL
                        WHEN $3::uuid IS NOT NULL THEN $3::uuid
                        ELSE database_id END,
@@ -871,7 +871,7 @@ type UpdatePgBackupScheduleParams struct {
 	RetentionCount       pgtype.Int4 `json:"retention_count"`
 }
 
-func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackupScheduleParams) (PgBackupSchedule, error) {
+func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackupScheduleParams) (PdbBackupSchedule, error) {
 	row := q.db.QueryRow(ctx, updatePgBackupSchedule,
 		arg.ID,
 		arg.ClearDatabaseID,
@@ -889,7 +889,7 @@ func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackup
 		arg.S3ForcePathStyle,
 		arg.RetentionCount,
 	)
-	var i PgBackupSchedule
+	var i PdbBackupSchedule
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -915,7 +915,7 @@ func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackup
 }
 
 const updatePgBackupScheduleRun = `-- name: UpdatePgBackupScheduleRun :one
-UPDATE pg_backup_schedules SET
+UPDATE pdb_backup_schedules SET
     last_run_at = $2,
     last_status = $3,
     updated_at = now()
@@ -929,9 +929,9 @@ type UpdatePgBackupScheduleRunParams struct {
 	LastStatus string             `json:"last_status"`
 }
 
-func (q *Queries) UpdatePgBackupScheduleRun(ctx context.Context, arg UpdatePgBackupScheduleRunParams) (PgBackupSchedule, error) {
+func (q *Queries) UpdatePgBackupScheduleRun(ctx context.Context, arg UpdatePgBackupScheduleRunParams) (PdbBackupSchedule, error) {
 	row := q.db.QueryRow(ctx, updatePgBackupScheduleRun, arg.ID, arg.LastRunAt, arg.LastStatus)
-	var i PgBackupSchedule
+	var i PdbBackupSchedule
 	err := row.Scan(
 		&i.ID,
 		&i.InstanceID,
@@ -957,7 +957,7 @@ func (q *Queries) UpdatePgBackupScheduleRun(ctx context.Context, arg UpdatePgBac
 }
 
 const updatePgInstance = `-- name: UpdatePgInstance :one
-UPDATE pg_instances SET
+UPDATE pdb_instances SET
     name = COALESCE($2, name),
     image = COALESCE($3, image),
     container_port = COALESCE($4, container_port),
@@ -983,7 +983,7 @@ type UpdatePgInstanceParams struct {
 	EncryptedAdminPassword []byte      `json:"encrypted_admin_password"`
 }
 
-func (q *Queries) UpdatePgInstance(ctx context.Context, arg UpdatePgInstanceParams) (PgInstance, error) {
+func (q *Queries) UpdatePgInstance(ctx context.Context, arg UpdatePgInstanceParams) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, updatePgInstance,
 		arg.ID,
 		arg.Name,
@@ -995,7 +995,7 @@ func (q *Queries) UpdatePgInstance(ctx context.Context, arg UpdatePgInstancePara
 		arg.Message,
 		arg.EncryptedAdminPassword,
 	)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -1015,7 +1015,7 @@ func (q *Queries) UpdatePgInstance(ctx context.Context, arg UpdatePgInstancePara
 }
 
 const updatePgInstanceHostPort = `-- name: UpdatePgInstanceHostPort :one
-UPDATE pg_instances SET host_port = $2, updated_at = now() WHERE id = $1 RETURNING id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at
+UPDATE pdb_instances SET host_port = $2, updated_at = now() WHERE id = $1 RETURNING id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at
 `
 
 type UpdatePgInstanceHostPortParams struct {
@@ -1023,9 +1023,9 @@ type UpdatePgInstanceHostPortParams struct {
 	HostPort pgtype.Int4 `json:"host_port"`
 }
 
-func (q *Queries) UpdatePgInstanceHostPort(ctx context.Context, arg UpdatePgInstanceHostPortParams) (PgInstance, error) {
+func (q *Queries) UpdatePgInstanceHostPort(ctx context.Context, arg UpdatePgInstanceHostPortParams) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, updatePgInstanceHostPort, arg.ID, arg.HostPort)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -1045,7 +1045,7 @@ func (q *Queries) UpdatePgInstanceHostPort(ctx context.Context, arg UpdatePgInst
 }
 
 const updatePgInstanceStatus = `-- name: UpdatePgInstanceStatus :one
-UPDATE pg_instances SET status = $2, message = $3, updated_at = now() WHERE id = $1 RETURNING id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at
+UPDATE pdb_instances SET status = $2, message = $3, updated_at = now() WHERE id = $1 RETURNING id, name, slug, image, container_port, host_port, docker_network_host, admin_user, encrypted_admin_password, status, message, created_at, updated_at
 `
 
 type UpdatePgInstanceStatusParams struct {
@@ -1054,9 +1054,9 @@ type UpdatePgInstanceStatusParams struct {
 	Message string    `json:"message"`
 }
 
-func (q *Queries) UpdatePgInstanceStatus(ctx context.Context, arg UpdatePgInstanceStatusParams) (PgInstance, error) {
+func (q *Queries) UpdatePgInstanceStatus(ctx context.Context, arg UpdatePgInstanceStatusParams) (PdbInstance, error) {
 	row := q.db.QueryRow(ctx, updatePgInstanceStatus, arg.ID, arg.Status, arg.Message)
-	var i PgInstance
+	var i PdbInstance
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -1076,7 +1076,7 @@ func (q *Queries) UpdatePgInstanceStatus(ctx context.Context, arg UpdatePgInstan
 }
 
 const upsertPgRoleGrant = `-- name: UpsertPgRoleGrant :one
-INSERT INTO pg_role_grants (role_id, database_id, is_owner)
+INSERT INTO pdb_role_grants (role_id, database_id, is_owner)
 VALUES ($1, $2, $3)
 ON CONFLICT (role_id, database_id) DO UPDATE SET is_owner = EXCLUDED.is_owner
 RETURNING id, role_id, database_id, is_owner
@@ -1088,9 +1088,9 @@ type UpsertPgRoleGrantParams struct {
 	IsOwner    bool      `json:"is_owner"`
 }
 
-func (q *Queries) UpsertPgRoleGrant(ctx context.Context, arg UpsertPgRoleGrantParams) (PgRoleGrant, error) {
+func (q *Queries) UpsertPgRoleGrant(ctx context.Context, arg UpsertPgRoleGrantParams) (PdbRoleGrant, error) {
 	row := q.db.QueryRow(ctx, upsertPgRoleGrant, arg.RoleID, arg.DatabaseID, arg.IsOwner)
-	var i PgRoleGrant
+	var i PdbRoleGrant
 	err := row.Scan(
 		&i.ID,
 		&i.RoleID,

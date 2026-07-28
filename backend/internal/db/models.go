@@ -44,7 +44,7 @@ type NotificationSetting struct {
 	UpdatedAt                 time.Time          `json:"updated_at"`
 }
 
-type PgBackup struct {
+type PdbBackup struct {
 	ID               uuid.UUID          `json:"id"`
 	InstanceID       uuid.UUID          `json:"instance_id"`
 	DatabaseID       pgtype.UUID        `json:"database_id"`
@@ -62,7 +62,7 @@ type PgBackup struct {
 	FinishedAt       pgtype.Timestamptz `json:"finished_at"`
 }
 
-type PgBackupSchedule struct {
+type PdbBackupSchedule struct {
 	ID                   uuid.UUID          `json:"id"`
 	InstanceID           uuid.UUID          `json:"instance_id"`
 	DatabaseID           pgtype.UUID        `json:"database_id"`
@@ -84,7 +84,7 @@ type PgBackupSchedule struct {
 	UpdatedAt            time.Time          `json:"updated_at"`
 }
 
-type PgDatabase struct {
+type PdbDatabase struct {
 	ID         uuid.UUID `json:"id"`
 	InstanceID uuid.UUID `json:"instance_id"`
 	Name       string    `json:"name"`
@@ -92,7 +92,7 @@ type PgDatabase struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-type PgInstance struct {
+type PdbInstance struct {
 	ID                     uuid.UUID   `json:"id"`
 	Name                   string      `json:"name"`
 	Slug                   string      `json:"slug"`
@@ -108,7 +108,7 @@ type PgInstance struct {
 	UpdatedAt              time.Time   `json:"updated_at"`
 }
 
-type PgRole struct {
+type PdbRole struct {
 	ID                uuid.UUID `json:"id"`
 	InstanceID        uuid.UUID `json:"instance_id"`
 	Name              string    `json:"name"`
@@ -116,7 +116,7 @@ type PgRole struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
-type PgRoleGrant struct {
+type PdbRoleGrant struct {
 	ID         uuid.UUID `json:"id"`
 	RoleID     uuid.UUID `json:"role_id"`
 	DatabaseID uuid.UUID `json:"database_id"`

@@ -28,19 +28,21 @@ func quoteLiteral(s string) string {
 	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
 }
 
-func (s *Service) containerName(inst db.PgInstance) string {
-	return docker.SanitizeContainerName("dockpilot-pg-" + inst.Slug)
+func (s *Service) containerName(inst db.PdbInstance) string {
+	_ = inst
+	return "dockpilot-postgres"
 }
 
-func (s *Service) volumeName(inst db.PgInstance) string {
-	return "dockpilot-pg-" + docker.SanitizeContainerName(inst.Slug) + "-data"
+func (s *Service) volumeName(inst db.PdbInstance) string {
+	_ = inst
+	return "dockpilot-postgres-data"
 }
 
-func (s *Service) adminPassword(inst db.PgInstance) (string, error) {
+func (s *Service) adminPassword(inst db.PdbInstance) (string, error) {
 	return s.cipher.Decrypt(inst.EncryptedAdminPassword)
 }
 
-func (s *Service) execSQL(ctx context.Context, inst db.PgInstance, database, sql string) error {
+func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sql string) error {
 	password, err := s.adminPassword(inst)
 	if err != nil {
 		return fmt.Errorf("decrypt admin password: %w", err)
@@ -70,7 +72,7 @@ func (s *Service) execSQL(ctx context.Context, inst db.PgInstance, database, sql
 	return nil
 }
 
-func (s *Service) waitReady(ctx context.Context, inst db.PgInstance) error {
+func (s *Service) waitReady(ctx context.Context, inst db.PdbInstance) error {
 	password, err := s.adminPassword(inst)
 	if err != nil {
 		return err
@@ -94,7 +96,7 @@ func (s *Service) waitReady(ctx context.Context, inst db.PgInstance) error {
 	return nil
 }
 
-func (s *Service) dumpDatabase(ctx context.Context, inst db.PgInstance, dbName string, w io.Writer) error {
+func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName string, w io.Writer) error {
 	password, err := s.adminPassword(inst)
 	if err != nil {
 		return err
@@ -124,7 +126,7 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PgInstance, dbName s
 	return nil
 }
 
-func (s *Service) restoreDatabase(ctx context.Context, inst db.PgInstance, dbName string, r io.Reader) error {
+func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbName string, r io.Reader) error {
 	password, err := s.adminPassword(inst)
 	if err != nil {
 		return err

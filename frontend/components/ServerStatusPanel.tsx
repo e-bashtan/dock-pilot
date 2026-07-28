@@ -81,7 +81,8 @@ export function ServerStatusPanel() {
 
   if (!status) return null;
 
-  const root = status.disk[0];
+  const disks = status.disk ?? [];
+  const root = disks[0];
   const mem = status.memory;
   const docker = status.docker;
   const topImages = docker?.top_images ?? [];
@@ -91,6 +92,7 @@ export function ServerStatusPanel() {
     (docker?.build_cache_bytes ?? 0) +
     (docker?.volumes_bytes ?? 0) +
     (docker?.containers_bytes ?? 0);
+  const memPct = mem?.used_percent ?? 0;
 
   return (
     <div className="card server-status" style={{ marginBottom: "1.25rem" }}>
@@ -161,15 +163,15 @@ export function ServerStatusPanel() {
 
         <div>
           <div className="server-status-label">{t("system.memory")}</div>
-          <div className="server-status-value">{formatPercent(mem.used_percent)}</div>
+          <div className="server-status-value">{formatPercent(memPct)}</div>
           <div className="server-status-meta">
-            {formatBytes(mem.available_bytes)} {t("system.free")} ·{" "}
-            {formatBytes(mem.used_bytes)} / {formatBytes(mem.total_bytes)}
+            {formatBytes(mem?.available_bytes ?? 0)} {t("system.free")} ·{" "}
+            {formatBytes(mem?.used_bytes ?? 0)} / {formatBytes(mem?.total_bytes ?? 0)}
           </div>
           <div className="meter" aria-hidden>
             <div
               className="meter-fill"
-              style={{ width: `${Math.min(100, mem.used_percent)}%` }}
+              style={{ width: `${Math.min(100, memPct)}%` }}
             />
           </div>
         </div>

@@ -1,18 +1,26 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { PostgresManager } from "@/components/PostgresManager";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
 import type { PgInstance } from "@/lib/types";
 
+function formatError(message: string, migrationHint: string): string {
+  if (/pdb_instances|pg_instances|42P01|does not exist/i.test(message)) {
+    return migrationHint;
+  }
+  return message;
+}
+
 export default function DatabasesPage() {
   const { t } = useI18n();
-  const [rows, setRows] = useState<PgInstance[]>([]);
+  const [instance, setInstance] = useState<PgInstance | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+
+  const [name, setName] = useState("Postgres");
   const [image, setImage] = useState("postgres:16-alpine");
   const [adminUser, setAdminUser] = useState("postgres");
   const [adminPassword, setAdminPassword] = useState("");
@@ -22,15 +30,18 @@ export default function DatabasesPage() {
   const load = useCallback(async () => {
     try {
       const list = await api.listPgInstances();
-      setRows(list);
+      setInstance(list[0] ?? null);
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
+      const msg = e instanceof ApiError ? e.message : t("databases.loadFailed");
+      setError(formatError(msg, t("databases.migrationNeeded")));
+    } finally {
+      setLoading(false);
     }
   }, [t]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -38,138 +49,143 @@ export default function DatabasesPage() {
     setCreating(true);
     setError(null);
     try {
-      await api.createPgInstance({
-        name: name.trim(),
-        slug: slug.trim() || undefined,
+      const created = await api.createPgInstance({
+        name: name.trim() || "Postgres",
         image: image.trim() || undefined,
         admin_user: adminUser.trim() || undefined,
         admin_password: adminPassword || undefined,
         docker_network_host: networkHost,
-        ...(hostPort.trim()
-          ? { host_port: Number(hostPort.trim()) }
-          : {}),
+        ...(hostPort.trim() ? { host_port: Number(hostPort.trim()) } : {}),
       });
-      setName("");
-      setSlug("");
-      setAdminPassword("");
-      setHostPort("");
-      await load();
+      setInstance(created);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("databases.loadFailed"));
+      const msg = err instanceof ApiError ? err.message : t("databases.loadFailed");
+      setError(formatError(msg, t("databases.migrationNeeded")));
     } finally {
       setCreating(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div>
+        <h1>{t("databases.title")}</h1>
+        <p className="muted">{t("common.loading")}</p>
+      </div>
+    );
+  }
+
+  if (instance) {
+    return (
+      <PostgresManager
+        instanceId={instance.id}
+        onDeleted={() => {
+          setInstance(null);
+          void load();
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="page">
+    <div>
       <div className="page-header">
         <div>
           <h1>{t("databases.title")}</h1>
-          <p className="muted">{t("databases.subtitle")}</p>
+          <p className="page-header-meta">{t("databases.subtitle")}</p>
         </div>
       </div>
 
-      {error && <p className="error">{error}</p>}
+      {error && <div className="alert alert-error">{error}</div>}
 
-      <form className="card-form" onSubmit={handleCreate} style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ marginTop: 0 }}>{t("databases.create")}</h2>
+      <div className="card" style={{ marginBottom: "1rem" }}>
+        <p style={{ margin: 0 }}>{t("databases.empty")}</p>
+        <p className="muted" style={{ marginTop: "0.5rem", marginBottom: 0 }}>
+          {t("databases.emptyHint")}
+        </p>
+      </div>
+
+      <form onSubmit={handleCreate} className="card">
+        <h2 className="section-title">{t("databases.createTitle")}</h2>
         <div className="form-grid">
-          <label>
-            {t("databases.name")}
-            <input value={name} onChange={(e) => setName(e.target.value)} required />
-          </label>
-          <label>
-            {t("databases.slug")}
-            <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="auto" />
-          </label>
-          <label>
-            {t("databases.image")}
-            <input value={image} onChange={(e) => setImage(e.target.value)} />
-          </label>
-          <label>
-            {t("databases.adminUser")}
-            <input value={adminUser} onChange={(e) => setAdminUser(e.target.value)} />
-          </label>
-          <label>
-            {t("databases.adminPassword")}
+          <div className="field">
+            <label className="label" htmlFor="pg-name">
+              {t("databases.name")}
+            </label>
             <input
+              id="pg-name"
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="pg-image">
+              {t("databases.image")}
+            </label>
+            <input
+              id="pg-image"
+              className="input"
+              value={image}
+              onChange={(e) => setImage(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="pg-admin">
+              {t("databases.adminUser")}
+            </label>
+            <input
+              id="pg-admin"
+              className="input"
+              value={adminUser}
+              onChange={(e) => setAdminUser(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="pg-password">
+              {t("databases.adminPassword")}
+            </label>
+            <input
+              id="pg-password"
+              className="input"
               type="password"
+              autoComplete="new-password"
               value={adminPassword}
               onChange={(e) => setAdminPassword(e.target.value)}
               placeholder={t("databases.adminPasswordHint")}
             />
-          </label>
+          </div>
           {!networkHost && (
-            <label>
-              {t("databases.hostPort")}
+            <div className="field">
+              <label className="label" htmlFor="pg-port">
+                {t("databases.hostPort")}
+              </label>
               <input
+                id="pg-port"
+                className="input"
                 value={hostPort}
                 onChange={(e) => setHostPort(e.target.value)}
                 placeholder={t("databases.hostPortHint")}
               />
-            </label>
+            </div>
           )}
-          <label className="checkbox-row">
+        </div>
+        <div className="field" style={{ marginTop: "1rem" }}>
+          <label className="label checkbox-row">
             <input
               type="checkbox"
               checked={networkHost}
               onChange={(e) => setNetworkHost(e.target.checked)}
             />
-            {t("databases.networkHost")}
+            <span>{t("databases.networkHost")}</span>
           </label>
         </div>
-        <button type="submit" className="btn" disabled={creating}>
-          {t("databases.create")}
-        </button>
-      </form>
-
-      {rows.length === 0 ? (
-        <p className="muted">{t("databases.empty")}</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t("databases.name")}</th>
-                <th>{t("databases.status")}</th>
-                <th className="col-hide-mobile">{t("databases.port")}</th>
-                <th>{t("databases.actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <Link href={`/databases/${row.id}`}>{row.name}</Link>
-                    <div className="muted" style={{ fontSize: "0.85rem" }}>
-                      {row.slug} · {row.image}
-                    </div>
-                  </td>
-                  <td>
-                    <span className="badge">{row.status}</span>
-                    {row.message ? (
-                      <div className="muted" style={{ fontSize: "0.8rem" }}>
-                        {row.message}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="col-hide-mobile">
-                    {row.docker_network_host
-                      ? "host"
-                      : row.host_port ?? "—"}
-                  </td>
-                  <td>
-                    <Link href={`/databases/${row.id}`} className="btn btn-secondary">
-                      {t("databases.open")}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="form-actions">
+          <button type="submit" className="btn" disabled={creating}>
+            {creating ? t("common.loading") : t("databases.create")}
+          </button>
         </div>
-      )}
+      </form>
     </div>
   );
 }

@@ -69,7 +69,13 @@ func NewService(hostRoot string, dockerClient docker.Client) *Service {
 }
 
 func (s *Service) Status(ctx context.Context) (Status, error) {
-	out := Status{CheckedAt: time.Now().UTC()}
+	out := Status{
+		CheckedAt:  time.Now().UTC(),
+		Disk:       []DiskInfo{},
+		DockerDirs: []DirUsage{},
+		TopCPU:     []ProcessInfo{},
+		TopMem:     []ProcessInfo{},
+	}
 
 	rootPath := "/"
 	if s.host.UsesChroot() {

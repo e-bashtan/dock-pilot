@@ -101,7 +101,7 @@ export interface SystemDockerDir {
 }
 
 export interface SystemStatus {
-  disk: SystemDisk[];
+  disk?: SystemDisk[] | null;
   memory: SystemMemory;
   top_cpu: SystemProcess[];
   top_mem: SystemProcess[];

@@ -36,7 +36,8 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrSlugConflict),
-		errors.Is(err, pgdb.ErrSlugConflict):
+		errors.Is(err, pgdb.ErrSlugConflict),
+		errors.Is(err, pgdb.ErrAlreadyConfigured):
 		status = http.StatusConflict
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrInvalidInput),

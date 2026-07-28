@@ -420,7 +420,7 @@ func (s *Service) RestoreBackup(ctx context.Context, instanceID, backupID uuid.U
 	return toDatabaseResponse(row), nil
 }
 
-func (s *Service) runBackup(ctx context.Context, inst db.PgInstance, database db.PgDatabase, scheduleID pgtype.UUID, cfg s3Config, prefix string) (db.PgBackup, error) {
+func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database db.PdbDatabase, scheduleID pgtype.UUID, cfg s3Config, prefix string) (db.PdbBackup, error) {
 	key := path.Join(strings.Trim(prefix, "/"), inst.Slug, database.Name, time.Now().UTC().Format("20060102-150405")+".sql")
 	backup, err := s.queries.CreatePgBackup(ctx, db.CreatePgBackupParams{
 		InstanceID:       inst.ID,
@@ -436,7 +436,7 @@ func (s *Service) runBackup(ctx context.Context, inst db.PgInstance, database db
 		Message:          "",
 	})
 	if err != nil {
-		return db.PgBackup{}, err
+		return db.PdbBackup{}, err
 	}
 
 	pr, pw := io.Pipe()
@@ -459,7 +459,7 @@ func (s *Service) runBackup(ctx context.Context, inst db.PgInstance, database db
 			Message:    pgtype.Text{String: msg, Valid: true},
 			FinishedAt: now,
 		})
-		return db.PgBackup{}, firstErr(dumpErr, uploadErr)
+		return db.PdbBackup{}, firstErr(dumpErr, uploadErr)
 	}
 
 	updated, err := s.queries.UpdatePgBackup(ctx, db.UpdatePgBackupParams{
@@ -471,7 +471,7 @@ func (s *Service) runBackup(ctx context.Context, inst db.PgInstance, database db
 		FinishedAt: now,
 	})
 	if err != nil {
-		return db.PgBackup{}, err
+		return db.PdbBackup{}, err
 	}
 	return updated, nil
 }
@@ -484,7 +484,7 @@ func (s *Service) applyRetention(ctx context.Context, instanceID uuid.UUID, data
 	if err != nil {
 		return err
 	}
-	success := make([]db.PgBackup, 0, len(rows))
+	success := make([]db.PdbBackup, 0, len(rows))
 	for _, row := range rows {
 		if row.Status == "success" {
 			success = append(success, row)
@@ -502,7 +502,7 @@ func (s *Service) applyRetention(ctx context.Context, instanceID uuid.UUID, data
 	return nil
 }
 
-func (s *Service) s3ConfigFromSchedule(schedule db.PgBackupSchedule) (s3Config, error) {
+func (s *Service) s3ConfigFromSchedule(schedule db.PdbBackupSchedule) (s3Config, error) {
 	access, err := s.cipher.Decrypt(schedule.EncryptedS3AccessKey)
 	if err != nil {
 		return s3Config{}, err
@@ -545,7 +545,7 @@ func (s *Service) RunDueSchedules(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) runSchedule(ctx context.Context, schedule db.PgBackupSchedule) error {
+func (s *Service) runSchedule(ctx context.Context, schedule db.PdbBackupSchedule) error {
 	inst, err := s.queries.GetPgInstance(ctx, schedule.InstanceID)
 	if err != nil {
 		return err
@@ -554,13 +554,13 @@ func (s *Service) runSchedule(ctx context.Context, schedule db.PgBackupSchedule)
 	if err != nil {
 		return err
 	}
-	var databases []db.PgDatabase
+	var databases []db.PdbDatabase
 	if schedule.DatabaseID.Valid {
 		database, err := s.queries.GetPgDatabase(ctx, uuid.UUID(schedule.DatabaseID.Bytes))
 		if err != nil {
 			return err
 		}
-		databases = []db.PgDatabase{database}
+		databases = []db.PdbDatabase{database}
 	} else {
 		databases, err = s.queries.ListPgDatabases(ctx, schedule.InstanceID)
 		if err != nil {
@@ -582,7 +582,7 @@ func (s *Service) runSchedule(ctx context.Context, schedule db.PgBackupSchedule)
 	return first
 }
 
-func scheduleDue(schedule db.PgBackupSchedule, now time.Time) bool {
+func scheduleDue(schedule db.PdbBackupSchedule, now time.Time) bool {
 	loc, err := time.LoadLocation(schedule.Timezone)
 	if err != nil {
 		loc = time.UTC
@@ -614,7 +614,7 @@ func validateScheduleTiming(hour, minute int, tz string) error {
 	return nil
 }
 
-func toScheduleResponse(row db.PgBackupSchedule) ScheduleResponse {
+func toScheduleResponse(row db.PdbBackupSchedule) ScheduleResponse {
 	return ScheduleResponse{
 		ID:               row.ID,
 		InstanceID:       row.InstanceID,
@@ -636,7 +636,7 @@ func toScheduleResponse(row db.PgBackupSchedule) ScheduleResponse {
 	}
 }
 
-func toBackupResponse(row db.PgBackup) BackupResponse {
+func toBackupResponse(row db.PdbBackup) BackupResponse {
 	return BackupResponse{
 		ID:               row.ID,
 		InstanceID:       row.InstanceID,
@@ -656,17 +656,17 @@ func toBackupResponse(row db.PgBackup) BackupResponse {
 	}
 }
 
-func findDatabaseByName(ctx context.Context, q *db.Queries, instanceID uuid.UUID, name string) (db.PgDatabase, error) {
+func findDatabaseByName(ctx context.Context, q *db.Queries, instanceID uuid.UUID, name string) (db.PdbDatabase, error) {
 	rows, err := q.ListPgDatabases(ctx, instanceID)
 	if err != nil {
-		return db.PgDatabase{}, err
+		return db.PdbDatabase{}, err
 	}
 	for _, row := range rows {
 		if row.Name == name {
 			return row, nil
 		}
 	}
-	return db.PgDatabase{}, pgx.ErrNoRows
+	return db.PdbDatabase{}, pgx.ErrNoRows
 }
 
 func defaultStr(v, d string) string {

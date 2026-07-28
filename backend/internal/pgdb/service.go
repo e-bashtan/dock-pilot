@@ -56,17 +56,20 @@ func (s *Service) GetInstance(ctx context.Context, id uuid.UUID) (InstanceRespon
 }
 
 func (s *Service) CreateInstance(ctx context.Context, req CreateInstanceRequest) (InstanceResponse, error) {
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		return InstanceResponse{}, fmt.Errorf("%w: name is required", ErrInvalidInput)
-	}
-	slug := strings.ToLower(strings.TrimSpace(req.Slug))
-	if slug == "" {
-		slug = slugify(name)
-	}
-	if err := validateSlug(slug); err != nil {
+	existing, err := s.queries.ListPgInstances(ctx)
+	if err != nil {
 		return InstanceResponse{}, err
 	}
+	if len(existing) > 0 {
+		return InstanceResponse{}, ErrAlreadyConfigured
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Postgres"
+	}
+	// Single host instance — fixed slug/container so only one can run.
+	slug := "postgres"
 	image := strings.TrimSpace(req.Image)
 	if image == "" {
 		image = "postgres:16-alpine"
@@ -80,10 +83,10 @@ func (s *Service) CreateInstance(ctx context.Context, req CreateInstanceRequest)
 	}
 	password := strings.TrimSpace(req.AdminPassword)
 	if password == "" {
-		var err error
-		password, err = generatePassword(24)
-		if err != nil {
-			return InstanceResponse{}, err
+		var genErr error
+		password, genErr = generatePassword(24)
+		if genErr != nil {
+			return InstanceResponse{}, genErr
 		}
 	}
 	enc, err := s.cipher.Encrypt(password)
@@ -116,7 +119,7 @@ func (s *Service) CreateInstance(ctx context.Context, req CreateInstanceRequest)
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			return InstanceResponse{}, ErrSlugConflict
+			return InstanceResponse{}, ErrAlreadyConfigured
 		}
 		return InstanceResponse{}, err
 	}
@@ -219,7 +222,7 @@ func (s *Service) DeployInstance(ctx context.Context, id uuid.UUID) (InstanceRes
 	}
 
 	inst, err = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
-		ID: id, Status: "running", Message: "",
+		ID: id, Status: "active", Message: "",
 	})
 	if err != nil {
 		return InstanceResponse{}, err
@@ -569,13 +572,13 @@ func (s *Service) ConnectionInfo(ctx context.Context, instanceID, databaseID, ro
 	}, nil
 }
 
-func (s *Service) requireInstance(ctx context.Context, id uuid.UUID) (db.PgInstance, error) {
+func (s *Service) requireInstance(ctx context.Context, id uuid.UUID) (db.PdbInstance, error) {
 	inst, err := s.queries.GetPgInstance(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return db.PgInstance{}, ErrNotFound
+			return db.PdbInstance{}, ErrNotFound
 		}
-		return db.PgInstance{}, err
+		return db.PdbInstance{}, err
 	}
 	return inst, nil
 }
@@ -601,7 +604,7 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
-func toInstanceResponse(row db.PgInstance) InstanceResponse {
+func toInstanceResponse(row db.PdbInstance) InstanceResponse {
 	var hostPort *int
 	if row.HostPort.Valid {
 		v := int(row.HostPort.Int32)
@@ -618,13 +621,13 @@ func toInstanceResponse(row db.PgInstance) InstanceResponse {
 		AdminUser:         row.AdminUser,
 		Status:            row.Status,
 		Message:           row.Message,
-		ContainerName:     docker.SanitizeContainerName("dockpilot-pg-" + row.Slug),
+		ContainerName:     "dockpilot-postgres",
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,
 	}
 }
 
-func toDatabaseResponse(row db.PgDatabase) DatabaseResponse {
+func toDatabaseResponse(row db.PdbDatabase) DatabaseResponse {
 	return DatabaseResponse{
 		ID:         row.ID,
 		InstanceID: row.InstanceID,

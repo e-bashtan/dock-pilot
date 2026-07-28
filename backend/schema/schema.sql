@@ -87,7 +87,7 @@ CREATE TABLE notification_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE pg_instances (
+CREATE TABLE pdb_instances (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
@@ -103,36 +103,36 @@ CREATE TABLE pg_instances (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE pg_databases (
+CREATE TABLE pdb_databases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    instance_id UUID NOT NULL REFERENCES pg_instances(id) ON DELETE CASCADE,
+    instance_id UUID NOT NULL REFERENCES pdb_instances(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     owner_role TEXT NOT NULL DEFAULT 'postgres',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (instance_id, name)
 );
 
-CREATE TABLE pg_roles (
+CREATE TABLE pdb_roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    instance_id UUID NOT NULL REFERENCES pg_instances(id) ON DELETE CASCADE,
+    instance_id UUID NOT NULL REFERENCES pdb_instances(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     encrypted_password BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (instance_id, name)
 );
 
-CREATE TABLE pg_role_grants (
+CREATE TABLE pdb_role_grants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    role_id UUID NOT NULL REFERENCES pg_roles(id) ON DELETE CASCADE,
-    database_id UUID NOT NULL REFERENCES pg_databases(id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES pdb_roles(id) ON DELETE CASCADE,
+    database_id UUID NOT NULL REFERENCES pdb_databases(id) ON DELETE CASCADE,
     is_owner BOOLEAN NOT NULL DEFAULT false,
     UNIQUE (role_id, database_id)
 );
 
-CREATE TABLE pg_backup_schedules (
+CREATE TABLE pdb_backup_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    instance_id UUID NOT NULL REFERENCES pg_instances(id) ON DELETE CASCADE,
-    database_id UUID REFERENCES pg_databases(id) ON DELETE CASCADE,
+    instance_id UUID NOT NULL REFERENCES pdb_instances(id) ON DELETE CASCADE,
+    database_id UUID REFERENCES pdb_databases(id) ON DELETE CASCADE,
     enabled BOOLEAN NOT NULL DEFAULT true,
     hour INT NOT NULL DEFAULT 3 CHECK (hour >= 0 AND hour <= 23),
     minute INT NOT NULL DEFAULT 0 CHECK (minute >= 0 AND minute <= 59),
@@ -151,11 +151,11 @@ CREATE TABLE pg_backup_schedules (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE pg_backups (
+CREATE TABLE pdb_backups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    instance_id UUID NOT NULL REFERENCES pg_instances(id) ON DELETE CASCADE,
-    database_id UUID REFERENCES pg_databases(id) ON DELETE SET NULL,
-    schedule_id UUID REFERENCES pg_backup_schedules(id) ON DELETE SET NULL,
+    instance_id UUID NOT NULL REFERENCES pdb_instances(id) ON DELETE CASCADE,
+    database_id UUID REFERENCES pdb_databases(id) ON DELETE SET NULL,
+    schedule_id UUID REFERENCES pdb_backup_schedules(id) ON DELETE SET NULL,
     database_name TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'running',
     s3_endpoint TEXT NOT NULL DEFAULT '',
@@ -169,7 +169,7 @@ CREATE TABLE pg_backups (
     finished_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_pg_databases_instance ON pg_databases(instance_id);
-CREATE INDEX idx_pg_roles_instance ON pg_roles(instance_id);
-CREATE INDEX idx_pg_backups_instance ON pg_backups(instance_id, created_at DESC);
-CREATE INDEX idx_pg_backup_schedules_instance ON pg_backup_schedules(instance_id);
+CREATE INDEX idx_pdb_databases_instance ON pdb_databases(instance_id);
+CREATE INDEX idx_pdb_roles_instance ON pdb_roles(instance_id);
+CREATE INDEX idx_pdb_backups_instance ON pdb_backups(instance_id, created_at DESC);
+CREATE INDEX idx_pdb_backup_schedules_instance ON pdb_backup_schedules(instance_id);
