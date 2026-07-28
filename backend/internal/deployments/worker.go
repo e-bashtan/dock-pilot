@@ -162,7 +162,7 @@ func (w *Worker) buildSteps(site db.Site, depID uuid.UUID, srcDir string) []depl
 			return site, nil
 		}},
 		{"info", "Building Docker image " + docker.ImageTagForSlug(site.Slug), func(ctx context.Context) (db.Site, error) {
-			if err := w.stepBuild(site, srcDir)(ctx); err != nil {
+			if err := w.stepBuild(site, srcDir, depID)(ctx); err != nil {
 				return site, err
 			}
 			return site, nil
@@ -250,7 +250,7 @@ func (w *Worker) fail(ctx context.Context, depID uuid.UUID, msg string) {
 	w.finish(ctx, depID, "failed", msg)
 }
 
-func (w *Worker) stepBuild(site db.Site, srcDir string) func(context.Context) error {
+func (w *Worker) stepBuild(site db.Site, srcDir string, depID uuid.UUID) func(context.Context) error {
 	return func(ctx context.Context) error {
 		tag := docker.ImageTagForSlug(site.Slug)
 		return w.docker.Build(ctx, docker.BuildOptions{
@@ -260,6 +260,12 @@ func (w *Worker) stepBuild(site db.Site, srcDir string) func(context.Context) er
 			DockerfilePath: site.DockerfilePath,
 			BuildContext:   site.BuildContext,
 			ImageTag:       tag,
+			OnOutput: func(line string) {
+				if len(line) > 4000 {
+					line = line[:4000] + "…"
+				}
+				w.appendLog(ctx, depID, "info", line)
+			},
 		})
 	}
 }

@@ -98,6 +98,39 @@ func (s *Service) waitReady(ctx context.Context, inst db.PdbInstance) error {
 	return nil
 }
 
+// syncAdminPassword sets the DB role password to match the panel (local socket / trust).
+// Needed when the data volume already existed — POSTGRES_PASSWORD is ignored on reuse.
+func (s *Service) syncAdminPassword(ctx context.Context, inst db.PdbInstance, password string) error {
+	userIdent, err := quoteIdent(inst.AdminUser)
+	if err != nil {
+		return err
+	}
+	sql := fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", userIdent, quoteLiteral(password))
+	var stderr bytes.Buffer
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: s.containerName(inst),
+		User:          "postgres",
+		Cmd: []string{
+			"psql",
+			"-v", "ON_ERROR_STOP=1",
+			"-U", inst.AdminUser,
+			"-d", "postgres",
+			"-c", sql,
+		},
+	}, nil, io.Discard, &stderr)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = fmt.Sprintf("psql exit %d", code)
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
+}
+
 func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName string, w io.Writer) error {
 	password, err := s.adminPassword(inst)
 	if err != nil {

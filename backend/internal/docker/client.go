@@ -15,6 +15,8 @@ type BuildOptions struct {
 	DockerfilePath string
 	BuildContext   string
 	ImageTag       string
+	// OnOutput receives each non-empty build log line (Docker stream) as it arrives.
+	OnOutput func(line string)
 }
 
 // RunOptions describes starting a container.
@@ -72,6 +74,9 @@ func (s *StubClient) Build(ctx context.Context, opts BuildOptions) error {
 		"dockerfile", opts.DockerfilePath,
 		"tag", opts.ImageTag,
 	)
+	if opts.OnOutput != nil {
+		opts.OnOutput("stub: build " + opts.ImageTag)
+	}
 	return nil
 }
 

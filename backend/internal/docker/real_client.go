@@ -91,7 +91,7 @@ func (c *RealClient) Build(ctx context.Context, opts BuildOptions) error {
 	}
 	defer resp.Body.Close()
 
-	buildLog, buildErr := consumeBuildOutput(resp.Body)
+	buildLog, buildErr := consumeBuildOutput(resp.Body, opts.OnOutput)
 	if buildErr != nil {
 		return buildError(imageTag, buildErr, buildLog)
 	}

@@ -37,9 +37,18 @@ func sanitizeImageName(s string) string {
 	return out
 }
 
-func consumeBuildOutput(r io.Reader) (log string, err error) {
+func consumeBuildOutput(r io.Reader, onOutput func(string)) (log string, err error) {
 	var buf strings.Builder
 	var errMsgs []string
+
+	emit := func(s string) {
+		s = strings.TrimRight(s, "\r")
+		s = strings.TrimSpace(s)
+		if s == "" || onOutput == nil {
+			return
+		}
+		onOutput(s)
+	}
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -51,6 +60,9 @@ func consumeBuildOutput(r io.Reader) (log string, err error) {
 		}
 		var msg struct {
 			Stream      string `json:"stream"`
+			Status      string `json:"status"`
+			Progress    string `json:"progress"`
+			ID          string `json:"id"`
 			Error       string `json:"error"`
 			ErrorDetail struct {
 				Message string `json:"message"`
@@ -61,12 +73,28 @@ func consumeBuildOutput(r io.Reader) (log string, err error) {
 		}
 		if msg.Stream != "" {
 			buf.WriteString(msg.Stream)
+			for _, part := range strings.Split(msg.Stream, "\n") {
+				emit(part)
+			}
+		}
+		// Pull/layer milestones only — skip noisy progress bars (Downloading [====>]).
+		if msg.Status != "" && strings.TrimSpace(msg.Progress) == "" {
+			progressLine := msg.Status
+			if msg.ID != "" {
+				progressLine = msg.ID + ": " + progressLine
+			}
+			buf.WriteString(progressLine)
+			buf.WriteByte('\n')
+			emit(progressLine)
 		}
 		if strings.TrimSpace(msg.Error) != "" {
 			errMsgs = append(errMsgs, strings.TrimSpace(msg.Error))
+			emit("ERROR: " + strings.TrimSpace(msg.Error))
 		}
 		if strings.TrimSpace(msg.ErrorDetail.Message) != "" {
-			errMsgs = append(errMsgs, strings.TrimSpace(msg.ErrorDetail.Message))
+			detail := strings.TrimSpace(msg.ErrorDetail.Message)
+			errMsgs = append(errMsgs, detail)
+			emit("ERROR: " + detail)
 		}
 	}
 	if scanErr := scanner.Err(); scanErr != nil {

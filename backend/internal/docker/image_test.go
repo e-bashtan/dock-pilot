@@ -9,7 +9,13 @@ func TestConsumeBuildOutput_errorInStream(t *testing.T) {
 	body := strings.NewReader(`{"stream":"Step 1/1\n"}
 {"error":"Dockerfile not found"}
 `)
-	log, err := consumeBuildOutput(body)
+	var lines []string
+	log, err := consumeBuildOutput(body, func(line string) {
+		lines = append(lines, line)
+	})
+	if len(lines) == 0 || !strings.Contains(lines[0], "Step 1") {
+		t.Fatalf("expected OnOutput lines, got %#v", lines)
+	}
 	if err == nil {
 		t.Fatal("expected build error")
 	}

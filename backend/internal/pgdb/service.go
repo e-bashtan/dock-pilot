@@ -255,6 +255,15 @@ func (s *Service) DeployInstanceWithLog(ctx context.Context, id uuid.UUID, logFn
 		return InstanceResponse{}, err
 	}
 
+	if err := s.syncAdminPassword(ctx, inst, password); err != nil {
+		log("error", "sync admin password: "+err.Error())
+		_, _ = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
+			ID: id, Status: "error", Message: "postgres ready but could not sync admin password: " + err.Error(),
+		})
+		return InstanceResponse{}, err
+	}
+	log("info", "admin password synced with panel credentials")
+
 	inst, err = s.queries.UpdatePgInstanceStatus(ctx, db.UpdatePgInstanceStatusParams{
 		ID: id, Status: "active", Message: "",
 	})
