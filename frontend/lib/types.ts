@@ -237,3 +237,138 @@ export interface WizardState {
   nginxSslEnabled: boolean;
   nginxForceHttps: boolean;
 }
+
+export interface PgInstance {
+  id: string;
+  name: string;
+  slug: string;
+  image: string;
+  container_port: number;
+  host_port?: number | null;
+  docker_network_host: boolean;
+  admin_user: string;
+  status: string;
+  message: string;
+  container_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PgDatabase {
+  id: string;
+  instance_id: string;
+  name: string;
+  owner_role: string;
+  created_at: string;
+}
+
+export interface PgGrant {
+  id: string;
+  role_id: string;
+  database_id: string;
+  database_name: string;
+  is_owner: boolean;
+}
+
+export interface PgRole {
+  id: string;
+  instance_id: string;
+  name: string;
+  created_at: string;
+  grants: PgGrant[];
+}
+
+export interface PgBackupSchedule {
+  id: string;
+  instance_id: string;
+  database_id?: string | null;
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  timezone: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_force_path_style: boolean;
+  retention_count: number;
+  last_run_at?: string | null;
+  last_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PgBackup {
+  id: string;
+  instance_id: string;
+  database_id?: string | null;
+  schedule_id?: string | null;
+  database_name: string;
+  status: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_bucket: string;
+  s3_key: string;
+  s3_force_path_style: boolean;
+  size_bytes: number;
+  message: string;
+  created_at: string;
+  finished_at?: string | null;
+}
+
+export interface CreatePgInstanceRequest {
+  name: string;
+  slug?: string;
+  image?: string;
+  container_port?: number;
+  host_port?: number;
+  docker_network_host?: boolean;
+  admin_user?: string;
+  admin_password?: string;
+}
+
+export interface CreatePgDatabaseRequest {
+  name: string;
+  owner_role?: string;
+}
+
+export interface CreatePgRoleRequest {
+  name: string;
+  password?: string;
+}
+
+export interface CreatePgScheduleRequest {
+  database_id?: string | null;
+  enabled?: boolean;
+  hour: number;
+  minute: number;
+  timezone: string;
+  s3_endpoint?: string;
+  s3_region?: string;
+  s3_bucket: string;
+  s3_prefix?: string;
+  s3_access_key: string;
+  s3_secret_key: string;
+  s3_force_path_style?: boolean;
+  retention_count?: number;
+}
+
+export interface ManualPgBackupRequest {
+  database_id: string;
+  schedule_id?: string;
+  s3_endpoint?: string;
+  s3_region?: string;
+  s3_bucket?: string;
+  s3_prefix?: string;
+  s3_access_key?: string;
+  s3_secret_key?: string;
+  s3_force_path_style?: boolean;
+}
+
+export interface RestorePgBackupRequest {
+  target_database_name?: string;
+  create_database?: boolean;
+  drop_existing?: boolean;
+  s3_access_key?: string;
+  s3_secret_key?: string;
+}

@@ -16,6 +16,18 @@ import type {
   SystemStatus,
   DockerPruneResult,
   UpdateNotificationSettings,
+  PgInstance,
+  PgDatabase,
+  PgRole,
+  PgBackupSchedule,
+  PgBackup,
+  CreatePgInstanceRequest,
+  CreatePgDatabaseRequest,
+  CreatePgRoleRequest,
+  CreatePgScheduleRequest,
+  ManualPgBackupRequest,
+  RestorePgBackupRequest,
+  PgGrant,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -212,6 +224,97 @@ export const api = {
 
   pruneDocker: () =>
     request<DockerPruneResult>("/api/system/docker/prune", { method: "POST" }),
+
+  listPgInstances: () => request<PgInstance[]>("/api/databases"),
+
+  createPgInstance: (body: CreatePgInstanceRequest) =>
+    request<PgInstance>("/api/databases", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getPgInstance: (id: string) => request<PgInstance>(`/api/databases/${id}`),
+
+  deployPgInstance: (id: string) =>
+    request<PgInstance>(`/api/databases/${id}/deploy`, { method: "POST" }),
+
+  stopPgInstance: (id: string) =>
+    request<PgInstance>(`/api/databases/${id}/stop`, { method: "POST" }),
+
+  deletePgInstance: (id: string) =>
+    request<void>(`/api/databases/${id}`, { method: "DELETE" }),
+
+  listPgDatabases: (id: string) =>
+    request<PgDatabase[]>(`/api/databases/${id}/databases`),
+
+  createPgDatabase: (id: string, body: CreatePgDatabaseRequest) =>
+    request<PgDatabase>(`/api/databases/${id}/databases`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  deletePgDatabase: (id: string, dbId: string) =>
+    request<void>(`/api/databases/${id}/databases/${dbId}`, { method: "DELETE" }),
+
+  listPgRoles: (id: string) => request<PgRole[]>(`/api/databases/${id}/roles`),
+
+  createPgRole: (id: string, body: CreatePgRoleRequest) =>
+    request<PgRole>(`/api/databases/${id}/roles`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  deletePgRole: (id: string, roleId: string) =>
+    request<void>(`/api/databases/${id}/roles/${roleId}`, { method: "DELETE" }),
+
+  grantPgRole: (
+    id: string,
+    roleId: string,
+    body: { database_id: string; is_owner?: boolean },
+  ) =>
+    request<PgGrant>(`/api/databases/${id}/roles/${roleId}/grants`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  listPgSchedules: (id: string) =>
+    request<PgBackupSchedule[]>(`/api/databases/${id}/schedules`),
+
+  createPgSchedule: (id: string, body: CreatePgScheduleRequest) =>
+    request<PgBackupSchedule>(`/api/databases/${id}/schedules`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updatePgSchedule: (
+    id: string,
+    scheduleId: string,
+    body: Partial<CreatePgScheduleRequest> & { clear_database_id?: boolean },
+  ) =>
+    request<PgBackupSchedule>(`/api/databases/${id}/schedules/${scheduleId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deletePgSchedule: (id: string, scheduleId: string) =>
+    request<void>(`/api/databases/${id}/schedules/${scheduleId}`, {
+      method: "DELETE",
+    }),
+
+  listPgBackups: (id: string) =>
+    request<PgBackup[]>(`/api/databases/${id}/backups`),
+
+  createPgBackup: (id: string, body: ManualPgBackupRequest) =>
+    request<PgBackup>(`/api/databases/${id}/backups`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  restorePgBackup: (id: string, backupId: string, body: RestorePgBackupRequest) =>
+    request<PgDatabase>(`/api/databases/${id}/backups/${backupId}/restore`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

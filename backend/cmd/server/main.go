@@ -17,6 +17,7 @@ import (
 	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
 	"github.com/ebash/dock-pilot/backend/internal/nginx"
 	"github.com/ebash/dock-pilot/backend/internal/notifications"
+	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	"github.com/ebash/dock-pilot/backend/internal/secrets"
 	"github.com/ebash/dock-pilot/backend/internal/sites"
 	"github.com/ebash/dock-pilot/backend/internal/ssl"
@@ -79,15 +80,18 @@ func main() {
 	worker := deployments.NewWorker(queries, dockerClient, nginxMgr, sslMgr, secretsSvc, cfg.Deploy.WorkDir, logger)
 	deploySvc := deployments.NewService(queries, worker)
 	notifWorker := notifications.NewWorker(notifSvc, logger)
+	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
+	pgBackupWorker := pgdb.NewWorker(pgdbSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	notifWorker.Start(workerCtx)
+	pgBackupWorker.Start(workerCtx)
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
 		Addr:         cfg.HTTPAddr,
 		Handler:      handler,

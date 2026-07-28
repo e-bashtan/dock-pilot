@@ -44,6 +44,85 @@ type NotificationSetting struct {
 	UpdatedAt                 time.Time          `json:"updated_at"`
 }
 
+type PgBackup struct {
+	ID               uuid.UUID          `json:"id"`
+	InstanceID       uuid.UUID          `json:"instance_id"`
+	DatabaseID       pgtype.UUID        `json:"database_id"`
+	ScheduleID       pgtype.UUID        `json:"schedule_id"`
+	DatabaseName     string             `json:"database_name"`
+	Status           string             `json:"status"`
+	S3Endpoint       string             `json:"s3_endpoint"`
+	S3Region         string             `json:"s3_region"`
+	S3Bucket         string             `json:"s3_bucket"`
+	S3Key            string             `json:"s3_key"`
+	S3ForcePathStyle bool               `json:"s3_force_path_style"`
+	SizeBytes        int64              `json:"size_bytes"`
+	Message          string             `json:"message"`
+	CreatedAt        time.Time          `json:"created_at"`
+	FinishedAt       pgtype.Timestamptz `json:"finished_at"`
+}
+
+type PgBackupSchedule struct {
+	ID                   uuid.UUID          `json:"id"`
+	InstanceID           uuid.UUID          `json:"instance_id"`
+	DatabaseID           pgtype.UUID        `json:"database_id"`
+	Enabled              bool               `json:"enabled"`
+	Hour                 int32              `json:"hour"`
+	Minute               int32              `json:"minute"`
+	Timezone             string             `json:"timezone"`
+	S3Endpoint           string             `json:"s3_endpoint"`
+	S3Region             string             `json:"s3_region"`
+	S3Bucket             string             `json:"s3_bucket"`
+	S3Prefix             string             `json:"s3_prefix"`
+	EncryptedS3AccessKey []byte             `json:"encrypted_s3_access_key"`
+	EncryptedS3SecretKey []byte             `json:"encrypted_s3_secret_key"`
+	S3ForcePathStyle     bool               `json:"s3_force_path_style"`
+	RetentionCount       int32              `json:"retention_count"`
+	LastRunAt            pgtype.Timestamptz `json:"last_run_at"`
+	LastStatus           string             `json:"last_status"`
+	CreatedAt            time.Time          `json:"created_at"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+}
+
+type PgDatabase struct {
+	ID         uuid.UUID `json:"id"`
+	InstanceID uuid.UUID `json:"instance_id"`
+	Name       string    `json:"name"`
+	OwnerRole  string    `json:"owner_role"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type PgInstance struct {
+	ID                     uuid.UUID   `json:"id"`
+	Name                   string      `json:"name"`
+	Slug                   string      `json:"slug"`
+	Image                  string      `json:"image"`
+	ContainerPort          int32       `json:"container_port"`
+	HostPort               pgtype.Int4 `json:"host_port"`
+	DockerNetworkHost      bool        `json:"docker_network_host"`
+	AdminUser              string      `json:"admin_user"`
+	EncryptedAdminPassword []byte      `json:"encrypted_admin_password"`
+	Status                 string      `json:"status"`
+	Message                string      `json:"message"`
+	CreatedAt              time.Time   `json:"created_at"`
+	UpdatedAt              time.Time   `json:"updated_at"`
+}
+
+type PgRole struct {
+	ID                uuid.UUID `json:"id"`
+	InstanceID        uuid.UUID `json:"instance_id"`
+	Name              string    `json:"name"`
+	EncryptedPassword []byte    `json:"encrypted_password"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+type PgRoleGrant struct {
+	ID         uuid.UUID `json:"id"`
+	RoleID     uuid.UUID `json:"role_id"`
+	DatabaseID uuid.UUID `json:"database_id"`
+	IsOwner    bool      `json:"is_owner"`
+}
+
 type Site struct {
 	ID                 uuid.UUID   `json:"id"`
 	Name               string      `json:"name"`
