@@ -8,6 +8,7 @@ import (
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
+	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
 	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
@@ -45,7 +46,10 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, notifpkg.ErrInvalidInput),
 		errors.Is(err, notifpkg.ErrNotConfigured),
 		errors.Is(err, notifpkg.ErrMigration),
-		errors.Is(err, pgdb.ErrInvalidInput):
+		errors.Is(err, pgdb.ErrInvalidInput),
+		errors.Is(err, panelbackup.ErrInvalidInput),
+		errors.Is(err, panelbackup.ErrNotConfigured),
+		errors.Is(err, panelbackup.ErrMigration):
 		status = http.StatusBadRequest
 		msg = err.Error()
 	default:

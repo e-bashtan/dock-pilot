@@ -32,6 +32,7 @@ export const ru: Messages = {
   nav: {
     sites: "Сайты",
     databases: "Базы данных",
+    backups: "Бэкапы",
     notifications: "Уведомления",
     newSite: "Новый сайт",
     mobile: "Телефон",
@@ -352,6 +353,30 @@ export const ru: Messages = {
     sendTest: "Отправить тест",
     sending: "Отправка…",
   },
+  backups: {
+    title: "Бэкапы",
+    subtitle:
+      "Полный снимок DockPilot (БД панели + managed Postgres + секреты) и дампы отдельных БД — всё в S3.",
+    loadFailed: "Не удалось загрузить бэкапы",
+    saved: "Сохранено",
+    destination: "Назначение S3 (полные снимки)",
+    destinationHint:
+      "Для полных бэкапов панели. Дампы отдельных БД могут использовать свои расписания ниже.",
+    scheduleEnabled: "Ежедневный полный бэкап",
+    keysSet: "Сохранено — оставьте пустым, чтобы не менять",
+    clearKeys: "Очистить сохранённые ключи S3",
+    fullTitle: "Полные снимки DockPilot",
+    fullHint:
+      "Включает БД панели, все managed-базы и secrets.env. Сайты после restore — redeploy из git.",
+    createFull: "Создать полный бэкап",
+    noFull: "Полных снимков в S3 пока нет.",
+    restoreFull: "Восстановить полный бэкап",
+    restoreFullConfirm:
+      "Восстановить БД панели и managed-базы из этого снимка на этом хосте? Текущие данные будут перезаписаны.",
+    postgresTitle: "Дампы managed Postgres",
+    postgresHint: "Расписания и restore по отдельным БД (как раньше).",
+    noPostgres: "Сначала настройте managed Postgres.",
+  },
   health: {
     title: "Состояние",
     checking: "Проверка…",
@@ -398,6 +423,7 @@ export const ru: Messages = {
   databases: {
     title: "Базы данных",
     subtitle: "Один Postgres на хосте: базы, пользователи и бэкапы в S3.",
+    backupsMoved: "Расписания и restore перенесены в",
     loadFailed: "Не удалось загрузить базы данных",
     migrationNeeded:
       "Таблицы БД ещё не созданы. Выполните миграции панели (make migrate / upgrade) и обновите страницу.",

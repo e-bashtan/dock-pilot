@@ -30,6 +30,7 @@ export const en = {
   nav: {
     sites: "Sites",
     databases: "Databases",
+    backups: "Backups",
     notifications: "Notifications",
     newSite: "New site",
     mobile: "Mobile",
@@ -351,6 +352,30 @@ export const en = {
     sendTest: "Send test",
     sending: "Sending…",
   },
+  backups: {
+    title: "Backups",
+    subtitle:
+      "Full DockPilot snapshot (panel DB + managed Postgres + secrets) and per-database dumps — all in S3.",
+    loadFailed: "Failed to load backups",
+    saved: "Saved",
+    destination: "S3 destination (full snapshots)",
+    destinationHint:
+      "Used for full panel backups. Per-database dumps can use their own schedules below.",
+    scheduleEnabled: "Daily full backup",
+    keysSet: "Saved — leave empty to keep",
+    clearKeys: "Clear saved S3 keys",
+    fullTitle: "Full DockPilot snapshots",
+    fullHint:
+      "Includes panel database, all managed databases, and secrets.env. Sites redeploy from git after restore.",
+    createFull: "Create full backup",
+    noFull: "No full snapshots in S3 yet.",
+    restoreFull: "Restore full backup",
+    restoreFullConfirm:
+      "Restore panel DB and managed databases from this snapshot on this host? Current data will be overwritten.",
+    postgresTitle: "Managed Postgres dumps",
+    postgresHint: "Per-database schedules and restores (same as before).",
+    noPostgres: "Configure managed Postgres first.",
+  },
   health: {
     title: "Health",
     checking: "Checking…",
@@ -397,6 +422,7 @@ export const en = {
   databases: {
     title: "Databases",
     subtitle: "One Postgres on this host: databases, users, and S3 backups.",
+    backupsMoved: "Schedules and restores moved to",
     loadFailed: "Failed to load databases",
     migrationNeeded:
       "Database tables are missing. Run panel migrations (make migrate / upgrade), then refresh.",

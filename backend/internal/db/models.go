@@ -44,6 +44,25 @@ type NotificationSetting struct {
 	UpdatedAt                 time.Time          `json:"updated_at"`
 }
 
+type PanelBackupSetting struct {
+	ID                   int32              `json:"id"`
+	Enabled              bool               `json:"enabled"`
+	Hour                 int32              `json:"hour"`
+	Minute               int32              `json:"minute"`
+	Timezone             string             `json:"timezone"`
+	S3Endpoint           string             `json:"s3_endpoint"`
+	S3Region             string             `json:"s3_region"`
+	S3Bucket             string             `json:"s3_bucket"`
+	S3Prefix             string             `json:"s3_prefix"`
+	EncryptedS3AccessKey []byte             `json:"encrypted_s3_access_key"`
+	EncryptedS3SecretKey []byte             `json:"encrypted_s3_secret_key"`
+	S3ForcePathStyle     bool               `json:"s3_force_path_style"`
+	RetentionCount       int32              `json:"retention_count"`
+	LastRunAt            pgtype.Timestamptz `json:"last_run_at"`
+	LastStatus           string             `json:"last_status"`
+	UpdatedAt            time.Time          `json:"updated_at"`
+}
+
 type PdbBackupSchedule struct {
 	ID                   uuid.UUID          `json:"id"`
 	InstanceID           uuid.UUID          `json:"instance_id"`

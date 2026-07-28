@@ -50,6 +50,9 @@ export function Nav() {
           <Link href="/databases" onClick={closeMenu}>
             {t("nav.databases")}
           </Link>
+          <Link href="/backups" onClick={closeMenu}>
+            {t("nav.backups")}
+          </Link>
           <Link href="/notifications" onClick={closeMenu}>
             {t("nav.notifications")}
           </Link>

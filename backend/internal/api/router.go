@@ -10,6 +10,7 @@ import (
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
+	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
 	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
@@ -24,6 +25,7 @@ type Handlers struct {
 	QR            *QRHandler
 	System        *SystemHandler
 	Databases     *DatabasesHandler
+	Backups       *BackupsHandler
 }
 
 func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
@@ -92,6 +94,14 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 				r.Post("/docker/prune", h.System.PruneDocker)
 			})
 
+			r.Route("/backups", func(r chi.Router) {
+				r.Get("/settings", h.Backups.GetSettings)
+				r.Put("/settings", h.Backups.UpdateSettings)
+				r.Get("/full", h.Backups.ListFull)
+				r.Post("/full", h.Backups.CreateFull)
+				r.Post("/full/restore", h.Backups.RestoreFull)
+			})
+
 			r.Route("/databases", func(r chi.Router) {
 				r.Get("/", h.Databases.ListInstances)
 				r.Post("/", h.Databases.CreateInstance)
@@ -138,7 +148,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	return r
 }
 
-func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, qr *QRHandler) http.Handler {
+func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, qr *QRHandler) http.Handler {
 	_ = logger
 	return NewRouter(Handlers{
 		Sites:         NewSitesHandler(sites),
@@ -148,5 +158,6 @@ func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *si
 		QR:            qr,
 		System:        NewSystemHandler(systemSvc),
 		Databases:     NewDatabasesHandler(databases),
+		Backups:       NewBackupsHandler(backups),
 	}, apiToken, corsOrigins)
 }

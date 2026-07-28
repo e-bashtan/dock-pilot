@@ -17,6 +17,7 @@ import (
 	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
 	"github.com/ebash/dock-pilot/backend/internal/nginx"
 	"github.com/ebash/dock-pilot/backend/internal/notifications"
+	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	"github.com/ebash/dock-pilot/backend/internal/secrets"
 	"github.com/ebash/dock-pilot/backend/internal/sites"
@@ -77,21 +78,24 @@ func main() {
 	secretsSvc := secrets.NewService(queries, cipher)
 	sitesSvc := sites.NewService(pool, queries, healthChecker, dockerClient, secretsSvc)
 	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
+	panelBackupSvc := panelbackup.NewService(queries, dockerClient, cipher, pgdbSvc, cfg.DatabaseURL, logger)
 	notifSvc := notifications.NewService(queries, cipher, sitesSvc, pgdbSvc)
 	worker := deployments.NewWorker(queries, dockerClient, nginxMgr, sslMgr, secretsSvc, cfg.Deploy.WorkDir, logger)
 	deploySvc := deployments.NewService(queries, worker)
 	notifWorker := notifications.NewWorker(notifSvc, logger)
 	pgBackupWorker := pgdb.NewWorker(pgdbSvc, logger)
+	panelBackupWorker := panelbackup.NewWorker(panelBackupSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	notifWorker.Start(workerCtx)
 	pgBackupWorker.Start(workerCtx)
+	panelBackupWorker.Start(workerCtx)
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,

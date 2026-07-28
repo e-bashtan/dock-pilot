@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -313,6 +314,51 @@ func (s *Service) ListDatabases(ctx context.Context, instanceID uuid.UUID) ([]Da
 		out = append(out, toDatabaseResponse(row))
 	}
 	return out, nil
+}
+
+func (s *Service) WriteDatabaseDump(ctx context.Context, databaseName string, w io.Writer) error {
+	instances, err := s.queries.ListPgInstances(ctx)
+	if err != nil {
+		return err
+	}
+	if len(instances) == 0 {
+		return fmt.Errorf("%w: no postgres instance configured", ErrNotFound)
+	}
+	return s.dumpDatabase(ctx, instances[0], databaseName, w)
+}
+
+func (s *Service) ListManagedDatabaseNames(ctx context.Context) ([]string, error) {
+	instances, err := s.queries.ListPgInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(instances) == 0 {
+		return []string{}, nil
+	}
+	rows, err := s.queries.ListPgDatabases(ctx, instances[0].ID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.Name)
+	}
+	return out, nil
+}
+
+func (s *Service) RestoreManagedDump(ctx context.Context, databaseName string, body io.Reader, createDB, dropExisting bool) (DatabaseResponse, error) {
+	instances, err := s.queries.ListPgInstances(ctx)
+	if err != nil {
+		return DatabaseResponse{}, err
+	}
+	if len(instances) == 0 {
+		return DatabaseResponse{}, fmt.Errorf("%w: no postgres instance configured", ErrNotFound)
+	}
+	return s.RestoreFromUpload(ctx, instances[0].ID, RestoreUploadOptions{
+		TargetDatabaseName: databaseName,
+		CreateDatabase:     createDB,
+		DropExisting:       dropExisting,
+	}, body)
 }
 
 func (s *Service) CreateDatabase(ctx context.Context, instanceID uuid.UUID, req CreateDatabaseRequest) (DatabaseResponse, error) {

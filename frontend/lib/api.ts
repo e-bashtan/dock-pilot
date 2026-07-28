@@ -32,6 +32,9 @@ import type {
   RestorePgBackupRequest,
   PgGrant,
   PgConnectionInfo,
+  PanelBackupSettings,
+  UpdatePanelBackupSettings,
+  FullPanelBackup,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -397,6 +400,27 @@ export const api = {
     }
     return res.json() as Promise<PgDatabase>;
   },
+
+  getPanelBackupSettings: () =>
+    request<PanelBackupSettings>("/api/backups/settings"),
+
+  updatePanelBackupSettings: (body: UpdatePanelBackupSettings) =>
+    request<PanelBackupSettings>("/api/backups/settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  listFullPanelBackups: () =>
+    request<FullPanelBackup[]>("/api/backups/full"),
+
+  createFullPanelBackup: () =>
+    request<FullPanelBackup>("/api/backups/full", { method: "POST" }),
+
+  restoreFullPanelBackup: (body: { s3_key: string }) =>
+    request<{ status: string }>("/api/backups/full/restore", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

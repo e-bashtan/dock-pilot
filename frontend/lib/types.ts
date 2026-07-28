@@ -399,3 +399,42 @@ export interface RestorePgBackupRequest {
   create_database?: boolean;
   drop_existing?: boolean;
 }
+
+export interface PanelBackupSettings {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  timezone: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_force_path_style: boolean;
+  s3_credentials_set: boolean;
+  retention_count: number;
+  last_run_at?: string | null;
+  last_status: string;
+  updated_at: string;
+}
+
+export interface UpdatePanelBackupSettings {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  timezone: string;
+  s3_endpoint: string;
+  s3_region: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  s3_access_key?: string;
+  s3_secret_key?: string;
+  clear_s3_credentials?: boolean;
+  s3_force_path_style: boolean;
+  retention_count: number;
+}
+
+export interface FullPanelBackup {
+  s3_key: string;
+  size_bytes: number;
+  created_at: string;
+}
