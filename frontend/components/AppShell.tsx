@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { Nav } from "@/components/Nav";
+import { FleetModeProvider } from "@/lib/fleet-mode";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,8 +20,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthGate>
-      <Nav />
-      <main>{children}</main>
+      <FleetModeProvider>
+        <Nav />
+        <main>{children}</main>
+      </FleetModeProvider>
     </AuthGate>
   );
 }

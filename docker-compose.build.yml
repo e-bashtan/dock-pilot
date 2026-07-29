@@ -6,6 +6,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${NEXT_PUBLIC_APP_VERSION:-dev}
     image: ${API_IMAGE:-dock-pilot-api:latest}
 
   frontend:

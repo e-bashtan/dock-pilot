@@ -1,0 +1,43 @@
+[Unit]
+Description=DockPilot Fleet Agent
+Documentation=https://github.com/ebash/dock-pilot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dockpilot-agent -config /etc/dockpilot-agent/config.json
+Restart=always
+RestartSec=5
+
+# Least privilege compatible with /proc metrics and systemctl status reads.
+User=dockpilot-agent
+Group=dockpilot-agent
+SupplementaryGroups=
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Config + durable outbox
+ReadWritePaths=/etc/dockpilot-agent /var/lib/dockpilot-agent
+# systemctl talks to the system bus
+PrivateDevices=false
+
+# Capability set kept minimal; status checks use the system D-Bus socket.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+Environment=HOME=/var/lib/dockpilot-agent
+
+[Install]
+WantedBy=multi-user.target

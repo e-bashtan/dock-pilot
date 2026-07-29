@@ -322,6 +322,14 @@ h3 {
   text-decoration: none;
   color: var(--text);
   min-width: 0;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.nav-context {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .brand-logo {

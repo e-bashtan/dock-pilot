@@ -8,6 +8,7 @@ import (
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
 	"github.com/ebash/dock-pilot/backend/internal/billing"
+	"github.com/ebash/dock-pilot/backend/internal/fleet"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
 	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
@@ -36,14 +37,26 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, secretpkg.ErrNotFound),
 		errors.Is(err, notifpkg.ErrNotFound),
 		errors.Is(err, pgdb.ErrNotFound),
-		errors.Is(err, billing.ErrNotFound):
+		errors.Is(err, billing.ErrNotFound),
+		errors.Is(err, fleet.ErrNotFound):
 		status = http.StatusNotFound
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrSlugConflict),
 		errors.Is(err, pgdb.ErrSlugConflict),
 		errors.Is(err, pgdb.ErrAlreadyConfigured),
-		errors.Is(err, system.ErrUpgradeBusy):
+		errors.Is(err, system.ErrUpgradeBusy),
+		errors.Is(err, fleet.ErrConflict),
+		errors.Is(err, fleet.ErrHasRemotes),
+		errors.Is(err, fleet.ErrAlreadyPaired),
+		errors.Is(err, fleet.ErrCannotNest):
 		status = http.StatusConflict
+		msg = err.Error()
+	case errors.Is(err, fleet.ErrUnauthorized):
+		status = http.StatusUnauthorized
+		msg = err.Error()
+	case errors.Is(err, fleet.ErrForbidden),
+		errors.Is(err, fleet.ErrScope):
+		status = http.StatusForbidden
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrInvalidInput),
 		errors.Is(err, secretpkg.ErrInvalidInput),
@@ -58,7 +71,12 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, billing.ErrMigration),
 		errors.Is(err, billing.ErrNotConfigured),
 		errors.Is(err, system.ErrUpgradeNotAvail),
-		errors.Is(err, system.ErrUpgradeStartFail):
+		errors.Is(err, system.ErrUpgradeStartFail),
+		errors.Is(err, fleet.ErrInvalidInput),
+		errors.Is(err, fleet.ErrMode),
+		errors.Is(err, fleet.ErrNotConfigured),
+		errors.Is(err, fleet.ErrMigration),
+		errors.Is(err, fleet.ErrPairingExpired):
 		status = http.StatusBadRequest
 		msg = err.Error()
 	default:

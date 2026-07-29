@@ -516,3 +516,183 @@ export interface UpdateBillingAccountRequest {
   enabled?: boolean;
 }
 
+export type FleetMode = "standalone" | "master" | "managed_node";
+export type FleetNotificationMode = "local" | "master" | "disabled";
+export type FleetNodeRole = "master" | "node" | "agent";
+export type FleetConnectionType = "local" | "dockpilot" | "agent";
+export type FleetNodeStatus = "online" | "warning" | "offline";
+
+export interface FleetSettings {
+  mode: FleetMode;
+  node_uid: string;
+  node_name: string;
+  public_url: string;
+  master_url: string;
+  notification_mode: FleetNotificationMode;
+  has_master_token: boolean;
+}
+
+export interface UpdateFleetSettingsRequest {
+  mode?: FleetMode;
+  node_name?: string;
+  public_url?: string;
+  master_url?: string;
+  notification_mode?: FleetNotificationMode;
+  enable_master?: boolean;
+  disable_master?: boolean;
+}
+
+export interface FleetMetrics {
+  cpu_percent: number;
+  memory_used_bytes: number;
+  memory_total_bytes: number;
+  disk_used_percent: number;
+  uptime_seconds: number;
+  load_1?: number;
+  load_5?: number;
+  load_15?: number;
+}
+
+export interface FleetApplications {
+  total: number;
+  running: number;
+  unhealthy: number;
+}
+
+export interface FleetBilling {
+  cost_minor: number;
+  currency: string;
+  period?: string;
+  next_due_date?: string;
+  auto_renew?: boolean;
+  provider_name?: string;
+  provider_url?: string;
+  monthly_equiv_minor?: number;
+}
+
+export interface FleetFilesystem {
+  mountpoint: string;
+  device: string;
+  filesystem: string;
+  used_bytes: number;
+  total_bytes: number;
+  used_percent: number;
+}
+
+export interface FleetServiceStatus {
+  unit_name: string;
+  state: string;
+}
+
+export interface FleetNode {
+  id: string;
+  node_uid: string;
+  name: string;
+  role: FleetNodeRole;
+  connection_type: FleetConnectionType;
+  base_url: string;
+  status: FleetNodeStatus;
+  version: string;
+  agent_version?: string;
+  last_seen_at?: string;
+  capabilities: string[];
+  metrics?: FleetMetrics;
+  applications?: FleetApplications;
+  billing?: FleetBilling;
+  open_incidents: number;
+  hostname?: string;
+  os_name?: string;
+  os_version?: string;
+  kernel?: string;
+  architecture?: string;
+  filesystems?: FleetFilesystem[];
+  services?: FleetServiceStatus[];
+}
+
+export interface FleetOverview {
+  servers_total: number;
+  servers_online: number;
+  servers_warning: number;
+  servers_offline: number;
+  apps_total: number;
+  apps_running: number;
+  apps_unhealthy: number;
+  monthly_cost_minor: number;
+  currency: string;
+  next_due_date?: string;
+  open_incidents: number;
+}
+
+export interface FleetEvent {
+  id: string;
+  event_id: string;
+  node_id?: string;
+  node_uid?: string;
+  event_type: string;
+  severity: string;
+  resource_type: string;
+  resource_id: string;
+  title: string;
+  message: string;
+  occurred_at: string;
+}
+
+export interface FleetIncident {
+  id: string;
+  node_id?: string;
+  event_type: string;
+  title: string;
+  status: string;
+  count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at?: string;
+}
+
+export interface FleetPairingCode {
+  code: string;
+  expires_at: string;
+}
+
+export interface PairDockpilotRequest {
+  name: string;
+  base_url: string;
+  pairing_code: string;
+}
+
+export interface CreateAgentInstallRequest {
+  name: string;
+  host: string;
+  port?: number;
+  username?: string;
+  password: string;
+  purpose?: string;
+  tags?: string[];
+  cost_minor?: number;
+  currency?: string;
+  next_due_date?: string;
+  auto_renew?: boolean;
+  provider_name?: string;
+  provider_url?: string;
+}
+
+export interface FleetInstallation {
+  id: string;
+  status: string;
+  current_step: string;
+  ssh_fingerprint: string;
+  host: string;
+  port: number;
+  username: string;
+  error_code?: string;
+  error_message?: string;
+  node_id?: string;
+}
+
+export interface FleetInstallationLog {
+  id: number;
+  level: string;
+  message: string;
+  created_at: string;
+}
+

@@ -1,6 +1,6 @@
 .PHONY: up down reset migrate logs backend frontend dev dev-run setup \
 	docker-build docker-export docker-build-api docker-build-frontend \
-	release install pushandrelease
+	release install pushandrelease agent-binaries
 
 # --- Docker (PostgreSQL) ---
 
@@ -79,3 +79,11 @@ pushandrelease:
 install:
 	@chmod +x scripts/*.sh 2>/dev/null || true
 	@./scripts/install.sh $(ARGS)
+
+# Cross-compile dockpilot-agent for embedding / manual install
+agent-binaries:
+	@mkdir -p dist/agents
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/dockpilot-agent-linux-amd64 ./cmd/agent
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/dockpilot-agent-linux-arm64 ./cmd/agent
+	cd dist/agents && sha256sum dockpilot-agent-linux-amd64 dockpilot-agent-linux-arm64 > SHA256SUMS
+	@echo "Built dist/agents/"

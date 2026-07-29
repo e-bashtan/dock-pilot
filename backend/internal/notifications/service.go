@@ -18,12 +18,25 @@ import (
 	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
 )
 
+// LocalAlertGate optionally suppresses local Telegram user alerts
+// (e.g. when Fleet notification_mode is "master" on a managed node).
+type LocalAlertGate interface {
+	SuppressLocalAlerts(ctx context.Context) bool
+}
+
 type Service struct {
-	queries  *db.Queries
-	cipher   *secrets.Cipher
-	sites    *sitesvc.Service
-	pgdb     *pgdb.Service
-	telegram *TelegramClient
+	queries     *db.Queries
+	cipher      *secrets.Cipher
+	sites       *sitesvc.Service
+	pgdb        *pgdb.Service
+	telegram    *TelegramClient
+	alertGate   LocalAlertGate
+	fleetEvents FleetEventSink
+}
+
+// FleetEventSink forwards local incidents to Fleet outbox when notifications are centralized.
+type FleetEventSink interface {
+	OnLocalIncident(ctx context.Context, kind, resourceID, name, overall, message string) error
 }
 
 func NewService(queries *db.Queries, cipher *secrets.Cipher, sites *sitesvc.Service, pgdbSvc *pgdb.Service) *Service {
@@ -34,6 +47,18 @@ func NewService(queries *db.Queries, cipher *secrets.Cipher, sites *sitesvc.Serv
 		pgdb:     pgdbSvc,
 		telegram: NewTelegramClient(),
 	}
+}
+
+func (s *Service) SetLocalAlertGate(g LocalAlertGate) {
+	s.alertGate = g
+}
+
+func (s *Service) SetFleetEventSink(sink FleetEventSink) {
+	s.fleetEvents = sink
+}
+
+func (s *Service) suppressLocal(ctx context.Context) bool {
+	return s.alertGate != nil && s.alertGate.SuppressLocalAlerts(ctx)
 }
 
 func (s *Service) GetSettings(ctx context.Context) (SettingsResponse, error) {
@@ -108,12 +133,17 @@ func (s *Service) SendText(ctx context.Context, text string) error {
 }
 
 func (s *Service) RunCheck(ctx context.Context) error {
+	suppress := s.suppressLocal(ctx)
+
 	settings, token, err := s.loadTelegramConfig(ctx)
 	if err != nil {
-		if errors.Is(err, ErrNotConfigured) {
+		if !errors.Is(err, ErrNotConfigured) {
+			return err
+		}
+		if !suppress {
 			return nil
 		}
-		return err
+		// settings still holds the row when Telegram is merely unconfigured
 	}
 
 	healthRows, err := s.sites.HealthAll(ctx)
@@ -162,7 +192,7 @@ func (s *Service) RunCheck(ctx context.Context) error {
 		})
 	}
 
-	if settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestTimezone, now) {
+	if !suppress && settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestTimezone, now) {
 		msg := formatDailyDigest(digestItems, names, now, settings.DailyDigestTimezone)
 		if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
 			return fmt.Errorf("daily digest: %w", err)
@@ -181,6 +211,12 @@ func (s *Service) RunCheck(ctx context.Context) error {
 			name := names[item.Key]
 			if name == "" {
 				name = item.Key
+			}
+			if suppress {
+				if s.fleetEvents != nil {
+					_ = s.fleetEvents.OnLocalIncident(ctx, item.Kind, item.Key, name, item.Overall, item.Message)
+				}
+				continue
 			}
 			msg := formatIncident(name, item)
 			if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {

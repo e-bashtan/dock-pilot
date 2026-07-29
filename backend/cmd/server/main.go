@@ -15,6 +15,7 @@ import (
 	"github.com/ebash/dock-pilot/backend/internal/config"
 	"github.com/ebash/dock-pilot/backend/internal/deployments"
 	"github.com/ebash/dock-pilot/backend/internal/docker"
+	"github.com/ebash/dock-pilot/backend/internal/fleet"
 	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
 	"github.com/ebash/dock-pilot/backend/internal/nginx"
 	"github.com/ebash/dock-pilot/backend/internal/notifications"
@@ -90,16 +91,41 @@ func main() {
 	billingWorker := billing.NewWorker(billingSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
 
+	appVersion := os.Getenv("APP_VERSION")
+	if appVersion == "" {
+		appVersion = "dev"
+	}
+	agentDir := os.Getenv("FLEET_AGENT_DIR")
+	if agentDir == "" {
+		agentDir = "/app/agents"
+	}
+	fleetSvc := fleet.NewService(
+		queries,
+		cipher,
+		logger,
+		cfg.Deploy.HostRoot,
+		fleet.SitesAppCounter{Sites: sitesSvc},
+		notifSvc,
+		appVersion,
+		agentDir,
+	)
+	notifSvc.SetLocalAlertGate(fleetSvc)
+	notifSvc.SetFleetEventSink(fleetSvc)
+
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
 	notifWorker.Start(workerCtx)
 	pgBackupWorker.Start(workerCtx)
 	panelBackupWorker.Start(workerCtx)
 	billingWorker.Start(workerCtx)
+	fleet.NewPollingWorker(fleetSvc).Start(workerCtx)
+	fleet.NewOutboxWorker(fleetSvc).Start(workerCtx)
+	fleet.NewHeartbeatWorker(fleetSvc).Start(workerCtx)
+	fleet.NewRetentionWorker(fleetSvc).Start(workerCtx)
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, fleetSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,

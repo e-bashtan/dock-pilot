@@ -44,6 +44,17 @@ import type {
   BillingAccount,
   CreateBillingAccountRequest,
   UpdateBillingAccountRequest,
+  FleetSettings,
+  UpdateFleetSettingsRequest,
+  FleetOverview,
+  FleetNode,
+  FleetEvent,
+  FleetIncident,
+  FleetPairingCode,
+  PairDockpilotRequest,
+  CreateAgentInstallRequest,
+  FleetInstallation,
+  FleetInstallationLog,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -542,6 +553,60 @@ export const api = {
     request<BillingAccount>(`/api/billing/accounts/${id}/refresh`, {
       method: "POST",
     }),
+
+  getFleetSettings: () => request<FleetSettings>("/api/fleet/settings"),
+
+  updateFleetSettings: (body: UpdateFleetSettingsRequest) =>
+    request<FleetSettings>("/api/fleet/settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  getFleetOverview: () => request<FleetOverview>("/api/fleet/overview"),
+
+  listFleetNodes: () => request<FleetNode[]>("/api/fleet/nodes"),
+
+  getFleetNode: (id: string) => request<FleetNode>(`/api/fleet/nodes/${id}`),
+
+  deleteFleetNode: (id: string) =>
+    request<void>(`/api/fleet/nodes/${id}`, { method: "DELETE" }),
+
+  pairDockpilotNode: (body: PairDockpilotRequest) =>
+    request<FleetNode>("/api/fleet/nodes/dockpilot", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  createFleetPairingCode: () =>
+    request<FleetPairingCode>("/api/fleet/pairing-code", { method: "POST" }),
+
+  disconnectFleetMaster: () =>
+    request<void>("/api/fleet/master", { method: "DELETE" }),
+
+  listFleetEvents: () => request<FleetEvent[]>("/api/fleet/events"),
+
+  listFleetIncidents: () => request<FleetIncident[]>("/api/fleet/incidents"),
+
+  startAgentInstall: (body: CreateAgentInstallRequest) =>
+    request<FleetInstallation>("/api/fleet/installations/agent", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  confirmAgentInstallHostKey: (id: string) =>
+    request<FleetInstallation>(
+      `/api/fleet/installations/${id}/confirm-host-key`,
+      { method: "POST" },
+    ),
+
+  getAgentInstall: (id: string) =>
+    request<FleetInstallation>(`/api/fleet/installations/${id}`),
+
+  cancelAgentInstall: (id: string) =>
+    request<void>(`/api/fleet/installations/${id}`, { method: "DELETE" }),
+
+  listAgentInstallLogs: (id: string) =>
+    request<FleetInstallationLog[]>(`/api/fleet/installations/${id}/logs`),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

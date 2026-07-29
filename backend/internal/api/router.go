@@ -10,6 +10,7 @@ import (
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
 	"github.com/ebash/dock-pilot/backend/internal/billing"
+	"github.com/ebash/dock-pilot/backend/internal/fleet"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
 	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
@@ -28,6 +29,8 @@ type Handlers struct {
 	Databases     *DatabasesHandler
 	Backups       *BackupsHandler
 	Billing       *BillingHandler
+	Fleet         *FleetHandler
+	FleetSvc      *fleet.Service
 }
 
 func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
@@ -40,7 +43,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Token", "X-Fleet-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -53,10 +56,61 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/qr/exchange", h.QR.Exchange)
 
+		if h.Fleet != nil && h.FleetSvc != nil {
+			r.Post("/fleet/node/pair", h.Fleet.AcceptPair)
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeStatusRead))
+				r.Get("/fleet/node/status", h.Fleet.NodeStatus)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeAppsRead))
+				r.Get("/fleet/node/apps", h.Fleet.NodeApps)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeBackupsRead))
+				r.Get("/fleet/node/backups", h.Fleet.NodeBackups)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeVersionRead))
+				r.Get("/fleet/node/version", h.Fleet.NodeVersion)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeHeartbeatWrite))
+				r.Post("/fleet/ingest/heartbeat", h.Fleet.IngestHeartbeat)
+			})
+			r.Group(func(r chi.Router) {
+				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeEventsWrite))
+				r.Post("/fleet/ingest/events", h.Fleet.IngestEvent)
+				r.Post("/fleet/ingest/events/batch", h.Fleet.IngestEventBatch)
+			})
+			r.Post("/fleet/agent/register", h.Fleet.AgentRegister)
+		}
+
 		r.Group(func(r chi.Router) {
 			r.Use(BearerTokenAuth(apiToken))
 
 			r.Post("/auth/qr", h.QR.Create)
+
+			if h.Fleet != nil {
+				r.Route("/fleet", func(r chi.Router) {
+					r.Get("/settings", h.Fleet.GetSettings)
+					r.Put("/settings", h.Fleet.UpdateSettings)
+					r.Get("/overview", h.Fleet.Overview)
+					r.Get("/nodes", h.Fleet.ListNodes)
+					r.Post("/nodes/dockpilot", h.Fleet.PairDockpilot)
+					r.Get("/nodes/{id}", h.Fleet.GetNode)
+					r.Delete("/nodes/{id}", h.Fleet.DeleteNode)
+					r.Get("/events", h.Fleet.ListEvents)
+					r.Get("/incidents", h.Fleet.ListIncidents)
+					r.Post("/pairing-code", h.Fleet.CreatePairingCode)
+					r.Delete("/master", h.Fleet.DisconnectMaster)
+					r.Post("/installations/agent", h.Fleet.StartAgentInstall)
+					r.Get("/installations/{id}", h.Fleet.GetInstallation)
+					r.Post("/installations/{id}/confirm-host-key", h.Fleet.ConfirmHostKey)
+					r.Delete("/installations/{id}", h.Fleet.CancelInstallation)
+					r.Get("/installations/{id}/logs", h.Fleet.ListInstallationLogs)
+				})
+			}
 
 			r.Route("/sites", func(r chi.Router) {
 				r.Post("/", h.Sites.Create)
@@ -166,9 +220,9 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	return r
 }
 
-func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, qr *QRHandler) http.Handler {
+func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, fleetSvc *fleet.Service, qr *QRHandler) http.Handler {
 	_ = logger
-	return NewRouter(Handlers{
+	h := Handlers{
 		Sites:         NewSitesHandler(sites),
 		Secrets:       NewSecretsHandler(secrets),
 		Deployments:   NewDeploymentsHandler(deployments),
@@ -178,5 +232,10 @@ func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *si
 		Databases:     NewDatabasesHandler(databases),
 		Backups:       NewBackupsHandler(backups),
 		Billing:       NewBillingHandler(billingSvc),
-	}, apiToken, corsOrigins)
+	}
+	if fleetSvc != nil {
+		h.Fleet = NewFleetHandler(fleetSvc)
+		h.FleetSvc = fleetSvc
+	}
+	return NewRouter(h, apiToken, corsOrigins)
 }
