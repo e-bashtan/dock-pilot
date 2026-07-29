@@ -580,6 +580,31 @@ h3 {
   margin-top: 1rem;
 }
 
+.server-status-update {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.server-status-update-log {
+  margin: 0.5rem 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .table-compact th,
 .table-compact td {
   padding: 0.35rem 0.5rem;

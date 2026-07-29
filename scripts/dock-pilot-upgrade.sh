@@ -150,6 +150,10 @@ if [[ -d "${EXTRACT}/scripts" ]]; then
   chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
   log "Updated scripts/"
 fi
+if [[ -f "${EXTRACT}/VERSION" ]]; then
+  cp "${EXTRACT}/VERSION" "${ROOT}/VERSION"
+  log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
+fi
 
 COMPOSE="docker-compose.full.yml"
 [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"

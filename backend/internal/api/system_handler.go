@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/ebash/dock-pilot/backend/internal/system"
@@ -51,4 +52,30 @@ func (h *SystemHandler) PruneDocker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *SystemHandler) UpdateInfo(w http.ResponseWriter, r *http.Request) {
+	info, err := h.system.GetUpdateInfo(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (h *SystemHandler) StartUpdate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Target string `json:"target"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	result, err := h.system.StartUpgrade(r.Context(), body.Target)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (h *SystemHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.system.GetUpgradeJob(r.Context()))
 }

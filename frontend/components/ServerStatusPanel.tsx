@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
@@ -9,6 +10,8 @@ import type {
   SystemProcess,
   SystemProcesses,
   SystemStatus,
+  SystemUpdateInfo,
+  SystemUpgradeJob,
 } from "@/lib/types";
 
 function diskTone(pct: number): string {
@@ -35,6 +38,13 @@ export function ServerStatusPanel() {
   const [procsLoading, setProcsLoading] = useState(false);
   const [procsError, setProcsError] = useState<string | null>(null);
 
+  const [updateInfo, setUpdateInfo] = useState<SystemUpdateInfo | null>(null);
+  const [updateJob, setUpdateJob] = useState<SystemUpgradeJob | null>(null);
+  const [updateConfirm, setUpdateConfirm] = useState(false);
+  const [updateStarting, setUpdateStarting] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const watchingUpgrade = useRef(false);
+
   const load = useCallback(async () => {
     try {
       const s = await api.getSystemStatus();
@@ -47,11 +57,54 @@ export function ServerStatusPanel() {
     }
   }, [t]);
 
+  const loadUpdate = useCallback(async () => {
+    try {
+      const info = await api.getSystemUpdate();
+      setUpdateInfo(info);
+      if (info.upgrade_status === "running" || info.upgrade_status === "ok" || info.upgrade_status === "failed") {
+        const job = await api.getSystemUpdateJob();
+        setUpdateJob(job);
+        if (info.upgrade_status === "running") {
+          watchingUpgrade.current = true;
+        }
+      }
+    } catch {
+      /* optional on home */
+    }
+  }, []);
+
   useEffect(() => {
     load();
+    void loadUpdate();
     const timer = setInterval(load, 30_000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, loadUpdate]);
+
+  useEffect(() => {
+    if (!watchingUpgrade.current && updateInfo?.upgrade_status !== "running") {
+      return;
+    }
+    const timer = setInterval(async () => {
+      try {
+        const job = await api.getSystemUpdateJob();
+        setUpdateJob(job);
+        if (job.status === "ok") {
+          watchingUpgrade.current = false;
+          setUpdateMsg(t("system.updateDone"));
+          void loadUpdate();
+        } else if (job.status === "failed") {
+          watchingUpgrade.current = false;
+          setUpdateMsg(t("system.updateFailed"));
+          void loadUpdate();
+        } else if (job.status === "running") {
+          watchingUpgrade.current = true;
+        }
+      } catch {
+        // API may be down mid-upgrade — keep polling.
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [updateInfo?.upgrade_status, t, loadUpdate]);
 
   const loadProcesses = useCallback(async () => {
     setProcsLoading(true);
@@ -121,6 +174,25 @@ export function ServerStatusPanel() {
       setError(e instanceof ApiError ? e.message : t("system.pruneFailed"));
     } finally {
       setPruning(false);
+    }
+  };
+
+  const handleStartUpdate = async () => {
+    setUpdateConfirm(false);
+    setUpdateStarting(true);
+    setUpdateMsg(null);
+    setError(null);
+    try {
+      await api.startSystemUpdate("latest");
+      watchingUpgrade.current = true;
+      setUpdateMsg(t("system.updateStarted"));
+      const job = await api.getSystemUpdateJob();
+      setUpdateJob(job);
+      void loadUpdate();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("system.updateFailed"));
+    } finally {
+      setUpdateStarting(false);
     }
   };
 
@@ -200,6 +272,110 @@ export function ServerStatusPanel() {
         <div className="alert alert-success" style={{ marginTop: "0.75rem" }}>
           {pruneMsg}
         </div>
+      )}
+      {updateMsg && (
+        <div
+          className={`alert ${updateJob?.status === "failed" ? "alert-error" : "alert-success"}`}
+          style={{ marginTop: "0.75rem" }}
+        >
+          {updateMsg}
+          {updateJob?.status === "ok" && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ marginLeft: "0.75rem", fontSize: "0.8125rem" }}
+              onClick={() => window.location.reload()}
+            >
+              {t("system.reloadPage")}
+            </button>
+          )}
+        </div>
+      )}
+
+      {updateInfo && (
+        <div className="server-status-update">
+          <div>
+            <div className="server-status-label">{t("system.updateTitle")}</div>
+            <div className="server-status-meta" style={{ marginTop: "0.15rem" }}>
+              {t("system.updateCurrent")}:{" "}
+              <strong>{updateInfo.current || "—"}</strong>
+              {" → "}
+              {t("system.updateLatest")}:{" "}
+              <strong>
+                {updateInfo.latest || t("system.updateUnknownLatest")}
+              </strong>
+              {" · "}
+              <span
+                style={{
+                  color:
+                    updateInfo.upgrade_status === "running" || updateJob?.status === "running"
+                      ? "var(--warn, #b45309)"
+                      : updateInfo.update_available
+                        ? "var(--warn, #b45309)"
+                        : updateInfo.latest
+                          ? "var(--ok, #15803d)"
+                          : "var(--muted)",
+                  fontWeight: 600,
+                }}
+              >
+                {updateInfo.upgrade_status === "running" || updateJob?.status === "running"
+                  ? t("system.updateRunning")
+                  : updateInfo.update_available && updateInfo.latest
+                    ? t("system.updateAvailable", { version: updateInfo.latest })
+                    : updateInfo.latest
+                      ? t("system.updateUpToDate")
+                      : t("system.updateUnknownLatest")}
+              </span>
+              {!updateInfo.can_update && updateInfo.reason ? (
+                <span style={{ display: "block", marginTop: "0.2rem" }}>
+                  {t("system.updateUnavailable")}: {updateInfo.reason}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: "0.8125rem" }}
+              onClick={() => void loadUpdate()}
+              disabled={updateStarting}
+            >
+              {t("system.updateCheck")}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ fontSize: "0.8125rem" }}
+              disabled={
+                updateStarting ||
+                !updateInfo.can_update ||
+                !updateInfo.latest ||
+                (!updateInfo.update_available && updateInfo.upgrade_status !== "failed") ||
+                updateInfo.upgrade_status === "running" ||
+                updateJob?.status === "running"
+              }
+              onClick={() => setUpdateConfirm(true)}
+            >
+              {updateStarting ||
+              updateInfo.upgrade_status === "running" ||
+              updateJob?.status === "running"
+                ? t("system.updateRunning")
+                : updateInfo.latest
+                  ? t("system.updateTo", { version: updateInfo.latest })
+                  : t("system.updateNow")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(updateJob?.log || updateJob?.status === "running") && (
+        <details open={updateJob?.status === "running" || updateJob?.status === "failed"} style={{ marginTop: "0.75rem" }}>
+          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: "0.8125rem" }}>
+            {t("system.updateLog")}
+          </summary>
+          <pre className="server-status-update-log">{updateJob?.log || t("system.loadingDetails")}</pre>
+        </details>
       )}
 
       <div className="server-status-grid">
@@ -405,6 +581,24 @@ export function ServerStatusPanel() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={updateConfirm}
+        title={t("system.updateTitle")}
+        message={
+          updateInfo?.latest
+            ? t("system.updateConfirm", { version: updateInfo.latest })
+            : t("system.updateConfirmLatest")
+        }
+        confirmLabel={
+          updateInfo?.latest
+            ? t("system.updateTo", { version: updateInfo.latest })
+            : t("system.updateNow")
+        }
+        busy={updateStarting}
+        onConfirm={() => void handleStartUpdate()}
+        onCancel={() => setUpdateConfirm(false)}
+      />
     </div>
   );
 }

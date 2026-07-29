@@ -132,6 +132,30 @@ export interface DockerPruneResult {
   space_reclaimed: number;
 }
 
+export interface SystemUpdateInfo {
+  current: string;
+  latest: string;
+  update_available: boolean;
+  can_update: boolean;
+  reason?: string;
+  install_dir: string;
+  upgrade_status: string;
+  upgrade_target?: string;
+  checked_at: string;
+}
+
+export interface SystemUpgradeJob {
+  status: string;
+  target?: string;
+  log: string;
+  updated_at?: string;
+}
+
+export interface SystemUpgradeStart {
+  status: string;
+  message: string;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   telegram_chat_id: string;

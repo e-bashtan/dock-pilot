@@ -17,6 +17,9 @@ import type {
   SystemProcesses,
   SystemDockerDir,
   DockerPruneResult,
+  SystemUpdateInfo,
+  SystemUpgradeJob,
+  SystemUpgradeStart,
   UpdateNotificationSettings,
   PgInstance,
   PgDatabase,
@@ -242,6 +245,17 @@ export const api = {
 
   pruneDocker: () =>
     request<DockerPruneResult>("/api/system/docker/prune", { method: "POST" }),
+
+  getSystemUpdate: () => request<SystemUpdateInfo>("/api/system/update"),
+
+  startSystemUpdate: (target?: string) =>
+    request<SystemUpgradeStart>("/api/system/update", {
+      method: "POST",
+      body: JSON.stringify({ target: target || "latest" }),
+    }),
+
+  getSystemUpdateJob: () =>
+    request<SystemUpgradeJob>("/api/system/update/job"),
 
   listPgInstances: () => request<PgInstance[]>("/api/databases"),
 

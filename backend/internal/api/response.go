@@ -13,6 +13,7 @@ import (
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
 	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
 	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
+	"github.com/ebash/dock-pilot/backend/internal/system"
 )
 
 type errorBody struct {
@@ -40,7 +41,8 @@ func writeError(w http.ResponseWriter, err error) {
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrSlugConflict),
 		errors.Is(err, pgdb.ErrSlugConflict),
-		errors.Is(err, pgdb.ErrAlreadyConfigured):
+		errors.Is(err, pgdb.ErrAlreadyConfigured),
+		errors.Is(err, system.ErrUpgradeBusy):
 		status = http.StatusConflict
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrInvalidInput),
@@ -54,7 +56,9 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, panelbackup.ErrMigration),
 		errors.Is(err, billing.ErrInvalidInput),
 		errors.Is(err, billing.ErrMigration),
-		errors.Is(err, billing.ErrNotConfigured):
+		errors.Is(err, billing.ErrNotConfigured),
+		errors.Is(err, system.ErrUpgradeNotAvail),
+		errors.Is(err, system.ErrUpgradeStartFail):
 		status = http.StatusBadRequest
 		msg = err.Error()
 	default:
