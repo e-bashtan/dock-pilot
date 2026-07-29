@@ -14,6 +14,8 @@ import type {
   SiteHealth,
   SiteListItem,
   SystemStatus,
+  SystemProcesses,
+  SystemDockerDir,
   DockerPruneResult,
   UpdateNotificationSettings,
   PgInstance,
@@ -35,6 +37,9 @@ import type {
   PanelBackupSettings,
   UpdatePanelBackupSettings,
   FullPanelBackup,
+  BillingAccount,
+  CreateBillingAccountRequest,
+  UpdateBillingAccountRequest,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -228,6 +233,12 @@ export const api = {
     request<{ code: string; expires_at: string }>("/api/auth/qr", { method: "POST" }),
 
   getSystemStatus: () => request<SystemStatus>("/api/system/status"),
+
+  getSystemProcesses: () =>
+    request<SystemProcesses>("/api/system/processes"),
+
+  getSystemDockerDirs: () =>
+    request<SystemDockerDir[]>("/api/system/docker-dirs"),
 
   pruneDocker: () =>
     request<DockerPruneResult>("/api/system/docker/prune", { method: "POST" }),
@@ -491,6 +502,29 @@ export const api = {
         `/api/backups/full/restore/stream?s3_key=${encodeURIComponent(s3Key)}`,
       ),
     ),
+
+  listBillingAccounts: () =>
+    request<BillingAccount[]>("/api/billing/accounts"),
+
+  createBillingAccount: (body: CreateBillingAccountRequest) =>
+    request<BillingAccount>("/api/billing/accounts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateBillingAccount: (id: string, body: UpdateBillingAccountRequest) =>
+    request<BillingAccount>(`/api/billing/accounts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteBillingAccount: (id: string) =>
+    request<void>(`/api/billing/accounts/${id}`, { method: "DELETE" }),
+
+  refreshBillingAccount: (id: string) =>
+    request<BillingAccount>(`/api/billing/accounts/${id}/refresh`, {
+      method: "POST",
+    }),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

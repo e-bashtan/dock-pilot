@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/cors"
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
+	"github.com/ebash/dock-pilot/backend/internal/billing"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
 	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
@@ -26,6 +27,7 @@ type Handlers struct {
 	System        *SystemHandler
 	Databases     *DatabasesHandler
 	Backups       *BackupsHandler
+	Billing       *BillingHandler
 }
 
 func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
@@ -91,6 +93,8 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 
 			r.Route("/system", func(r chi.Router) {
 				r.Get("/status", h.System.Status)
+				r.Get("/processes", h.System.Processes)
+				r.Get("/docker-dirs", h.System.DockerDirs)
 				r.Post("/docker/prune", h.System.PruneDocker)
 			})
 
@@ -101,6 +105,14 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 				r.Post("/full", h.Backups.CreateFull)
 				r.Post("/full/restore", h.Backups.RestoreFull)
 				r.Get("/full/restore/stream", h.Backups.StreamRestoreFull)
+			})
+
+			r.Route("/billing", func(r chi.Router) {
+				r.Get("/accounts", h.Billing.List)
+				r.Post("/accounts", h.Billing.Create)
+				r.Patch("/accounts/{id}", h.Billing.Update)
+				r.Delete("/accounts/{id}", h.Billing.Delete)
+				r.Post("/accounts/{id}/refresh", h.Billing.Refresh)
 			})
 
 			r.Route("/databases", func(r chi.Router) {
@@ -150,7 +162,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	return r
 }
 
-func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, qr *QRHandler) http.Handler {
+func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, qr *QRHandler) http.Handler {
 	_ = logger
 	return NewRouter(Handlers{
 		Sites:         NewSitesHandler(sites),
@@ -161,5 +173,6 @@ func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *si
 		System:        NewSystemHandler(systemSvc),
 		Databases:     NewDatabasesHandler(databases),
 		Backups:       NewBackupsHandler(backups),
+		Billing:       NewBillingHandler(billingSvc),
 	}, apiToken, corsOrigins)
 }

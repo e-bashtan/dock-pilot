@@ -4,7 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
-import type { SystemStatus } from "@/lib/types";
+import type {
+  SystemDockerDir,
+  SystemProcess,
+  SystemProcesses,
+  SystemStatus,
+} from "@/lib/types";
 
 function diskTone(pct: number): string {
   if (pct >= 90) return "var(--danger, #b91c1c)";
@@ -19,6 +24,16 @@ export function ServerStatusPanel() {
   const [loading, setLoading] = useState(true);
   const [pruning, setPruning] = useState(false);
   const [pruneMsg, setPruneMsg] = useState<string | null>(null);
+
+  const [showDocker, setShowDocker] = useState(false);
+  const [dockerDirs, setDockerDirs] = useState<SystemDockerDir[] | null>(null);
+  const [dockerDirsLoading, setDockerDirsLoading] = useState(false);
+  const [dockerDirsError, setDockerDirsError] = useState<string | null>(null);
+
+  const [showProcs, setShowProcs] = useState(false);
+  const [procs, setProcs] = useState<SystemProcesses | null>(null);
+  const [procsLoading, setProcsLoading] = useState(false);
+  const [procsError, setProcsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -38,6 +53,52 @@ export function ServerStatusPanel() {
     return () => clearInterval(timer);
   }, [load]);
 
+  const loadProcesses = useCallback(async () => {
+    setProcsLoading(true);
+    setProcsError(null);
+    try {
+      const p = await api.getSystemProcesses();
+      setProcs(p);
+    } catch (e) {
+      setProcsError(e instanceof ApiError ? e.message : t("system.loadFailed"));
+    } finally {
+      setProcsLoading(false);
+    }
+  }, [t]);
+
+  const loadDockerDirs = useCallback(async () => {
+    setDockerDirsLoading(true);
+    setDockerDirsError(null);
+    try {
+      const rows = await api.getSystemDockerDirs();
+      setDockerDirs(rows);
+    } catch (e) {
+      setDockerDirsError(e instanceof ApiError ? e.message : t("system.loadFailed"));
+    } finally {
+      setDockerDirsLoading(false);
+    }
+  }, [t]);
+
+  const toggleProcesses = () => {
+    setShowProcs((open) => {
+      const next = !open;
+      if (next) {
+        void loadProcesses();
+      }
+      return next;
+    });
+  };
+
+  const toggleDocker = () => {
+    setShowDocker((open) => {
+      const next = !open;
+      if (next && dockerDirs == null && !dockerDirsLoading) {
+        void loadDockerDirs();
+      }
+      return next;
+    });
+  };
+
   const handlePrune = async () => {
     setPruning(true);
     setPruneMsg(null);
@@ -52,6 +113,10 @@ export function ServerStatusPanel() {
         }),
       );
       await load();
+      if (showDocker) {
+        setDockerDirs(null);
+        void loadDockerDirs();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("system.pruneFailed"));
     } finally {
@@ -86,7 +151,6 @@ export function ServerStatusPanel() {
   const mem = status.memory;
   const docker = status.docker;
   const topImages = docker?.top_images ?? [];
-  const dockerDirs = status.docker_dirs ?? [];
   const dockerTotal =
     (docker?.images_bytes ?? 0) +
     (docker?.build_cache_bytes ?? 0) +
@@ -199,8 +263,29 @@ export function ServerStatusPanel() {
         </div>
       </div>
 
-      {(topImages.length > 0 || dockerDirs.length > 0) && (
-        <div className="server-status-procs" style={{ marginTop: "1.25rem" }}>
+      <div className="server-status-toggles">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ fontSize: "0.8125rem" }}
+          onClick={toggleDocker}
+          aria-expanded={showDocker}
+        >
+          {showDocker ? t("system.hideDockerDetails") : t("system.showDockerDetails")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ fontSize: "0.8125rem" }}
+          onClick={toggleProcesses}
+          aria-expanded={showProcs}
+        >
+          {showProcs ? t("system.hideProcesses") : t("system.showProcesses")}
+        </button>
+      </div>
+
+      {showDocker && (
+        <div className="server-status-procs" style={{ marginTop: "1rem" }}>
           {topImages.length > 0 && (
             <div>
               <h3 className="server-status-label">{t("system.topImages")}</h3>
@@ -238,12 +323,18 @@ export function ServerStatusPanel() {
             </div>
           )}
 
-          {dockerDirs.length > 0 && (
-            <div>
-              <h3 className="server-status-label">{t("system.dockerDirs")}</h3>
-              <p style={{ color: "var(--muted)", fontSize: "0.75rem", margin: "0 0 0.5rem" }}>
-                {t("system.dockerDirsHint")}
+          <div>
+            <h3 className="server-status-label">{t("system.dockerDirs")}</h3>
+            <p style={{ color: "var(--muted)", fontSize: "0.75rem", margin: "0 0 0.5rem" }}>
+              {t("system.dockerDirsHint")}
+            </p>
+            {dockerDirsLoading && !dockerDirs ? (
+              <p style={{ color: "var(--muted)", fontSize: "0.8125rem" }}>
+                {t("system.loadingDetails")}
               </p>
+            ) : dockerDirsError ? (
+              <div className="alert alert-error">{dockerDirsError}</div>
+            ) : dockerDirs && dockerDirs.length > 0 ? (
               <div className="table-wrap">
                 <table className="table table-compact">
                   <thead>
@@ -264,21 +355,56 @@ export function ServerStatusPanel() {
                   </tbody>
                 </table>
               </div>
+            ) : (
+              <p style={{ color: "var(--muted)", fontSize: "0.8125rem" }}>—</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showProcs && (
+        <div style={{ marginTop: "1rem" }}>
+          {procsLoading && !procs ? (
+            <p style={{ color: "var(--muted)", fontSize: "0.8125rem" }}>
+              {t("system.loadingDetails")}
+            </p>
+          ) : procsError ? (
+            <div className="alert alert-error">{procsError}</div>
+          ) : (
+            <div className="server-status-procs" style={{ marginTop: 0 }}>
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    marginBottom: "0.35rem",
+                  }}
+                >
+                  <h3 className="server-status-label" style={{ margin: 0 }}>
+                    {t("system.topCpu")}
+                  </h3>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                    onClick={() => void loadProcesses()}
+                    disabled={procsLoading}
+                  >
+                    {t("common.refresh")}
+                  </button>
+                </div>
+                <ProcessTable rows={procs?.top_cpu} empty={t("system.noProcesses")} />
+              </div>
+              <div>
+                <h3 className="server-status-label">{t("system.topMem")}</h3>
+                <ProcessTable rows={procs?.top_mem} empty={t("system.noProcesses")} mem />
+              </div>
             </div>
           )}
         </div>
       )}
-
-      <div className="server-status-procs">
-        <div>
-          <h3 className="server-status-label">{t("system.topCpu")}</h3>
-          <ProcessTable rows={status.top_cpu} empty={t("system.noProcesses")} />
-        </div>
-        <div>
-          <h3 className="server-status-label">{t("system.topMem")}</h3>
-          <ProcessTable rows={status.top_mem} empty={t("system.noProcesses")} mem />
-        </div>
-      </div>
     </div>
   );
 }
@@ -288,7 +414,7 @@ function ProcessTable({
   empty,
   mem,
 }: {
-  rows: SystemStatus["top_cpu"];
+  rows: SystemProcess[] | undefined;
   empty: string;
   mem?: boolean;
 }) {

@@ -573,6 +573,13 @@ h3 {
   margin-top: 1.25rem;
 }
 
+.server-status-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
 .table-compact th,
 .table-compact td {
   padding: 0.35rem 0.5rem;

@@ -95,6 +95,18 @@ func (s *Service) SendTest(ctx context.Context) error {
 	return nil
 }
 
+// SendText sends an arbitrary message using the configured Telegram bot (if enabled).
+func (s *Service) SendText(ctx context.Context, text string) error {
+	settings, token, err := s.loadTelegramConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if !settings.Enabled {
+		return fmt.Errorf("telegram notifications are disabled")
+	}
+	return s.telegram.SendMessage(ctx, token, settings.TelegramChatID, text, settings.TelegramHttpProxy)
+}
+
 func (s *Service) RunCheck(ctx context.Context) error {
 	settings, token, err := s.loadTelegramConfig(ctx)
 	if err != nil {

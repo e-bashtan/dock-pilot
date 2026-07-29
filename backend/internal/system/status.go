@@ -97,19 +97,44 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 
 	if mem, err := readMemory("/proc/meminfo"); err == nil {
 		out.Memory = mem
-		if procs, err := sampleTopProcesses(mem.TotalBytes); err == nil {
-			out.TopCPU = topByCPU(procs, 5)
-			out.TopMem = topByMem(procs, 5)
-		}
 	}
 
 	if du, err := s.docker.DiskUsage(ctx); err == nil {
 		out.Docker = du
 	}
 
-	out.DockerDirs = s.dockerDataDirs(ctx)
-
+	// Process lists and docker dir sizes are loaded on demand via Processes / DockerDirs.
 	return out, nil
+}
+
+type ProcessesStatus struct {
+	TopCPU    []ProcessInfo `json:"top_cpu"`
+	TopMem    []ProcessInfo `json:"top_mem"`
+	CheckedAt time.Time     `json:"checked_at"`
+}
+
+func (s *Service) Processes(ctx context.Context) (ProcessesStatus, error) {
+	_ = ctx
+	out := ProcessesStatus{
+		CheckedAt: time.Now().UTC(),
+		TopCPU:    []ProcessInfo{},
+		TopMem:    []ProcessInfo{},
+	}
+	mem, err := readMemory("/proc/meminfo")
+	if err != nil {
+		return out, nil
+	}
+	procs, err := sampleTopProcesses(mem.TotalBytes)
+	if err != nil {
+		return out, nil
+	}
+	out.TopCPU = topByCPU(procs, 5)
+	out.TopMem = topByMem(procs, 5)
+	return out, nil
+}
+
+func (s *Service) DockerDirs(ctx context.Context) ([]DirUsage, error) {
+	return s.dockerDataDirs(ctx), nil
 }
 
 func (s *Service) PruneDocker(ctx context.Context) (docker.PruneResult, error) {

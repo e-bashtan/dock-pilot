@@ -11,6 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BillingAccount struct {
+	ID                  uuid.UUID          `json:"id"`
+	Provider            string             `json:"provider"`
+	ServerIp            string             `json:"server_ip"`
+	Login               string             `json:"login"`
+	EncryptedPassword   []byte             `json:"encrypted_password"`
+	BillmgrUrl          string             `json:"billmgr_url"`
+	AlertDays           int32              `json:"alert_days"`
+	Enabled             bool               `json:"enabled"`
+	CachedExpireDate    pgtype.Date        `json:"cached_expire_date"`
+	CachedStatus        string             `json:"cached_status"`
+	CachedName          string             `json:"cached_name"`
+	CachedCost          string             `json:"cached_cost"`
+	LastCheckedAt       pgtype.Timestamptz `json:"last_checked_at"`
+	LastCheckError      string             `json:"last_check_error"`
+	LastAlertExpireDate pgtype.Date        `json:"last_alert_expire_date"`
+	LastAlertAt         pgtype.Timestamptz `json:"last_alert_at"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+}
+
 type Deployment struct {
 	ID         uuid.UUID          `json:"id"`
 	SiteID     uuid.UUID          `json:"site_id"`

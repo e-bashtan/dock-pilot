@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { BillingExpiryPanel } from "@/components/BillingExpiryPanel";
 import { HealthBadge } from "@/components/HealthBadge";
 import { PostgresHealthSummary } from "@/components/PostgresHealthSummary";
 import { ServerStatusPanel } from "@/components/ServerStatusPanel";
@@ -47,6 +48,7 @@ export default function SitesPage() {
   return (
     <div>
       <ServerStatusPanel />
+      <BillingExpiryPanel />
       <PostgresHealthSummary />
 
       <div className="page-header">

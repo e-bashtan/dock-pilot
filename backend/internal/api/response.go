@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
+	"github.com/ebash/dock-pilot/backend/internal/billing"
 	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
 	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
 	"github.com/ebash/dock-pilot/backend/internal/pgdb"
@@ -33,7 +34,8 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, deploysvc.ErrNotFound),
 		errors.Is(err, secretpkg.ErrNotFound),
 		errors.Is(err, notifpkg.ErrNotFound),
-		errors.Is(err, pgdb.ErrNotFound):
+		errors.Is(err, pgdb.ErrNotFound),
+		errors.Is(err, billing.ErrNotFound):
 		status = http.StatusNotFound
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrSlugConflict),
@@ -49,7 +51,10 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, pgdb.ErrInvalidInput),
 		errors.Is(err, panelbackup.ErrInvalidInput),
 		errors.Is(err, panelbackup.ErrNotConfigured),
-		errors.Is(err, panelbackup.ErrMigration):
+		errors.Is(err, panelbackup.ErrMigration),
+		errors.Is(err, billing.ErrInvalidInput),
+		errors.Is(err, billing.ErrMigration),
+		errors.Is(err, billing.ErrNotConfigured):
 		status = http.StatusBadRequest
 		msg = err.Error()
 	default:

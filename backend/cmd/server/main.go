@@ -11,6 +11,7 @@ import (
 
 	"github.com/ebash/dock-pilot/backend/internal/api"
 	"github.com/ebash/dock-pilot/backend/internal/auth"
+	"github.com/ebash/dock-pilot/backend/internal/billing"
 	"github.com/ebash/dock-pilot/backend/internal/config"
 	"github.com/ebash/dock-pilot/backend/internal/deployments"
 	"github.com/ebash/dock-pilot/backend/internal/docker"
@@ -80,11 +81,13 @@ func main() {
 	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
 	panelBackupSvc := panelbackup.NewService(queries, dockerClient, cipher, pgdbSvc, cfg.DatabaseURL, logger)
 	notifSvc := notifications.NewService(queries, cipher, sitesSvc, pgdbSvc)
+	billingSvc := billing.NewService(queries, cipher, notifSvc, logger)
 	worker := deployments.NewWorker(queries, dockerClient, nginxMgr, sslMgr, secretsSvc, cfg.Deploy.WorkDir, logger)
 	deploySvc := deployments.NewService(queries, worker)
 	notifWorker := notifications.NewWorker(notifSvc, logger)
 	pgBackupWorker := pgdb.NewWorker(pgdbSvc, logger)
 	panelBackupWorker := panelbackup.NewWorker(panelBackupSvc, logger)
+	billingWorker := billing.NewWorker(billingSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -92,10 +95,11 @@ func main() {
 	notifWorker.Start(workerCtx)
 	pgBackupWorker.Start(workerCtx)
 	panelBackupWorker.Start(workerCtx)
+	billingWorker.Start(workerCtx)
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,

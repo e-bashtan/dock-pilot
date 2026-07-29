@@ -113,10 +113,16 @@ export interface SystemDockerDir {
 export interface SystemStatus {
   disk?: SystemDisk[] | null;
   memory: SystemMemory;
-  top_cpu: SystemProcess[];
-  top_mem: SystemProcess[];
+  top_cpu?: SystemProcess[];
+  top_mem?: SystemProcess[];
   docker: SystemDockerUsage;
   docker_dirs?: SystemDockerDir[];
+  checked_at: string;
+}
+
+export interface SystemProcesses {
+  top_cpu: SystemProcess[];
+  top_mem: SystemProcess[];
   checked_at: string;
 }
 
@@ -438,3 +444,45 @@ export interface FullPanelBackup {
   size_bytes: number;
   created_at: string;
 }
+
+export interface BillingAccount {
+  id: string;
+  provider: string;
+  server_ip: string;
+  login: string;
+  billmgr_url: string;
+  alert_days: number;
+  enabled: boolean;
+  password_set: boolean;
+  expire_date?: string;
+  days_left?: number;
+  status: string;
+  name: string;
+  cost: string;
+  last_checked_at?: string;
+  last_check_error: string;
+  last_alert_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBillingAccountRequest {
+  provider: string;
+  server_ip: string;
+  login: string;
+  password: string;
+  billmgr_url?: string;
+  alert_days?: number;
+  enabled?: boolean;
+}
+
+export interface UpdateBillingAccountRequest {
+  provider?: string;
+  server_ip?: string;
+  login?: string;
+  password?: string;
+  billmgr_url?: string;
+  alert_days?: number;
+  enabled?: boolean;
+}
+
