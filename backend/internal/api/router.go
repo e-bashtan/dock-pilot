@@ -93,6 +93,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 
 			r.Route("/system", func(r chi.Router) {
 				r.Get("/status", h.System.Status)
+				r.Get("/host", h.System.HostInfo)
 				r.Get("/processes", h.System.Processes)
 				r.Get("/docker-dirs", h.System.DockerDirs)
 				r.Post("/docker/prune", h.System.PruneDocker)

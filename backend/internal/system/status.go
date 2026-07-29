@@ -57,8 +57,9 @@ type DirUsage struct {
 }
 
 type Service struct {
-	host   *hostexec.Runner
-	docker docker.Client
+	host        *hostexec.Runner
+	docker      docker.Client
+	hostIPCache *hostIPCache
 }
 
 func NewService(hostRoot string, dockerClient docker.Client) *Service {

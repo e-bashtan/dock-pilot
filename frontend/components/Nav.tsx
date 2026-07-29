@@ -29,7 +29,7 @@ export function Nav() {
     <>
       <nav className="nav">
         <Link href="/sites" className="nav-brand" onClick={closeMenu}>
-          <BrandLogo showVersion />
+          <BrandLogo showVersion showServerIP />
         </Link>
         <button
           type="button"

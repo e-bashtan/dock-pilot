@@ -124,16 +124,20 @@ func (s *Service) canUpdate() (bool, string) {
 }
 
 func (s *Service) readCurrentVersion(ctx context.Context) string {
+	// Prefer the running frontend image — /opt/dock-pilot/VERSION can lag after CLI upgrades.
+	if v := s.readFrontendImageVersion(ctx); v != "" {
+		return v
+	}
+	if v := normalizeVersion(os.Getenv("APP_VERSION")); v != "" {
+		return v
+	}
 	p := s.hostPath(filepath.Join(s.installDir(), "VERSION"))
 	if b, err := os.ReadFile(p); err == nil {
 		if v := normalizeVersion(string(b)); v != "" {
 			return v
 		}
 	}
-	if v := normalizeVersion(os.Getenv("APP_VERSION")); v != "" {
-		return v
-	}
-	return s.readFrontendImageVersion(ctx)
+	return ""
 }
 
 func (s *Service) readFrontendImageVersion(ctx context.Context) string {

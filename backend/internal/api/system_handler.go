@@ -45,6 +45,10 @@ func (h *SystemHandler) DockerDirs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+func (h *SystemHandler) HostInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.system.GetHostInfo(r.Context()))
+}
+
 func (h *SystemHandler) PruneDocker(w http.ResponseWriter, r *http.Request) {
 	result, err := h.system.PruneDocker(r.Context())
 	if err != nil {

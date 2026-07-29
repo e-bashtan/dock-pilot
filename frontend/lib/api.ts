@@ -20,6 +20,7 @@ import type {
   SystemUpdateInfo,
   SystemUpgradeJob,
   SystemUpgradeStart,
+  SystemHostInfo,
   UpdateNotificationSettings,
   PgInstance,
   PgDatabase,
@@ -245,6 +246,8 @@ export const api = {
 
   pruneDocker: () =>
     request<DockerPruneResult>("/api/system/docker/prune", { method: "POST" }),
+
+  getSystemHost: () => request<SystemHostInfo>("/api/system/host"),
 
   getSystemUpdate: () => request<SystemUpdateInfo>("/api/system/update"),
 

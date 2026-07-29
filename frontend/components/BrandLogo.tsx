@@ -1,13 +1,19 @@
 import Image from "next/image";
 import { AppVersion } from "@/components/AppVersion";
+import { ServerIPBadge } from "@/components/ServerIPBadge";
 
 type Props = {
   showVersion?: boolean;
+  showServerIP?: boolean;
   /** Nav bar vs login screen */
   size?: "nav" | "auth";
 };
 
-export function BrandLogo({ showVersion = false, size = "nav" }: Props) {
+export function BrandLogo({
+  showVersion = false,
+  showServerIP = false,
+  size = "nav",
+}: Props) {
   const isNav = size === "nav";
 
   return (
@@ -42,6 +48,7 @@ export function BrandLogo({ showVersion = false, size = "nav" }: Props) {
         />
       )}
       {showVersion && <AppVersion />}
+      {showServerIP && <ServerIPBadge />}
     </span>
   );
 }

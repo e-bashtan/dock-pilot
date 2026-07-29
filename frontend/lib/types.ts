@@ -156,6 +156,12 @@ export interface SystemUpgradeStart {
   message: string;
 }
 
+export interface SystemHostInfo {
+  ip: string;
+  hostname?: string;
+  checked_at: string;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   telegram_chat_id: string;

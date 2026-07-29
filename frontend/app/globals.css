@@ -353,6 +353,20 @@ h3 {
   vertical-align: middle;
 }
 
+.app-server-ip {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted);
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-server-ip::before {
+  content: "·";
+  margin: 0 0.35rem;
+  opacity: 0.7;
+}
+
 .nav-links {
   display: flex;
   align-items: center;
@@ -977,7 +991,8 @@ h3 {
     height: 64px;
   }
 
-  .brand-logo .app-version {
+  .brand-logo .app-version,
+  .brand-logo .app-server-ip {
     font-size: 0.7rem;
   }
 
