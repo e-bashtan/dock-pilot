@@ -146,6 +146,36 @@ func (r *Runner) RunHostCombined(ctx context.Context, name string, args ...strin
 	return string(out), nil
 }
 
+// NsenterSh runs a shell script in the host init namespaces.
+// Avoids -i (IPC): many hosts deny /proc/1/ns/ipc even with SYS_ADMIN.
+func (r *Runner) NsenterSh(ctx context.Context, script string) (string, error) {
+	attempts := [][]string{
+		{"-t", "1", "-m", "-u", "-n", "-p", "--", "sh", "-c", script},
+		{"-t", "1", "-m", "-n", "-p", "--", "sh", "-c", script},
+		{"-t", "1", "-m", "-u", "-n", "--", "sh", "-c", script},
+		{"-t", "1", "-m", "--", "sh", "-c", script},
+	}
+	var lastErr error
+	var lastOut string
+	for _, args := range attempts {
+		out, err := r.RunHostCombined(ctx, "nsenter", args...)
+		if err == nil {
+			return out, nil
+		}
+		lastErr = err
+		lastOut = out
+		// Permission on a specific ns → try fewer namespaces.
+		if !strings.Contains(err.Error(), "Permission denied") &&
+			!strings.Contains(err.Error(), "Operation not permitted") {
+			break
+		}
+	}
+	if lastOut != "" {
+		return lastOut, lastErr
+	}
+	return "", lastErr
+}
+
 // RunShellCombined runs a shell script via chroot when HostRoot is set.
 func (r *Runner) RunShellCombined(ctx context.Context, script string) (string, error) {
 	var cmd *exec.Cmd

@@ -27,10 +27,15 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_APP_VERSION=
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Keep for docker inspect / panel update "current version" detection.
+ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
+LABEL org.opencontainers.image.version=$NEXT_PUBLIC_APP_VERSION
 
 RUN addgroup -g 10001 -S nodejs && adduser -S nextjs -u 10001 -G nodejs
 

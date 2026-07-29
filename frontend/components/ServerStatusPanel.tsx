@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
+import { getAppVersion } from "@/lib/version";
 import type {
   SystemDockerDir,
   SystemProcess,
@@ -13,6 +14,12 @@ import type {
   SystemUpdateInfo,
   SystemUpgradeJob,
 } from "@/lib/types";
+
+function normalizeVersionTag(raw: string): string {
+  const v = raw.trim();
+  if (!v || v.toLowerCase() === "dev") return "";
+  return v.startsWith("v") ? v : `v${v}`;
+}
 
 function diskTone(pct: number): string {
   if (pct >= 90) return "var(--danger, #b91c1c)";
@@ -229,6 +236,15 @@ export function ServerStatusPanel() {
     (docker?.volumes_bytes ?? 0) +
     (docker?.containers_bytes ?? 0);
   const memPct = mem?.used_percent ?? 0;
+  const runningVersion =
+    normalizeVersionTag(getAppVersion()) ||
+    normalizeVersionTag(updateInfo?.current ?? "");
+  const latestVersion = normalizeVersionTag(updateInfo?.latest ?? "");
+  const updateAvailable =
+    !!latestVersion &&
+    (!runningVersion || runningVersion !== latestVersion);
+  const upgradeBusy =
+    updateInfo?.upgrade_status === "running" || updateJob?.status === "running";
 
   return (
     <div className="card server-status" style={{ marginBottom: "1.25rem" }}>
@@ -298,31 +314,30 @@ export function ServerStatusPanel() {
             <div className="server-status-label">{t("system.updateTitle")}</div>
             <div className="server-status-meta" style={{ marginTop: "0.15rem" }}>
               {t("system.updateCurrent")}:{" "}
-              <strong>{updateInfo.current || "—"}</strong>
+              <strong>{runningVersion || "—"}</strong>
               {" → "}
               {t("system.updateLatest")}:{" "}
               <strong>
-                {updateInfo.latest || t("system.updateUnknownLatest")}
+                {latestVersion || t("system.updateUnknownLatest")}
               </strong>
               {" · "}
               <span
                 style={{
-                  color:
-                    updateInfo.upgrade_status === "running" || updateJob?.status === "running"
+                  color: upgradeBusy
+                    ? "var(--warn, #b45309)"
+                    : updateAvailable
                       ? "var(--warn, #b45309)"
-                      : updateInfo.update_available
-                        ? "var(--warn, #b45309)"
-                        : updateInfo.latest
-                          ? "var(--ok, #15803d)"
-                          : "var(--muted)",
+                      : latestVersion
+                        ? "var(--ok, #15803d)"
+                        : "var(--muted)",
                   fontWeight: 600,
                 }}
               >
-                {updateInfo.upgrade_status === "running" || updateJob?.status === "running"
+                {upgradeBusy
                   ? t("system.updateRunning")
-                  : updateInfo.update_available && updateInfo.latest
-                    ? t("system.updateAvailable", { version: updateInfo.latest })
-                    : updateInfo.latest
+                  : updateAvailable && latestVersion
+                    ? t("system.updateAvailable", { version: latestVersion })
+                    : latestVersion
                       ? t("system.updateUpToDate")
                       : t("system.updateUnknownLatest")}
               </span>
@@ -350,19 +365,16 @@ export function ServerStatusPanel() {
               disabled={
                 updateStarting ||
                 !updateInfo.can_update ||
-                !updateInfo.latest ||
-                (!updateInfo.update_available && updateInfo.upgrade_status !== "failed") ||
-                updateInfo.upgrade_status === "running" ||
-                updateJob?.status === "running"
+                !latestVersion ||
+                (!updateAvailable && updateInfo.upgrade_status !== "failed") ||
+                upgradeBusy
               }
               onClick={() => setUpdateConfirm(true)}
             >
-              {updateStarting ||
-              updateInfo.upgrade_status === "running" ||
-              updateJob?.status === "running"
+              {updateStarting || upgradeBusy
                 ? t("system.updateRunning")
-                : updateInfo.latest
-                  ? t("system.updateTo", { version: updateInfo.latest })
+                : latestVersion
+                  ? t("system.updateTo", { version: latestVersion })
                   : t("system.updateNow")}
             </button>
           </div>

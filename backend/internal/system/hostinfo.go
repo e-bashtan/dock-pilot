@@ -46,7 +46,7 @@ func (s *Service) GetHostInfo(ctx context.Context) HostInfo {
 	ip := s.detectHostIP(ctx)
 	hn, _ := os.Hostname()
 	if s.host.UsesChroot() {
-		if out, err := s.host.RunHostCombined(ctx, "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "hostname", "-s"); err == nil {
+		if out, err := s.host.NsenterSh(ctx, "hostname -s"); err == nil {
 			if h := strings.TrimSpace(out); h != "" {
 				hn = h
 			}
@@ -70,8 +70,7 @@ func (s *Service) detectHostIP(ctx context.Context) string {
 	}
 
 	if s.host.UsesChroot() {
-		if out, err := s.host.RunHostCombined(ctx, "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--",
-			"ip", "-4", "route", "get", "1.1.1.1"); err == nil {
+		if out, err := s.host.NsenterSh(ctx, "ip -4 route get 1.1.1.1"); err == nil {
 			if ip := try(out); ip != "" {
 				return ip
 			}

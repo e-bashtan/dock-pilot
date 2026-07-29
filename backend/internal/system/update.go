@@ -141,6 +141,15 @@ func (s *Service) readCurrentVersion(ctx context.Context) string {
 }
 
 func (s *Service) readFrontendImageVersion(ctx context.Context) string {
+	// Label (set on runner image) — preferred.
+	if out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
+		"--format", `{{index .Config.Labels "org.opencontainers.image.version"}}`,
+		"dock-pilot-frontend"); err == nil {
+		if v := normalizeVersion(out); v != "" {
+			return v
+		}
+	}
+	// Runtime env (runner stage) or leftover builder env.
 	out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
 		"--format", `{{range .Config.Env}}{{println .}}{{end}}`,
 		"dock-pilot-frontend")
@@ -216,9 +225,9 @@ func (s *Service) StartUpgrade(ctx context.Context, target string) (UpgradeStart
 	installDir := s.installDir()
 	stateDir := filepath.Join(installDir, upgradeStateDir)
 	scriptPath := filepath.Join(installDir, "scripts", "dock-pilot-upgrade.sh")
+	launchPath := filepath.Join(stateDir, "launch.sh")
 
-	// One host shell: mark running, spawn upgrade in background, write final status.
-	launcher := fmt.Sprintf(`
+	launchBody := fmt.Sprintf(`#!/bin/bash
 set -eu
 STATE=%q
 INSTALL=%q
@@ -228,17 +237,52 @@ mkdir -p "$STATE"
 echo "$TARGET" > "$STATE/target"
 : > "$STATE/log"
 echo running > "$STATE/status"
-nohup env DOCK_PILOT_FORCE_PROGRESS=1 DOCK_PILOT_INSTALL_DIR="$INSTALL" \
-  sh -c 'bash "$1" "$2" >>"$3/log" 2>&1; ec=$?; if [ "$ec" -eq 0 ]; then echo ok > "$3/status"; else echo failed > "$3/status"; fi; exit "$ec"' \
-  sh "$SCRIPT" "$TARGET" "$STATE" >/dev/null 2>&1 &
-echo $! > "$STATE/pid"
+export DOCK_PILOT_FORCE_PROGRESS=1
+export DOCK_PILOT_INSTALL_DIR="$INSTALL"
+set +e
+bash "$SCRIPT" "$TARGET" >>"$STATE/log" 2>&1
+ec=$?
+set -e
+if [ "$ec" -eq 0 ]; then
+  echo ok > "$STATE/status"
+else
+  echo failed > "$STATE/status"
+fi
+exit "$ec"
 `, stateDir, installDir, scriptPath, target)
+
+	hostLaunch := s.hostPath(launchPath)
+	if err := os.MkdirAll(filepath.Dir(hostLaunch), 0o755); err != nil {
+		return UpgradeStartResult{}, fmt.Errorf("%w: %v", ErrUpgradeStartFail, err)
+	}
+	if err := os.WriteFile(hostLaunch, []byte(launchBody), 0o755); err != nil {
+		return UpgradeStartResult{}, fmt.Errorf("%w: %v", ErrUpgradeStartFail, err)
+	}
+
+	// Start detached on the host so the job survives API container recreate.
+	// Prefer systemd-run; fall back to setsid+nohup. Never use nsenter -i (IPC often denied).
+	startCmd := fmt.Sprintf(`
+set -eu
+LAUNCH=%q
+chmod +x "$LAUNCH"
+if command -v systemd-run >/dev/null 2>&1; then
+  systemd-run --collect --working-directory=/ bash "$LAUNCH"
+  echo systemd-run > %q/pid
+else
+  setsid nohup bash "$LAUNCH" </dev/null >/dev/null 2>&1 &
+  echo $! > %q/pid
+fi
+`, launchPath, stateDir, stateDir)
 
 	var err error
 	if s.host.UsesChroot() {
-		_, err = s.host.RunHostCombined(ctx, "nsenter", "-t", "1", "-m", "-n", "-u", "-i", "-p", "--", "sh", "-c", launcher)
+		_, err = s.host.NsenterSh(ctx, startCmd)
+		if err != nil {
+			// Last resort: start via host mount view inside container namespaces (pid: host).
+			_, err = s.host.RunShellCombined(ctx, startCmd)
+		}
 	} else {
-		_, err = s.host.RunShellCombined(ctx, launcher)
+		_, err = s.host.RunShellCombined(ctx, startCmd)
 	}
 	if err != nil {
 		return UpgradeStartResult{}, fmt.Errorf("%w: %v", ErrUpgradeStartFail, err)
@@ -304,7 +348,7 @@ func (s *Service) hostPIDAlive(pid int) bool {
 	check := fmt.Sprintf("kill -0 %d 2>/dev/null", pid)
 	var err error
 	if s.host.UsesChroot() {
-		_, err = s.host.RunHostCombined(context.Background(), "nsenter", "-t", "1", "-m", "-n", "-u", "-i", "-p", "--", "sh", "-c", check)
+		_, err = s.host.NsenterSh(context.Background(), check)
 	} else {
 		_, err = s.host.RunShellCombined(context.Background(), check)
 	}
