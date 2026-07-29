@@ -28,6 +28,8 @@ body {
   font-family: var(--font);
   line-height: 1.5;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 main {
@@ -103,6 +105,18 @@ h3 {
   background: var(--bg);
   color: var(--text);
   font-size: 0.875rem;
+}
+
+/* iOS Safari zooms the page when focused inputs are < 16px — feels like a popup. */
+@media (max-width: 768px) {
+  .input,
+  .select,
+  .textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 .textarea {
@@ -878,20 +892,34 @@ h3 {
   inset: 0;
   z-index: 100;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: 1rem;
+  padding: 0;
   background: rgba(15, 23, 42, 0.55);
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal {
   width: min(100%, 22rem);
-  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
+  margin: 1rem;
 }
 
 .modal-wide {
   width: min(100%, 56rem);
+}
+
+@media (min-width: 769px) {
+  .modal-backdrop {
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .modal {
+    margin: 0;
+    max-height: calc(100vh - 2rem);
+  }
 }
 
 .linkish {
