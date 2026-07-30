@@ -94,7 +94,7 @@ func (w *PollingWorker) pollNode(ctx context.Context, node db.FleetNode) {
 		return
 	}
 	now := time.Now().UTC()
-	payload, _ := json.Marshal(map[string]any{
+	payload := w.svc.mergeNodeSnapshotPayload(ctx, node.ID, map[string]any{
 		"metrics":      status.Metrics,
 		"applications": status.Apps,
 		"host_ip":      status.HostIP,
@@ -285,6 +285,8 @@ func (w *HeartbeatWorker) tick(ctx context.Context) {
 		Version: status.Version,
 		Metrics: status.Metrics,
 		Apps:    &status.Apps,
+		HostIP:  status.HostIP,
+		Billing: status.Billing,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, stringsTrimRight(settings.MasterUrl)+"/api/fleet/ingest/heartbeat", bytes.NewReader(body))
 	if err != nil {

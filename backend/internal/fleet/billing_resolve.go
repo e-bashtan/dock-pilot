@@ -262,6 +262,35 @@ func pickRemoteBilling(accounts []RemoteBillingAccount, hostIP, hostname string)
 	return nil
 }
 
+// mergeNodeSnapshotPayload keeps the last known billing/host_ip when a new
+// snapshot (e.g. heartbeat) omits them — otherwise Master UI flickers "Set payment".
+func (s *Service) mergeNodeSnapshotPayload(ctx context.Context, nodeID uuid.UUID, fields map[string]any) []byte {
+	prevBilling := []RemoteBillingAccount(nil)
+	prevHostIP := ""
+	if snap, err := s.q.GetLatestFleetSnapshot(ctx, nodeID); err == nil {
+		prevBilling = snapshotRemoteBilling(snap.Payload)
+		prevHostIP = snapshotHostIP(snap.Payload)
+	}
+
+	hostIP, _ := fields["host_ip"].(string)
+	hostIP = strings.TrimSpace(hostIP)
+	if hostIP == "" {
+		hostIP = prevHostIP
+	}
+	fields["host_ip"] = hostIP
+
+	billing, _ := fields["billing"].([]RemoteBillingAccount)
+	if !billingDTOUseful(pickRemoteBilling(billing, hostIP, "")) && len(prevBilling) > 0 {
+		fields["billing"] = prevBilling
+	}
+
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		raw, _ = json.Marshal(map[string]any{})
+	}
+	return raw
+}
+
 func (s *Service) resolveNodeBilling(
 	ctx context.Context,
 	row db.FleetNode,
@@ -282,11 +311,6 @@ func (s *Service) resolveNodeBilling(
 		}
 	}
 
-	// Explicit manual entry on Master wins.
-	if billErr == nil && bill.Mode == "manual" && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {
-		return billingDTOFromManual(bill)
-	}
-
 	hostname := ""
 	hostIP := ""
 	var remoteBilling []RemoteBillingAccount
@@ -301,10 +325,19 @@ func (s *Service) resolveNodeBilling(
 		matchIP = hostIP
 	}
 
-	// Managed DockPilot / agent: prefer payment data from the node itself
-	// (slave alert_days + expire), not Master's empty auto-match.
-	remoteFirst := row.ConnectionType == ConnDockpilot || row.ConnectionType == ConnAgent
-	if remoteFirst {
+	// DockPilot slaves: payment lives on the node — prefer remote over Master manual leftovers.
+	if row.ConnectionType == ConnDockpilot {
+		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
+			return dto
+		}
+	}
+
+	// Agents / explicit Master manual entry.
+	if billErr == nil && bill.Mode == "manual" && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {
+		return billingDTOFromManual(bill)
+	}
+
+	if row.ConnectionType == ConnAgent {
 		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
 			return dto
 		}
@@ -318,7 +351,7 @@ func (s *Service) resolveNodeBilling(
 		}
 	}
 
-	if !remoteFirst {
+	if row.ConnectionType == ConnLocal {
 		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
 			return dto
 		}

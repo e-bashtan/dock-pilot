@@ -182,12 +182,14 @@ type PairNodeResponse struct {
 }
 
 type HeartbeatRequest struct {
-	NodeUID      string           `json:"node_uid"`
-	Version      string           `json:"version"`
-	AgentVersion string           `json:"agent_version"`
-	Metrics      metrics.Snapshot `json:"metrics"`
-	Apps         *AppsDTO         `json:"applications,omitempty"`
-	Services     []ServiceStatus  `json:"services,omitempty"`
+	NodeUID      string                  `json:"node_uid"`
+	Version      string                  `json:"version"`
+	AgentVersion string                  `json:"agent_version"`
+	Metrics      metrics.Snapshot        `json:"metrics"`
+	Apps         *AppsDTO                `json:"applications,omitempty"`
+	Services     []ServiceStatus         `json:"services,omitempty"`
+	HostIP       string                  `json:"host_ip,omitempty"`
+	Billing      []RemoteBillingAccount  `json:"billing,omitempty"`
 }
 
 type IngestEvent struct {

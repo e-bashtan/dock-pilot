@@ -65,18 +65,20 @@ func TestPickRemoteBilling(t *testing.T) {
 	}
 }
 
-func TestBillingDTOUseful(t *testing.T) {
-	if billingDTOUseful(nil) {
-		t.Fatal("nil")
+func TestMergeKeepsPreviousBilling(t *testing.T) {
+	expire := "2026-08-15"
+	prev := []RemoteBillingAccount{{
+		ServerIP:   "62.173.140.62",
+		Cost:       "288.75",
+		ExpireDate: &expire,
+		Enabled:    true,
+		AlertDays:  30,
+	}}
+	// Empty incoming billing should not be considered useful.
+	if billingDTOUseful(pickRemoteBilling(nil, "62.173.140.62", "")) {
+		t.Fatal("empty should not be useful")
 	}
-	if billingDTOUseful(&BillingDTO{}) {
-		t.Fatal("empty")
-	}
-	due := "2026-08-15"
-	if !billingDTOUseful(&BillingDTO{NextDueDate: &due}) {
-		t.Fatal("due only")
-	}
-	if !billingDTOUseful(&BillingDTO{CostMinor: 100}) {
-		t.Fatal("cost only")
+	if !billingDTOUseful(pickRemoteBilling(prev, "62.173.140.62", "")) {
+		t.Fatal("prev should be useful")
 	}
 }

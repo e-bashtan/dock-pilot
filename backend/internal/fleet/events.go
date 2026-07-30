@@ -30,15 +30,17 @@ var allowedEventTypes = map[string]string{
 
 func (s *Service) IngestHeartbeat(ctx context.Context, nodeID uuid.UUID, req HeartbeatRequest) error {
 	now := time.Now().UTC()
-	payload, _ := json.Marshal(map[string]any{
-		"metrics":        req.Metrics,
-		"applications":   req.Apps,
-		"services":       req.Services,
-	})
 	appsTotal, appsRunning, appsUnhealthy := 0, 0, 0
 	if req.Apps != nil {
 		appsTotal, appsRunning, appsUnhealthy = req.Apps.Total, req.Apps.Running, req.Apps.Unhealthy
 	}
+	payload := s.mergeNodeSnapshotPayload(ctx, nodeID, map[string]any{
+		"metrics":      req.Metrics,
+		"applications": req.Apps,
+		"services":     req.Services,
+		"host_ip":      req.HostIP,
+		"billing":      req.Billing,
+	})
 	_, _ = s.q.InsertFleetSnapshot(ctx, db.InsertFleetSnapshotParams{
 		NodeID:           nodeID,
 		CollectedAt:      now,

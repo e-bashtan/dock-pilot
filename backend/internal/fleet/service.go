@@ -100,6 +100,7 @@ func (s *Service) ensureInstallSchema(ctx context.Context) error {
 		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS panel_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS cert_email TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE fleet_node_billing ADD COLUMN IF NOT EXISTS alert_days INT NOT NULL DEFAULT 10`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.pool.Exec(ctx, stmt); err != nil {
@@ -121,6 +122,7 @@ END $$`)
 }
 
 func (s *Service) ensureSettings(ctx context.Context) (db.FleetSetting, error) {
+	_ = s.ensureInstallSchema(ctx)
 	_ = s.q.EnsureFleetSettings(ctx)
 	row, err := s.q.GetFleetSettings(ctx)
 	if err != nil {
@@ -531,7 +533,7 @@ func (s *Service) refreshLocalSnapshot(ctx context.Context) error {
 	if s.hostIP != nil {
 		hostIP = strings.TrimSpace(s.hostIP(ctx))
 	}
-	payload, _ := json.Marshal(map[string]any{
+	payload := s.mergeNodeSnapshotPayload(ctx, local.ID, map[string]any{
 		"metrics":      snap,
 		"applications": apps,
 		"host_ip":      hostIP,
