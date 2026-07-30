@@ -249,6 +249,9 @@ function FleetNodeRow({
           <div className="fleet-node-section-label">{t("fleet.monitoringSection")}</div>
           {node.metrics ? (
             <div className="fleet-node-stats">
+              {node.status === "offline" && (
+                <span className="fleet-node-incidents">{t("fleet.metricsStale")}</span>
+              )}
               <span>CPU {formatPercent(node.metrics.cpu_percent)}</span>
               <span>
                 {t("fleet.memory")}{" "}

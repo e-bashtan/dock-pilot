@@ -6,15 +6,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=dockpilot-agent
+Group=dockpilot-agent
+# Self-heal ownership if register previously wrote config as root.
+ExecStartPre=+/bin/chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
+ExecStartPre=+/bin/chmod 0755 /etc/dockpilot-agent
+ExecStartPre=+/bin/chmod 0600 /etc/dockpilot-agent/config.json
 ExecStart=/usr/local/bin/dockpilot-agent -config /etc/dockpilot-agent/config.json
 Restart=always
 RestartSec=5
 
 # Least privilege compatible with /proc metrics and systemctl status reads.
-User=dockpilot-agent
-Group=dockpilot-agent
-SupplementaryGroups=
-
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -30,10 +32,8 @@ SystemCallArchitectures=native
 
 # Config + durable outbox
 ReadWritePaths=/etc/dockpilot-agent /var/lib/dockpilot-agent
-# systemctl talks to the system bus
 PrivateDevices=false
 
-# Capability set kept minimal; status checks use the system D-Bus socket.
 CapabilityBoundingSet=
 AmbientCapabilities=
 

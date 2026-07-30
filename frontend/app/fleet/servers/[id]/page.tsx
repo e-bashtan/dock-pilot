@@ -252,6 +252,11 @@ export default function FleetServerDetailPage() {
         {node.metrics && (
           <div className="card">
             <h2 className="section-title">{t("fleet.metrics")}</h2>
+            {node.status === "offline" && (
+              <div className="alert alert-error" style={{ marginBottom: "0.75rem" }}>
+                {t("fleet.metricsStale")}
+              </div>
+            )}
             <div className="server-status-grid">
               <div>
                 <div className="label">CPU</div>

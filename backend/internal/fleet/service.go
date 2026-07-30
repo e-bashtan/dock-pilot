@@ -576,6 +576,10 @@ func (s *Service) toNodeResponse(
 	if row.LastSeenAt.Valid {
 		t := row.LastSeenAt.Time
 		resp.LastSeenAt = &t
+		if row.ConnectionType != ConnLocal {
+			// Derive live status from last contact so UI matches heartbeat age.
+			resp.Status = ComputeStatus(&t, time.Now().UTC())
+		}
 	}
 	if snap, err := s.q.GetLatestFleetSnapshot(ctx, row.ID); err == nil {
 		m := &MetricsDTO{}

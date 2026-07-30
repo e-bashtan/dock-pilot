@@ -4,10 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 )
 
-const DefaultConfigPath = "/etc/dockpilot-agent/config.json"
+const (
+	DefaultConfigPath = "/etc/dockpilot-agent/config.json"
+	ServiceUser       = "dockpilot-agent"
+	ServiceGroup      = "dockpilot-agent"
+)
 
 // Config is the on-disk agent configuration (mode 0600).
 type Config struct {
@@ -44,7 +50,7 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// Save writes config atomically with mode 0600.
+// Save writes config atomically with mode 0600 and ownership usable by the agent service user.
 func Save(path string, cfg Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("mkdir config dir: %w", err)
@@ -78,11 +84,39 @@ func Save(path string, cfg Config) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close config: %w", err)
 	}
+	_ = chownServiceUser(tmpName)
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename config: %w", err)
 	}
 	_ = os.Chmod(path, 0o600)
+	_ = chownServiceUser(path)
+	_ = chownServiceUser(dir)
 	return nil
+}
+
+func chownServiceUser(path string) error {
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	u, err := user.Lookup(ServiceUser)
+	if err != nil {
+		return err
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return err
+	}
+	gid := uid
+	if g, err := user.LookupGroup(ServiceGroup); err == nil {
+		if parsed, err := strconv.Atoi(g.Gid); err == nil {
+			gid = parsed
+		}
+	} else if u.Gid != "" {
+		if parsed, err := strconv.Atoi(u.Gid); err == nil {
+			gid = parsed
+		}
+	}
+	return os.Chown(path, uid, gid)
 }
 
 func (c Config) ValidateRuntime() error {

@@ -630,6 +630,8 @@ export const en = {
     monitoringSection: "Monitoring",
     billingSection: "Payment",
     monitoringWaiting: "Waiting for metrics…",
+    metricsStale:
+      "Agent is not reporting — metrics below are from the last heartbeat. Check dockpilot-agent on the host.",
     billingNotSet: "No matching VPS payment account",
     setBilling: "Link payment",
     editBilling: "Edit",

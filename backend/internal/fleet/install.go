@@ -747,6 +747,7 @@ func sshUpload(client *ssh.Client, remote string, data []byte) error {
 
 func buildInstallScript(tmpPath, checksum, masterURL, regToken, nodeUID string) string {
 	// Fixed script; values are shell-quoted.
+	// Register must not leave config owned by root: service runs as dockpilot-agent.
 	return fmt.Sprintf(`set -euo pipefail
 id dockpilot-agent >/dev/null 2>&1 || useradd --system --home /var/lib/dockpilot-agent --shell /usr/sbin/nologin dockpilot-agent
 mkdir -p /opt/dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
@@ -756,8 +757,9 @@ install -o root -g root -m 0755 %s /opt/dockpilot-agent/dockpilot-agent
 cat > /etc/dockpilot-agent/config.json <<EOF
 {"master_url":%q,"node_uid":%q,"node_token":"","heartbeat_interval_seconds":30}
 EOF
+chmod 0755 /etc/dockpilot-agent
 chmod 0600 /etc/dockpilot-agent/config.json
-chown dockpilot-agent:dockpilot-agent /etc/dockpilot-agent/config.json /var/lib/dockpilot-agent
+chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
 cat > /etc/systemd/system/dockpilot-agent.service <<'UNIT'
 [Unit]
 Description=DockPilot Agent
@@ -767,6 +769,9 @@ Wants=network-online.target
 Type=simple
 User=dockpilot-agent
 Group=dockpilot-agent
+ExecStartPre=+/bin/chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
+ExecStartPre=+/bin/chmod 0755 /etc/dockpilot-agent
+ExecStartPre=+/bin/chmod 0600 /etc/dockpilot-agent/config.json
 ExecStart=/opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json
 Restart=always
 RestartSec=5
@@ -778,12 +783,23 @@ ReadWritePaths=/var/lib/dockpilot-agent /etc/dockpilot-agent
 [Install]
 WantedBy=multi-user.target
 UNIT
-/opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json -register -master-url %s -registration-token %s -node-uid %s
+# Register as the service user so config.json is never left root:0600.
+if command -v runuser >/dev/null 2>&1; then
+  runuser -u dockpilot-agent -- /opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json -register -master-url %s -registration-token %s -node-uid %s
+else
+  su -s /bin/sh dockpilot-agent -c "/opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json -register -master-url %s -registration-token %s -node-uid %s"
+fi
+chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
+chmod 0755 /etc/dockpilot-agent
+chmod 0600 /etc/dockpilot-agent/config.json
 systemctl daemon-reload
 systemctl enable --now dockpilot-agent.service
 rm -f %s
 `, strconv.Quote(tmpPath), strconv.Quote(checksum), strconv.Quote(tmpPath),
-		masterURL, nodeUID, strconv.Quote(masterURL), strconv.Quote(regToken), strconv.Quote(nodeUID), strconv.Quote(tmpPath))
+		masterURL, nodeUID,
+		strconv.Quote(masterURL), strconv.Quote(regToken), strconv.Quote(nodeUID),
+		strconv.Quote(masterURL), strconv.Quote(regToken), strconv.Quote(nodeUID),
+		strconv.Quote(tmpPath))
 }
 
 // prevent unused rand import complaint in some builds

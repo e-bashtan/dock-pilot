@@ -631,6 +631,8 @@ export const ru: Messages = {
     monitoringSection: "Мониторинг",
     billingSection: "Оплата",
     monitoringWaiting: "Ждём метрики…",
+    metricsStale:
+      "Агент не отвечает — метрики ниже с последнего heartbeat. Проверьте dockpilot-agent на хосте.",
     billingNotSet: "Нет подходящего аккаунта оплаты VPS",
     setBilling: "Привязать оплату",
     editBilling: "Изменить",
