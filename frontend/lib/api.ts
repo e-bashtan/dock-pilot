@@ -53,6 +53,7 @@ import type {
   FleetPairingCode,
   PairDockpilotRequest,
   CreateAgentInstallRequest,
+  UpdateFleetNodeBillingRequest,
   FleetInstallation,
   FleetInstallationLog,
 } from "./types";
@@ -567,6 +568,12 @@ export const api = {
   listFleetNodes: () => request<FleetNode[]>("/api/fleet/nodes"),
 
   getFleetNode: (id: string) => request<FleetNode>(`/api/fleet/nodes/${id}`),
+
+  updateFleetNodeBilling: (id: string, body: UpdateFleetNodeBillingRequest) =>
+    request<FleetNode>(`/api/fleet/nodes/${id}/billing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 
   deleteFleetNode: (id: string) =>
     request<void>(`/api/fleet/nodes/${id}`, { method: "DELETE" }),

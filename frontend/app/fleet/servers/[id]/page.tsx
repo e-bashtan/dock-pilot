@@ -8,7 +8,7 @@ import { FleetNodeBadges, FleetStatusBadge } from "@/components/FleetBadges";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatMoneyMinor, formatPercent } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
-import type { FleetNode } from "@/lib/types";
+import type { BillingAccount, FleetNode } from "@/lib/types";
 
 function formatUptime(seconds: number | undefined): string {
   if (!seconds || seconds <= 0) return "—";
@@ -30,12 +30,20 @@ export default function FleetServerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [accounts, setAccounts] = useState<BillingAccount[]>([]);
+  const [billingAccountId, setBillingAccountId] = useState("");
+  const [billingMsg, setBillingMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const row = await api.getFleetNode(id);
+      const [row, list] = await Promise.all([
+        api.getFleetNode(id),
+        api.listBillingAccounts().catch(() => [] as BillingAccount[]),
+      ]);
       setNode(row);
+      setAccounts(list);
+      setBillingAccountId(row.billing?.billing_account_id || "");
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("fleet.nodeLoadFailed"));
@@ -59,6 +67,26 @@ export default function FleetServerDetailPage() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("fleet.nodeDeleteFailed"));
       setConfirmDelete(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveBilling = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setBusy(true);
+    setBillingMsg(null);
+    setError(null);
+    try {
+      const updated = await api.updateFleetNodeBilling(id, {
+        billing_account_id: billingAccountId,
+      });
+      setNode(updated);
+      setBillingAccountId(updated.billing?.billing_account_id || "");
+      setBillingMsg(t("fleet.billingSaved"));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("fleet.billingSaveFailed"));
     } finally {
       setBusy(false);
     }
@@ -210,30 +238,70 @@ export default function FleetServerDetailPage() {
         </div>
       )}
 
-      {node.billing && (
-        <div className="card">
-          <h2 className="section-title">{t("fleet.billing")}</h2>
-          <p>
-            {formatMoneyMinor(node.billing.cost_minor, node.billing.currency)}
-            {node.billing.next_due_date
-              ? ` · ${t("fleet.nextDue")} ${formatDateTime(node.billing.next_due_date)}`
-              : ""}
-          </p>
-          {node.billing.provider_name && (
-            <p className="muted">
-              {node.billing.provider_name}
-              {node.billing.provider_url && (
-                <>
-                  {" · "}
-                  <a href={node.billing.provider_url} target="_blank" rel="noopener noreferrer">
-                    {t("fleet.providerLink")}
-                  </a>
-                </>
-              )}
-            </p>
-          )}
+      <form className="card" onSubmit={saveBilling}>
+        <h2 className="section-title">{t("fleet.billing")}</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          {t("fleet.billingFormHint")}{" "}
+          <Link href="/payments">{t("fleet.openPayments")}</Link>
+        </p>
+        {billingMsg && <div className="alert alert-success">{billingMsg}</div>}
+
+        {node.billing && (node.billing.cost_minor > 0 || node.billing.next_due_date) && (
+          <div className="fleet-node-stats" style={{ marginBottom: "1rem" }}>
+            {(node.billing.monthly_equiv_minor ?? node.billing.cost_minor) > 0 && (
+              <span>
+                {formatMoneyMinor(
+                  node.billing.monthly_equiv_minor ?? node.billing.cost_minor,
+                  node.billing.currency,
+                )}
+                <span className="muted"> / {t("fleet.perMonth")}</span>
+              </span>
+            )}
+            {node.billing.cost_raw && (
+              <span className="muted">{node.billing.cost_raw}</span>
+            )}
+            {node.billing.next_due_date && (
+              <span>
+                {t("fleet.nextDue")} {formatDateTime(node.billing.next_due_date)}
+              </span>
+            )}
+            {typeof node.billing.days_left === "number" && (
+              <span>
+                {t("fleet.daysLeft", { days: node.billing.days_left })}
+              </span>
+            )}
+            {node.billing.server_ip && <span>{node.billing.server_ip}</span>}
+          </div>
+        )}
+
+        <div className="field">
+          <label className="label" htmlFor="bill-account">
+            {t("fleet.billingAccount")}
+          </label>
+          <select
+            id="bill-account"
+            className="input"
+            value={billingAccountId}
+            onChange={(e) => setBillingAccountId(e.target.value)}
+          >
+            <option value="">{t("fleet.billingAccountAuto")}</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.server_ip}
+                {a.name ? ` — ${a.name}` : ""}
+                {a.cost ? ` (${a.cost})` : ""}
+                {a.expire_date ? ` · ${a.expire_date}` : ""}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
+        {accounts.length === 0 && (
+          <p className="muted">{t("fleet.billingAccountsEmpty")}</p>
+        )}
+        <button type="submit" className="btn" disabled={busy} style={{ marginTop: "0.75rem" }}>
+          {busy ? t("common.saving") : t("fleet.saveBilling")}
+        </button>
+      </form>
 
       {node.services && node.services.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>

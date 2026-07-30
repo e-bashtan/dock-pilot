@@ -108,6 +108,9 @@ func main() {
 		notifSvc,
 		appVersion,
 		agentDir,
+		func(ctx context.Context) string {
+			return systemSvc.GetHostInfo(ctx).IP
+		},
 	)
 	notifSvc.SetLocalAlertGate(fleetSvc)
 	notifSvc.SetFleetEventSink(fleetSvc)

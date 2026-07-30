@@ -59,8 +59,18 @@ export default function FleetOverviewPage() {
     [nodes, filter],
   );
 
+  const billedCount = useMemo(
+    () =>
+      nodes.filter(
+        (n) =>
+          n.billing &&
+          ((n.billing.cost_minor ?? 0) > 0 || !!n.billing.next_due_date),
+      ).length,
+    [nodes],
+  );
+
   return (
-    <div>
+    <div className="fleet-page">
       <div className="page-header">
         <div>
           <h1>{t("fleet.title")}</h1>
@@ -68,7 +78,7 @@ export default function FleetOverviewPage() {
             {t("fleet.subtitle")}
           </p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="page-actions">
           <Link href="/fleet/settings" className="btn btn-secondary">
             {t("fleet.settingsLink")}
           </Link>
@@ -84,67 +94,65 @@ export default function FleetOverviewPage() {
         <p className="muted">{t("common.loading")}</p>
       ) : (
         <>
+          <p className="fleet-legend muted">{t("fleet.monitoringLegend")}</p>
+
           {overview && (
-            <div className="server-status-grid" style={{ marginBottom: "1.25rem" }}>
-              <div className="card">
-                <div className="label">{t("fleet.summaryServers")}</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 600 }}>
+            <div className="fleet-summary">
+              <div className="fleet-summary-card">
+                <div className="server-status-label">{t("fleet.summaryServers")}</div>
+                <div className="server-status-value">
                   {overview.servers_online}/{overview.servers_total}
                 </div>
-                <div className="muted" style={{ fontSize: "0.8rem" }}>
+                <div className="server-status-meta">
                   {t("fleet.summaryServersHint", {
                     warning: overview.servers_warning,
                     offline: overview.servers_offline,
                   })}
                 </div>
               </div>
-              <div className="card">
-                <div className="label">{t("fleet.summaryApps")}</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 600 }}>
+              <div className="fleet-summary-card">
+                <div className="server-status-label">{t("fleet.summaryApps")}</div>
+                <div className="server-status-value">
                   {overview.apps_running}/{overview.apps_total}
                 </div>
-                <div className="muted" style={{ fontSize: "0.8rem" }}>
+                <div className="server-status-meta">
                   {t("fleet.summaryAppsHint", {
                     unhealthy: overview.apps_unhealthy,
                   })}
+                  {overview.open_incidents > 0
+                    ? ` · ${t("fleet.summaryIncidents", { count: overview.open_incidents })}`
+                    : ""}
                 </div>
               </div>
-              <div className="card">
-                <div className="label">{t("fleet.summaryCost")}</div>
-                <div style={{ fontSize: "1.35rem", fontWeight: 600 }}>
+              <div className="fleet-summary-card">
+                <div className="server-status-label">{t("fleet.summaryCost")}</div>
+                <div className="server-status-value">
                   {formatMoneyMinor(
                     overview.monthly_cost_minor,
                     overview.currency,
                   )}
                 </div>
-                <div className="muted" style={{ fontSize: "0.8rem" }}>
-                  {overview.open_incidents > 0
-                    ? t("fleet.summaryIncidents", {
-                        count: overview.open_incidents,
+                <div className="server-status-meta">
+                  {overview.next_due_date
+                    ? t("fleet.summaryNextDue", {
+                        date: formatDateTime(overview.next_due_date),
                       })
-                    : overview.next_due_date
-                      ? t("fleet.summaryNextDue", {
-                          date: formatDateTime(overview.next_due_date),
-                        })
-                      : t("fleet.summaryNoIncidents")}
+                    : overview.monthly_cost_minor === 0
+                      ? t("fleet.summaryBillingEmpty")
+                      : t("fleet.summaryBillingSet", { count: billedCount })}
                 </div>
               </div>
             </div>
           )}
 
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              flexWrap: "wrap",
-              marginBottom: "1rem",
-            }}
-          >
+          <div className="fleet-filters" role="tablist" aria-label={t("fleet.title")}>
             {FILTERS.map((f) => (
               <button
                 key={f}
                 type="button"
-                className={`btn${filter === f ? "" : " btn-secondary"}`}
+                role="tab"
+                aria-selected={filter === f}
+                className={`fleet-filter${filter === f ? " fleet-filter-active" : ""}`}
                 onClick={() => setFilter(f)}
               >
                 {t(`fleet.filter.${f}`)}
@@ -160,88 +168,161 @@ export default function FleetOverviewPage() {
               </Link>
             </div>
           ) : (
-            <div className="stack-list">
-              {visible.map((node) => {
-                const href = fleetNodeHref(node);
-                const external = fleetNodeExternal(node);
-                const card = (
-                  <div className="stack-item">
-                    <div className="stack-item-main">
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "0.5rem",
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <strong>{node.name}</strong>
-                        <FleetStatusBadge status={node.status} />
-                        <FleetNodeBadges
-                          role={node.role}
-                          connectionType={node.connection_type}
-                        />
-                      </div>
-                      <div className="stack-item-meta">
-                        {node.hostname || node.node_uid}
-                        {node.last_seen_at
-                          ? ` · ${t("fleet.lastSeen")} ${formatDateTime(node.last_seen_at)}`
-                          : ""}
-                      </div>
-                      {node.metrics && (
-                        <div className="stack-item-meta">
-                          CPU {formatPercent(node.metrics.cpu_percent)}
-                          {" · "}
-                          {t("fleet.memory")}{" "}
-                          {formatBytes(node.metrics.memory_used_bytes)} /{" "}
-                          {formatBytes(node.metrics.memory_total_bytes)}
-                          {" · "}
-                          {t("fleet.disk")}{" "}
-                          {formatPercent(node.metrics.disk_used_percent)}
-                        </div>
-                      )}
-                      {node.applications && (
-                        <div className="stack-item-meta">
-                          {t("fleet.appsLine", {
-                            running: node.applications.running,
-                            total: node.applications.total,
-                            unhealthy: node.applications.unhealthy,
-                          })}
-                        </div>
-                      )}
-                      {node.open_incidents > 0 && (
-                        <div className="stack-item-meta" style={{ color: "var(--danger, #b91c1c)" }}>
-                          {t("fleet.openIncidents", { count: node.open_incidents })}
-                        </div>
-                      )}
-                    </div>
-                    <div className="stack-item-actions">
-                      {href &&
-                        (external ? (
-                          <a
-                            href={href}
-                            className="btn btn-secondary"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {t("fleet.openPanel")}
-                          </a>
-                        ) : (
-                          <Link href={href} className="btn btn-secondary">
-                            {node.connection_type === "local"
-                              ? t("fleet.manageLocal")
-                              : t("fleet.viewDetails")}
-                          </Link>
-                        ))}
-                    </div>
-                  </div>
-                );
-                return <div key={node.id}>{card}</div>;
-              })}
+            <div className="fleet-node-list">
+              {visible.map((node) => (
+                <FleetNodeRow
+                  key={node.id}
+                  node={node}
+                  formatDateTime={formatDateTime}
+                />
+              ))}
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function FleetNodeRow({
+  node,
+  formatDateTime,
+}: {
+  node: FleetNode;
+  formatDateTime: (value: string) => string;
+}) {
+  const { t } = useI18n();
+  const href = fleetNodeHref(node);
+  const external = fleetNodeExternal(node);
+  const detailHref = `/fleet/servers/${node.id}`;
+  const monthly =
+    node.billing?.monthly_equiv_minor ?? node.billing?.cost_minor ?? 0;
+
+  return (
+    <article className="fleet-node-card">
+      <div className="fleet-node-top">
+        <div className="fleet-node-heading">
+          <Link href={detailHref} className="fleet-node-name">
+            {node.name}
+          </Link>
+          <div className="fleet-node-badges">
+            <FleetStatusBadge status={node.status} />
+            <FleetNodeBadges
+              role={node.role}
+              connectionType={node.connection_type}
+            />
+          </div>
+        </div>
+        <div className="fleet-node-actions">
+          <Link href={detailHref} className="btn btn-secondary">
+            {t("fleet.viewDetails")}
+          </Link>
+          {href && external && (
+            <a
+              href={href}
+              className="btn btn-secondary"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("fleet.openPanel")}
+            </a>
+          )}
+          {href && !external && node.connection_type === "local" && (
+            <Link href={href} className="btn btn-secondary">
+              {t("fleet.manageLocal")}
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <div className="fleet-node-meta">
+        <span>{node.hostname || node.base_url || node.node_uid}</span>
+        {node.last_seen_at && (
+          <span>
+            {t("fleet.lastSeen")} {formatDateTime(node.last_seen_at)}
+          </span>
+        )}
+      </div>
+
+      <div className="fleet-node-sections">
+        <div className="fleet-node-section">
+          <div className="fleet-node-section-label">{t("fleet.monitoringSection")}</div>
+          {node.metrics ? (
+            <div className="fleet-node-stats">
+              <span>CPU {formatPercent(node.metrics.cpu_percent)}</span>
+              <span>
+                {t("fleet.memory")}{" "}
+                {formatBytes(node.metrics.memory_used_bytes)} /{" "}
+                {formatBytes(node.metrics.memory_total_bytes)}
+              </span>
+              <span>
+                {t("fleet.disk")} {formatPercent(node.metrics.disk_used_percent)}
+              </span>
+              {node.applications && (
+                <span>
+                  {t("fleet.appsLine", {
+                    running: node.applications.running,
+                    total: node.applications.total,
+                    unhealthy: node.applications.unhealthy,
+                  })}
+                </span>
+              )}
+              {node.open_incidents > 0 && (
+                <span className="fleet-node-incidents">
+                  {t("fleet.openIncidents", { count: node.open_incidents })}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="fleet-node-stats muted">{t("fleet.monitoringWaiting")}</div>
+          )}
+        </div>
+
+        <div className="fleet-node-section">
+          <div className="fleet-node-section-label">{t("fleet.billingSection")}</div>
+          {node.billing &&
+          ((node.billing.monthly_equiv_minor ?? node.billing.cost_minor ?? 0) >
+            0 ||
+            node.billing.next_due_date) ? (
+            <div className="fleet-node-stats">
+              {(node.billing.monthly_equiv_minor ??
+                node.billing.cost_minor ??
+                0) > 0 && (
+                <span>
+                  {formatMoneyMinor(monthly, node.billing.currency)}
+                  <span className="muted"> / {t("fleet.perMonth")}</span>
+                </span>
+              )}
+              {node.billing.next_due_date && (
+                <span>
+                  {t("fleet.nextDue")}{" "}
+                  {formatDateTime(node.billing.next_due_date)}
+                </span>
+              )}
+              {typeof node.billing.days_left === "number" && (
+                <span>
+                  {t("fleet.daysLeft", { days: node.billing.days_left })}
+                </span>
+              )}
+              {(node.billing.provider_name || node.billing.server_ip) && (
+                <span>
+                  {node.billing.provider_name || node.billing.server_ip}
+                </span>
+              )}
+              <Link href="/payments" className="fleet-inline-link">
+                {t("fleet.openPayments")}
+              </Link>
+            </div>
+          ) : (
+            <div className="fleet-node-stats">
+              <span className="muted">{t("fleet.billingNotSet")}</span>
+              <Link href="/payments" className="fleet-inline-link">
+                {t("fleet.configurePayments")}
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }

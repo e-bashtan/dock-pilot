@@ -142,7 +142,13 @@ func (s *Service) PairRemoteDockpilot(ctx context.Context, req PairDockpilotRequ
 		TokenHash:      inboundHash,
 		EncryptedToken: nil,
 	})
-	return s.toNodeResponse(ctx, node), nil
+	accounts := s.listBillingAccounts(ctx)
+	claimed := map[uuid.UUID]bool{}
+	localIP := ""
+	if s.hostIP != nil {
+		localIP = strings.TrimSpace(s.hostIP(ctx))
+	}
+	return s.toNodeResponse(ctx, node, accounts, claimed, localIP), nil
 }
 
 // AcceptPair is called on the node being paired (remote DockPilot).

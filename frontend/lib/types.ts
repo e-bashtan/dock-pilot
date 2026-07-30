@@ -568,6 +568,23 @@ export interface FleetBilling {
   provider_name?: string;
   provider_url?: string;
   monthly_equiv_minor?: number;
+  mode?: string;
+  billing_account_id?: string;
+  server_ip?: string;
+  cost_raw?: string;
+  days_left?: number;
+}
+
+export interface UpdateFleetNodeBillingRequest {
+  billing_account_id?: string;
+  cost_minor?: number;
+  currency?: string;
+  period?: string;
+  next_due_date?: string;
+  auto_renew?: boolean;
+  provider_name?: string;
+  provider_url?: string;
+  comment?: string;
 }
 
 export interface FleetFilesystem {

@@ -12,11 +12,15 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { MobileQrModal } from "@/components/MobileQrModal";
 import { MobileQrScanner } from "@/components/MobileQrScanner";
+import { resolveHomePath } from "@/lib/home-path";
 import { useI18n } from "@/lib/i18n/context";
 import { useIsMobile } from "@/lib/use-is-mobile";
+import { usePathname, useRouter } from "next/navigation";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
+  const router = useRouter();
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [tokenInput, setTokenInput] = useState("");
@@ -28,6 +32,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
 
   const [apiBase, setApiBase] = useState("");
+
+  const goHomeAfterAuth = useCallback(async () => {
+    // Only bounce from the login surface / root so intentional /sites visits stay.
+    if (pathname && pathname !== "/" && pathname !== "/auth/mobile") {
+      return;
+    }
+    const home = await resolveHomePath();
+    router.replace(home);
+  }, [pathname, router]);
 
   useEffect(() => {
     setAuthed(!!getApiToken());
@@ -68,11 +81,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setApiToken(token);
         setAuthed(true);
         setTokenInput("");
+        await goHomeAfterAuth();
       } finally {
         setSubmitting(false);
       }
     },
-    [tokenInput, t],
+    [tokenInput, t, goHomeAfterAuth],
   );
 
   const handleShowQr = useCallback(async () => {
@@ -115,13 +129,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         const token = await exchangeQRCode(code);
         setApiToken(token);
         setAuthed(true);
+        await goHomeAfterAuth();
       } catch (err) {
         setError(err instanceof ApiError ? err.message : t("mobileAuth.failed"));
       } finally {
         setSubmitting(false);
       }
     },
-    [t],
+    [t, goHomeAfterAuth],
   );
 
   const handleQrClick = useCallback(() => {

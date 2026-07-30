@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { AppShell } from "@/components/AppShell";
 import { LocaleProvider } from "@/lib/i18n/context";
@@ -9,12 +9,26 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: en.meta.title,
   description: en.meta.description,
+  applicationName: "DockPilot",
+  appleWebApp: {
+    capable: true,
+    title: "DockPilot",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  viewportFit: "cover" as const,
+  viewportFit: "cover",
+  themeColor: "#0f1419",
+  colorScheme: "dark",
 };
 
 export default async function RootLayout({

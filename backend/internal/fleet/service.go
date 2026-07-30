@@ -27,6 +27,9 @@ type Notifier interface {
 	SendText(ctx context.Context, text string) error
 }
 
+// HostIPFunc returns the master's public/egress IP for matching VPS billing accounts.
+type HostIPFunc func(ctx context.Context) string
+
 type Service struct {
 	q          *db.Queries
 	cipher     *secrets.Cipher
@@ -34,6 +37,7 @@ type Service struct {
 	metrics    *metrics.Collector
 	sites      SiteHealthProvider
 	notify     Notifier
+	hostIP     HostIPFunc
 	appVersion string
 	agentDir   string // path to embedded agent binaries inside API image
 
@@ -57,6 +61,7 @@ func NewService(
 	notify Notifier,
 	appVersion string,
 	agentDir string,
+	hostIP HostIPFunc,
 ) *Service {
 	if logger == nil {
 		logger = slog.Default()
@@ -68,6 +73,7 @@ func NewService(
 		metrics:    metrics.New(hostRoot),
 		sites:      sites,
 		notify:     notify,
+		hostIP:     hostIP,
 		appVersion: appVersion,
 		agentDir:   agentDir,
 		installs:   map[uuid.UUID]*installSecret{},
@@ -252,7 +258,6 @@ func (s *Service) Overview(ctx context.Context) (OverviewResponse, error) {
 		return OverviewResponse{}, err
 	}
 	out := OverviewResponse{Currency: "RUB"}
-	var nextDue *time.Time
 	for _, n := range nodes {
 		out.ServersTotal++
 		switch n.Status {
@@ -269,18 +274,24 @@ func (s *Service) Overview(ctx context.Context) (OverviewResponse, error) {
 			out.AppsUnhealthy += n.Applications.Unhealthy
 		}
 		out.OpenIncidents += n.OpenIncidents
-		if n.Billing != nil {
-			out.MonthlyCostMinor += n.Billing.MonthlyEquiv
-			if n.Billing.Currency != "" {
-				out.Currency = n.Billing.Currency
-			}
-			if n.Billing.NextDueDate != nil {
-				if t, err := time.Parse("2006-01-02", *n.Billing.NextDueDate); err == nil {
-					if nextDue == nil || t.Before(*nextDue) {
-						tt := t
-						nextDue = &tt
-					}
-				}
+	}
+
+	// Monthly cost / next due come from VPS payment accounts (Оплата), not manual Fleet forms.
+	var nextDue *time.Time
+	for _, acc := range s.listBillingAccounts(ctx) {
+		if !acc.Enabled {
+			continue
+		}
+		minor, currency := parseCachedCost(acc.CachedCost)
+		out.MonthlyCostMinor += minor
+		if currency != "" {
+			out.Currency = currency
+		}
+		if acc.CachedExpireDate.Valid {
+			t := acc.CachedExpireDate.Time
+			if nextDue == nil || t.Before(*nextDue) {
+				tt := t
+				nextDue = &tt
 			}
 		}
 	}
@@ -306,9 +317,15 @@ func (s *Service) ListNodes(ctx context.Context) ([]NodeResponse, error) {
 	if err != nil {
 		return nil, mapErr(err)
 	}
+	accounts := s.listBillingAccounts(ctx)
+	claimed := map[uuid.UUID]bool{}
+	localIP := ""
+	if s.hostIP != nil {
+		localIP = strings.TrimSpace(s.hostIP(ctx))
+	}
 	out := make([]NodeResponse, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, s.toNodeResponse(ctx, row))
+		out = append(out, s.toNodeResponse(ctx, row, accounts, claimed, localIP))
 	}
 	return out, nil
 }
@@ -329,7 +346,97 @@ func (s *Service) GetNode(ctx context.Context, id uuid.UUID) (NodeResponse, erro
 		_ = s.refreshLocalSnapshot(ctx)
 		row, _ = s.q.GetFleetNode(ctx, id)
 	}
-	return s.toNodeResponse(ctx, row), nil
+	accounts := s.listBillingAccounts(ctx)
+	claimed := map[uuid.UUID]bool{}
+	localIP := ""
+	if s.hostIP != nil {
+		localIP = strings.TrimSpace(s.hostIP(ctx))
+	}
+	return s.toNodeResponse(ctx, row, accounts, claimed, localIP), nil
+}
+
+func (s *Service) UpdateNodeBilling(ctx context.Context, id uuid.UUID, req UpdateNodeBillingRequest) (NodeResponse, error) {
+	settings, err := s.ensureSettings(ctx)
+	if err != nil {
+		return NodeResponse{}, err
+	}
+	if settings.Mode != ModeMaster {
+		return NodeResponse{}, ErrForbidden
+	}
+	if _, err := s.q.GetFleetNode(ctx, id); err != nil {
+		return NodeResponse{}, mapErr(err)
+	}
+
+	accountID := strings.TrimSpace(req.BillingAccountID)
+	if accountID != "" {
+		aid, err := uuid.Parse(accountID)
+		if err != nil {
+			return NodeResponse{}, fmt.Errorf("%w: billing_account_id", ErrInvalidInput)
+		}
+		acc, err := s.q.GetBillingAccount(ctx, aid)
+		if err != nil {
+			return NodeResponse{}, mapErr(err)
+		}
+		_, err = s.q.UpsertFleetNodeBilling(ctx, db.UpsertFleetNodeBillingParams{
+			NodeID:            id,
+			BillingAccountID:  pgUUID(acc.ID),
+			Mode:              "planetahost",
+			ProviderName:      acc.Provider,
+			ProviderUrl:       acc.BillmgrUrl,
+			ExternalServiceID: "",
+			CostMinor:         0,
+			Currency:          "RUB",
+			Period:            "monthly",
+			NextDueDate:       pgtype.Date{},
+			AutoRenew:         false,
+			Comment:           strings.TrimSpace(req.Comment),
+		})
+		if err != nil {
+			return NodeResponse{}, mapErr(err)
+		}
+		return s.GetNode(ctx, id)
+	}
+
+	// Explicit unlink / legacy manual entry when no account id is provided.
+	currency := strings.TrimSpace(req.Currency)
+	if currency == "" {
+		currency = "RUB"
+	}
+	period := strings.TrimSpace(req.Period)
+	if period == "" {
+		period = "monthly"
+	}
+	switch period {
+	case "monthly", "quarterly", "yearly", "custom":
+	default:
+		return NodeResponse{}, ErrInvalidInput
+	}
+	var due pgtype.Date
+	if d := strings.TrimSpace(req.NextDueDate); d != "" {
+		t, err := time.Parse("2006-01-02", d)
+		if err != nil {
+			return NodeResponse{}, fmt.Errorf("%w: next_due_date", ErrInvalidInput)
+		}
+		due = pgtype.Date{Time: t, Valid: true}
+	}
+	_, err = s.q.UpsertFleetNodeBilling(ctx, db.UpsertFleetNodeBillingParams{
+		NodeID:            id,
+		BillingAccountID:  pgtype.UUID{},
+		Mode:              "manual",
+		ProviderName:      strings.TrimSpace(req.Provider),
+		ProviderUrl:       strings.TrimSpace(req.ProviderURL),
+		ExternalServiceID: "",
+		CostMinor:         req.CostMinor,
+		Currency:          currency,
+		Period:            period,
+		NextDueDate:       due,
+		AutoRenew:         req.AutoRenew,
+		Comment:           strings.TrimSpace(req.Comment),
+	})
+	if err != nil {
+		return NodeResponse{}, mapErr(err)
+	}
+	return s.GetNode(ctx, id)
 }
 
 func (s *Service) refreshLocalSnapshot(ctx context.Context) error {
@@ -373,7 +480,13 @@ func (s *Service) refreshLocalSnapshot(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) toNodeResponse(ctx context.Context, row db.FleetNode) NodeResponse {
+func (s *Service) toNodeResponse(
+	ctx context.Context,
+	row db.FleetNode,
+	accounts []db.BillingAccount,
+	claimed map[uuid.UUID]bool,
+	localIP string,
+) NodeResponse {
 	var caps []string
 	_ = json.Unmarshal(row.Capabilities, &caps)
 	resp := NodeResponse{
@@ -446,21 +559,7 @@ func (s *Service) toNodeResponse(ctx context.Context, row db.FleetNode) NodeResp
 	if n, err := s.q.CountOpenIncidentsByNode(ctx, pgtype.UUID{Bytes: row.ID, Valid: true}); err == nil {
 		resp.OpenIncidents = int(n)
 	}
-	if bill, err := s.q.GetFleetNodeBilling(ctx, row.ID); err == nil {
-		resp.Billing = &BillingDTO{
-			CostMinor:    bill.CostMinor,
-			Currency:     bill.Currency,
-			Period:       bill.Period,
-			AutoRenew:    bill.AutoRenew,
-			Provider:     bill.ProviderName,
-			ProviderURL:  bill.ProviderUrl,
-			MonthlyEquiv: monthlyEquiv(bill.CostMinor, bill.Period),
-		}
-		if bill.NextDueDate.Valid {
-			d := bill.NextDueDate.Time.Format("2006-01-02")
-			resp.Billing.NextDueDate = &d
-		}
-	}
+	resp.Billing = s.resolveNodeBilling(ctx, row, accounts, claimed, localIP)
 	return resp
 }
 

@@ -180,36 +180,33 @@ export default function FleetNewServerPage() {
       {error && <div className="alert alert-error">{error}</div>}
 
       {step === "choose" && (
-        <div className="grid-2">
+        <div className="choice-list">
           <button
             type="button"
-            className="card"
-            style={{ textAlign: "left", cursor: "pointer" }}
+            className="choice-option"
             onClick={() => choose("dockpilot")}
           >
-            <h2 className="section-title">{t("fleet.kindDockpilot")}</h2>
-            <p className="muted">{t("fleet.kindDockpilotHint")}</p>
+            <span className="choice-option-title">{t("fleet.kindDockpilot")}</span>
+            <span className="choice-option-hint">{t("fleet.kindDockpilotHint")}</span>
           </button>
           <button
             type="button"
-            className="card"
-            style={{ textAlign: "left", cursor: "pointer" }}
+            className="choice-option"
             onClick={() => {
               setError(null);
               setStep("pair");
             }}
           >
-            <h2 className="section-title">{t("fleet.kindPairExisting")}</h2>
-            <p className="muted">{t("fleet.kindPairExistingHint")}</p>
+            <span className="choice-option-title">{t("fleet.kindPairExisting")}</span>
+            <span className="choice-option-hint">{t("fleet.kindPairExistingHint")}</span>
           </button>
           <button
             type="button"
-            className="card"
-            style={{ textAlign: "left", cursor: "pointer" }}
+            className="choice-option"
             onClick={() => choose("agent")}
           >
-            <h2 className="section-title">{t("fleet.kindAgent")}</h2>
-            <p className="muted">{t("fleet.kindAgentHint")}</p>
+            <span className="choice-option-title">{t("fleet.kindAgent")}</span>
+            <span className="choice-option-hint">{t("fleet.kindAgentHint")}</span>
           </button>
         </div>
       )}

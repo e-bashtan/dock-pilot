@@ -6,6 +6,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { exchangeQRCode } from "@/lib/api";
 import { setApiToken } from "@/lib/auth-token";
+import { resolveHomePath } from "@/lib/home-path";
 import { useI18n } from "@/lib/i18n/context";
 
 export default function MobileAuthClient() {
@@ -30,7 +31,9 @@ export default function MobileAuthClient() {
         const token = await exchangeQRCode(code);
         if (cancelled) return;
         setApiToken(token);
-        router.replace("/sites");
+        const home = await resolveHomePath();
+        if (cancelled) return;
+        router.replace(home);
       } catch (err) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : t("mobileAuth.failed");

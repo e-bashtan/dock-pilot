@@ -47,14 +47,33 @@ type AppsDTO struct {
 }
 
 type BillingDTO struct {
-	CostMinor   int64   `json:"cost_minor"`
-	Currency    string  `json:"currency"`
-	Period      string  `json:"period"`
-	NextDueDate *string `json:"next_due_date,omitempty"`
-	AutoRenew   bool    `json:"auto_renew"`
-	Provider    string  `json:"provider_name"`
-	ProviderURL string  `json:"provider_url"`
-	MonthlyEquiv int64  `json:"monthly_equiv_minor"`
+	CostMinor        int64   `json:"cost_minor"`
+	Currency         string  `json:"currency"`
+	Period           string  `json:"period"`
+	NextDueDate      *string `json:"next_due_date,omitempty"`
+	AutoRenew        bool    `json:"auto_renew"`
+	Provider         string  `json:"provider_name"`
+	ProviderURL      string  `json:"provider_url"`
+	MonthlyEquiv     int64   `json:"monthly_equiv_minor"`
+	Mode             string  `json:"mode,omitempty"`
+	BillingAccountID string  `json:"billing_account_id,omitempty"`
+	ServerIP         string  `json:"server_ip,omitempty"`
+	CostRaw          string  `json:"cost_raw,omitempty"`
+	DaysLeft         *int    `json:"days_left,omitempty"`
+}
+
+// UpdateNodeBillingRequest links a Fleet node to a VPS payment account from /payments.
+// Empty billing_account_id clears the link. Manual cost fields are kept for backward compatibility.
+type UpdateNodeBillingRequest struct {
+	BillingAccountID string `json:"billing_account_id"`
+	CostMinor        int64  `json:"cost_minor"`
+	Currency         string `json:"currency"`
+	Period           string `json:"period"`
+	NextDueDate      string `json:"next_due_date"`
+	AutoRenew        bool   `json:"auto_renew"`
+	Provider         string `json:"provider_name"`
+	ProviderURL      string `json:"provider_url"`
+	Comment          string `json:"comment"`
 }
 
 type NodeResponse struct {

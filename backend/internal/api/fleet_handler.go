@@ -86,6 +86,25 @@ func (h *FleetHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *FleetHandler) UpdateNodeBilling(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, fleet.ErrInvalidInput)
+		return
+	}
+	var req fleet.UpdateNodeBillingRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		writeError(w, fleet.ErrInvalidInput)
+		return
+	}
+	out, err := h.svc.UpdateNodeBilling(r.Context(), id, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (h *FleetHandler) PairDockpilot(w http.ResponseWriter, r *http.Request) {
 	var req fleet.PairDockpilotRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
