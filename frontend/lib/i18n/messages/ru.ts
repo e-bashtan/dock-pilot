@@ -45,10 +45,11 @@ export const ru: Messages = {
     langRu: "Русский",
     fleetServers: "Серверы",
     fleetEvents: "События",
-    fleetSettings: "Fleet",
+    fleetSettings: "Настройки флота",
     fleetThisServer: "Этот сервер",
     fleetContextAll: "Все серверы",
     fleetContextLocal: "Этот сервер · MASTER",
+    more: "Ещё",
   },
   auth: {
     hint: "Введите API-токен для доступа к панели. Токен хранится на этом устройстве до выхода.",

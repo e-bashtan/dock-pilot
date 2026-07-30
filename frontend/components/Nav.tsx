@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -10,38 +10,42 @@ import { useLogout } from "@/components/AuthGate";
 import { useFleetMode } from "@/lib/fleet-mode";
 import { useI18n } from "@/lib/i18n/context";
 
-const STANDALONE_LINKS = [
-  { href: "/sites", labelKey: "nav.sites" as const, match: "sites" },
-  { href: "/databases", labelKey: "nav.databases" as const, match: "databases" },
-  { href: "/backups", labelKey: "nav.backups" as const, match: "backups" },
-  { href: "/payments", labelKey: "nav.payments" as const, match: "payments" },
-  {
-    href: "/notifications",
-    labelKey: "nav.notifications" as const,
-    match: "notifications",
-  },
-  {
-    href: "/fleet/settings",
-    labelKey: "nav.fleetSettings" as const,
-    match: "fleet-settings",
-  },
+type NavItem = {
+  href: string;
+  labelKey:
+    | "nav.sites"
+    | "nav.databases"
+    | "nav.backups"
+    | "nav.payments"
+    | "nav.notifications"
+    | "nav.fleetServers"
+    | "nav.fleetEvents"
+    | "nav.fleetSettings"
+    | "nav.fleetThisServer";
+  match: string;
+};
+
+const STANDALONE_LINKS: NavItem[] = [
+  { href: "/sites", labelKey: "nav.sites", match: "sites" },
+  { href: "/databases", labelKey: "nav.databases", match: "databases" },
+  { href: "/backups", labelKey: "nav.backups", match: "backups" },
+  { href: "/payments", labelKey: "nav.payments", match: "payments" },
+  { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
+  { href: "/fleet/settings", labelKey: "nav.fleetSettings", match: "fleet-settings" },
 ];
 
-const MASTER_LINKS = [
-  { href: "/fleet", labelKey: "nav.fleetServers" as const, match: "fleet" },
-  { href: "/fleet/events", labelKey: "nav.fleetEvents" as const, match: "fleet-events" },
-  { href: "/payments", labelKey: "nav.payments" as const, match: "payments" },
-  {
-    href: "/notifications",
-    labelKey: "nav.notifications" as const,
-    match: "notifications",
-  },
-  {
-    href: "/fleet/settings",
-    labelKey: "nav.fleetSettings" as const,
-    match: "fleet-settings",
-  },
-  { href: "/sites", labelKey: "nav.fleetThisServer" as const, match: "sites" },
+const MASTER_PRIMARY: NavItem[] = [
+  { href: "/fleet", labelKey: "nav.fleetServers", match: "fleet" },
+  { href: "/sites", labelKey: "nav.fleetThisServer", match: "sites" },
+  { href: "/payments", labelKey: "nav.payments", match: "payments" },
+];
+
+const MASTER_MORE: NavItem[] = [
+  { href: "/fleet/events", labelKey: "nav.fleetEvents", match: "fleet-events" },
+  { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
+  { href: "/databases", labelKey: "nav.databases", match: "databases-only" },
+  { href: "/backups", labelKey: "nav.backups", match: "backups-only" },
+  { href: "/fleet/settings", labelKey: "nav.fleetSettings", match: "fleet-settings" },
 ];
 
 function isPrimaryActive(pathname: string, match: string): boolean {
@@ -58,6 +62,12 @@ function isPrimaryActive(pathname: string, match: string): boolean {
       pathname.startsWith("/backups/")
     );
   }
+  if (match === "databases-only") {
+    return pathname === "/databases" || pathname.startsWith("/databases/");
+  }
+  if (match === "backups-only") {
+    return pathname === "/backups" || pathname.startsWith("/backups/");
+  }
   if (match === "fleet") {
     return pathname === "/fleet" || pathname.startsWith("/fleet/servers");
   }
@@ -72,24 +82,16 @@ function isPrimaryActive(pathname: string, match: string): boolean {
   return pathname === `/${match}` || pathname.startsWith(`/${match}/`);
 }
 
-function isLocalSection(pathname: string): boolean {
-  return (
-    pathname === "/sites" ||
-    pathname.startsWith("/sites/") ||
-    pathname === "/databases" ||
-    pathname.startsWith("/databases/") ||
-    pathname === "/backups" ||
-    pathname.startsWith("/backups/")
-  );
-}
-
 export function Nav() {
   const logout = useLogout();
   const { t } = useI18n();
-  const { isMaster, loading: fleetLoading } = useFleetMode();
+  const { isMaster } = useFleetMode();
   const pathname = usePathname() || "";
   const [qrOpen, setQrOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const moreMenuId = useId();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -100,22 +102,41 @@ export function Nav() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const closeMenu = () => setMenuOpen(false);
-  const links = isMaster ? MASTER_LINKS : STANDALONE_LINKS;
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [moreOpen]);
+
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setMoreOpen(false);
+  };
+
   const brandHref = isMaster ? "/fleet" : "/sites";
-  const showContext = isMaster && !fleetLoading;
-  const contextLabel = isLocalSection(pathname)
-    ? t("nav.fleetContextLocal")
-    : t("nav.fleetContextAll");
+  const primaryLinks = isMaster ? MASTER_PRIMARY : STANDALONE_LINKS;
+  const moreActive =
+    isMaster && MASTER_MORE.some((item) => isPrimaryActive(pathname, item.match));
 
   return (
     <>
       <nav className="nav">
         <Link href={brandHref} className="nav-brand" onClick={closeMenu}>
           <BrandLogo showVersion showServerIP />
-          {showContext && (
-            <span className="nav-context muted">{contextLabel}</span>
-          )}
         </Link>
         <button
           type="button"
@@ -131,11 +152,11 @@ export function Nav() {
           className={`nav-links${menuOpen ? " nav-links-open" : ""}`}
         >
           <div className="nav-primary">
-            {links.map((item) => {
+            {primaryLinks.map((item) => {
               const active = isPrimaryActive(pathname, item.match);
               return (
                 <Link
-                  key={item.href}
+                  key={`${item.href}-${item.match}`}
                   href={item.href}
                   className={`nav-link${active ? " nav-link-active" : ""}`}
                   aria-current={active ? "page" : undefined}
@@ -145,6 +166,41 @@ export function Nav() {
                 </Link>
               );
             })}
+            {isMaster && (
+              <div className="nav-more" ref={moreRef}>
+                <button
+                  type="button"
+                  className={`nav-link nav-more-btn${moreActive || moreOpen ? " nav-link-active" : ""}`}
+                  aria-expanded={moreOpen}
+                  aria-controls={moreMenuId}
+                  onClick={() => setMoreOpen((v) => !v)}
+                >
+                  {t("nav.more")}
+                  <span className="nav-more-caret" aria-hidden>
+                    ▾
+                  </span>
+                </button>
+                {moreOpen && (
+                  <div id={moreMenuId} className="nav-more-menu" role="menu">
+                    {MASTER_MORE.map((item) => {
+                      const active = isPrimaryActive(pathname, item.match);
+                      return (
+                        <Link
+                          key={`${item.href}-${item.match}`}
+                          href={item.href}
+                          role="menuitem"
+                          className={`nav-more-item${active ? " nav-more-item-active" : ""}`}
+                          aria-current={active ? "page" : undefined}
+                          onClick={closeMenu}
+                        >
+                          {t(item.labelKey)}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="nav-actions">
             {!isMaster && (
@@ -154,15 +210,6 @@ export function Nav() {
                 onClick={closeMenu}
               >
                 {t("nav.newSite")}
-              </Link>
-            )}
-            {isMaster && (
-              <Link
-                href="/fleet/servers/new"
-                className="btn nav-new-site"
-                onClick={closeMenu}
-              >
-                {t("fleet.addServer")}
               </Link>
             )}
             <button

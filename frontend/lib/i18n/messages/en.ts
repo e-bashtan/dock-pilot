@@ -43,10 +43,11 @@ export const en = {
     langRu: "Русский",
     fleetServers: "Servers",
     fleetEvents: "Events",
-    fleetSettings: "Fleet",
+    fleetSettings: "Fleet settings",
     fleetThisServer: "This server",
     fleetContextAll: "All servers",
     fleetContextLocal: "This server · MASTER",
+    more: "More",
   },
   auth: {
     hint: "Enter the API token to access the control panel. The token is stored on this device until you log out.",

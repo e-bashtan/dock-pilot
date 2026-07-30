@@ -79,6 +79,9 @@ export default function FleetOverviewPage() {
           </p>
         </div>
         <div className="page-actions">
+          <Link href="/fleet/events" className="btn btn-secondary">
+            {t("nav.fleetEvents")}
+          </Link>
           <Link href="/fleet/settings" className="btn btn-secondary">
             {t("fleet.settingsLink")}
           </Link>
