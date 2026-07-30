@@ -159,9 +159,9 @@ COMPOSE="docker-compose.full.yml"
 [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"
 
 log "Running migrations..."
-set +e
-docker compose -f "$COMPOSE" run --rm -T migrate
-set -e
+if ! docker compose -f "$COMPOSE" run --rm -T migrate; then
+  die "Migrations failed — check migrate image includes latest SQL (00016_fleet / 00017_*) and DATABASE_URL"
+fi
 
 log "Recreating postgres + api + frontend (picks up new images and compose)..."
 docker rm -f dock-pilot-telegram-socks-relay 2>/dev/null || true

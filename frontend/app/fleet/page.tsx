@@ -316,9 +316,20 @@ function FleetNodeRow({
           ) : (
             <div className="fleet-node-stats">
               <span className="muted">{t("fleet.billingNotSet")}</span>
-              <Link href="/payments" className="fleet-inline-link">
-                {t("fleet.configurePayments")}
-              </Link>
+              {node.connection_type === "dockpilot" && node.base_url ? (
+                <a
+                  href={`${node.base_url.replace(/\/$/, "")}/payments`}
+                  className="fleet-inline-link"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t("fleet.openNodePayments")}
+                </a>
+              ) : (
+                <Link href="/payments" className="fleet-inline-link">
+                  {t("fleet.configurePayments")}
+                </Link>
+              )}
             </div>
           )}
         </div>

@@ -159,6 +159,77 @@ func snapshotHostname(payload []byte) string {
 	return ""
 }
 
+func billingDTOFromRemote(acc RemoteBillingAccount) *BillingDTO {
+	minor, currency := parseCachedCost(acc.Cost)
+	dto := &BillingDTO{
+		CostMinor:    minor,
+		Currency:     currency,
+		Period:       "monthly",
+		Provider:     acc.Provider,
+		MonthlyEquiv: minor,
+		Mode:         "remote",
+		ServerIP:     acc.ServerIP,
+		CostRaw:      acc.Cost,
+		DaysLeft:     acc.DaysLeft,
+	}
+	if name := strings.TrimSpace(acc.Name); name != "" {
+		dto.Provider = name
+	}
+	if acc.ExpireDate != nil && strings.TrimSpace(*acc.ExpireDate) != "" {
+		d := strings.TrimSpace(*acc.ExpireDate)
+		dto.NextDueDate = &d
+	}
+	return dto
+}
+
+func snapshotHostIP(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	var root map[string]any
+	if json.Unmarshal(payload, &root) != nil {
+		return ""
+	}
+	if v, ok := root["host_ip"].(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+func snapshotRemoteBilling(payload []byte) []RemoteBillingAccount {
+	if len(payload) == 0 {
+		return nil
+	}
+	var root struct {
+		Billing []RemoteBillingAccount `json:"billing"`
+	}
+	if json.Unmarshal(payload, &root) != nil {
+		return nil
+	}
+	return root.Billing
+}
+
+func pickRemoteBilling(accounts []RemoteBillingAccount, hostIP string) *BillingDTO {
+	hostIP = strings.TrimSpace(hostIP)
+	var fallback *RemoteBillingAccount
+	for i := range accounts {
+		acc := &accounts[i]
+		if !acc.Enabled && acc.Cost == "" && acc.ExpireDate == nil {
+			continue
+		}
+		if hostIP != "" && strings.EqualFold(strings.TrimSpace(acc.ServerIP), hostIP) {
+			return billingDTOFromRemote(*acc)
+		}
+		if fallback == nil && (acc.Cost != "" || acc.ExpireDate != nil) {
+			fallback = acc
+		}
+	}
+	if fallback != nil {
+		return billingDTOFromRemote(*fallback)
+	}
+	return nil
+}
+
 func (s *Service) resolveNodeBilling(
 	ctx context.Context,
 	row db.FleetNode,
@@ -177,13 +248,25 @@ func (s *Service) resolveNodeBilling(
 	}
 
 	hostname := ""
+	hostIP := ""
+	var remoteBilling []RemoteBillingAccount
 	if snap, err := s.q.GetLatestFleetSnapshot(ctx, row.ID); err == nil {
 		hostname = snapshotHostname(snap.Payload)
+		hostIP = snapshotHostIP(snap.Payload)
+		remoteBilling = snapshotRemoteBilling(snap.Payload)
 	}
 
-	if acc, ok := matchBillingAccount(accounts, claimed, nodeMatchHaystack(row, hostname, localIP)); ok {
+	matchIP := localIP
+	if row.ConnectionType != ConnLocal {
+		matchIP = hostIP
+	}
+	if acc, ok := matchBillingAccount(accounts, claimed, nodeMatchHaystack(row, hostname, matchIP)); ok {
 		claimed[acc.ID] = true
 		return billingDTOFromAccount(acc)
+	}
+
+	if dto := pickRemoteBilling(remoteBilling, hostIP); dto != nil {
+		return dto
 	}
 
 	if billErr == nil && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {

@@ -277,6 +277,11 @@ func (s *Service) LocalNodeStatus(ctx context.Context) (NodeStatusPayload, error
 	if name == "" {
 		name = snap.Hostname
 	}
+	hostIP := ""
+	if s.hostIP != nil {
+		hostIP = strings.TrimSpace(s.hostIP(ctx))
+	}
+	billing := remoteBillingFromAccounts(s.listBillingAccounts(ctx))
 	return NodeStatusPayload{
 		NodeUID: settings.NodeUid.String(),
 		Name:    name,
@@ -285,8 +290,36 @@ func (s *Service) LocalNodeStatus(ctx context.Context) (NodeStatusPayload, error
 		Metrics: snap,
 		Apps:    apps,
 		Status:  StatusOnline,
+		HostIP:  hostIP,
+		Billing: billing,
 	}, nil
 }
+
+func remoteBillingFromAccounts(rows []db.BillingAccount) []RemoteBillingAccount {
+	out := make([]RemoteBillingAccount, 0, len(rows))
+	for _, row := range rows {
+		if !row.Enabled {
+			continue
+		}
+		item := RemoteBillingAccount{
+			ServerIP: row.ServerIp,
+			Provider: row.Provider,
+			Name:     row.CachedName,
+			Status:   row.CachedStatus,
+			Cost:     row.CachedCost,
+			Enabled:  true,
+		}
+		if row.CachedExpireDate.Valid {
+			d := row.CachedExpireDate.Time.Format("2006-01-02")
+			item.ExpireDate = &d
+			days := int(row.CachedExpireDate.Time.UTC().Truncate(24*time.Hour).Sub(time.Now().UTC().Truncate(24*time.Hour)).Hours() / 24)
+			item.DaysLeft = &days
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 
 func validateRemoteURL(raw string) error {
 	u, err := url.Parse(raw)

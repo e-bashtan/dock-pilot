@@ -640,6 +640,7 @@ export const ru: Messages = {
     billingAccountAuto: "Авто по IP",
     billingAccountsEmpty: "Пока нет аккаунтов оплаты VPS. Добавьте их в Оплате.",
     openPayments: "Оплата",
+    openNodePayments: "Оплата на ноде",
     configurePayments: "Настроить в Оплате",
     daysLeft: "Осталось {days} дн.",
     billingPeriod: "Период",
@@ -687,6 +688,9 @@ export const ru: Messages = {
     kindAgent: "Агент мониторинга",
     kindAgentHint: "Лёгкий агент на VPS без панели DockPilot.",
     sshFormHint: "Как при установке из консоли: SSH-доступ и публичный URL будущей панели.",
+    sshFormHintDockpilot:
+      "SSH-доступ и публичный HTTPS URL будущей панели (DNS должен указывать на этот хост).",
+    sshFormHintAgent: "SSH-доступ к VPS. Будет установлен лёгкий агент мониторинга.",
     baseUrl: "URL панели",
     panelUrl: "URL панели",
     panelUrlHint:

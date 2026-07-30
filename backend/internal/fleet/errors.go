@@ -9,7 +9,7 @@ var (
 	ErrConflict       = errors.New("conflict")
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrNotConfigured  = errors.New("fleet not configured")
-	ErrMigration      = errors.New("fleet tables missing — run migrations")
+	ErrMigration      = errors.New("fleet schema incomplete — run: docker compose run --rm migrate (need 00016_fleet + 00017_fleet_install_kind)")
 	ErrMode           = errors.New("invalid fleet mode")
 	ErrHasRemotes     = errors.New("disconnect remote servers before disabling master")
 	ErrAlreadyPaired  = errors.New("already paired to a master")

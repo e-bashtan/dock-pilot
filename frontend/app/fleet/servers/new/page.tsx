@@ -273,7 +273,7 @@ export default function FleetNewServerPage() {
             {kind === "dockpilot" ? t("fleet.kindDockpilot") : t("fleet.kindAgent")}
           </h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            {t("fleet.sshFormHint")}
+            {kind === "dockpilot" ? t("fleet.sshFormHintDockpilot") : t("fleet.sshFormHintAgent")}
           </p>
 
           <div className="field">

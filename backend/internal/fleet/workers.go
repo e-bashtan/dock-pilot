@@ -94,7 +94,12 @@ func (w *PollingWorker) pollNode(ctx context.Context, node db.FleetNode) {
 		return
 	}
 	now := time.Now().UTC()
-	payload, _ := json.Marshal(map[string]any{"metrics": status.Metrics, "applications": status.Apps})
+	payload, _ := json.Marshal(map[string]any{
+		"metrics":      status.Metrics,
+		"applications": status.Apps,
+		"host_ip":      status.HostIP,
+		"billing":      status.Billing,
+	})
 	_, _ = w.svc.q.InsertFleetSnapshot(ctx, db.InsertFleetSnapshotParams{
 		NodeID:           node.ID,
 		CollectedAt:      now,

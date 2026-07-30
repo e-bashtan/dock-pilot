@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ebash/dock-pilot/backend/internal/db"
@@ -32,6 +33,7 @@ type HostIPFunc func(ctx context.Context) string
 
 type Service struct {
 	q          *db.Queries
+	pool       DBExec
 	cipher     *secrets.Cipher
 	logger     *slog.Logger
 	metrics    *metrics.Collector
@@ -45,6 +47,12 @@ type Service struct {
 	installs  map[uuid.UUID]*installSecret // in-memory SSH passwords
 }
 
+// DBExec runs schema-ensure statements (subset of pgxpool.Pool).
+type DBExec interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+
 type installSecret struct {
 	password  string
 	expiresAt time.Time
@@ -54,6 +62,7 @@ type installSecret struct {
 
 func NewService(
 	q *db.Queries,
+	pool DBExec,
 	cipher *secrets.Cipher,
 	logger *slog.Logger,
 	hostRoot string,
@@ -68,6 +77,7 @@ func NewService(
 	}
 	return &Service{
 		q:          q,
+		pool:       pool,
 		cipher:     cipher,
 		logger:     logger,
 		metrics:    metrics.New(hostRoot),
@@ -78,6 +88,36 @@ func NewService(
 		agentDir:   agentDir,
 		installs:   map[uuid.UUID]*installSecret{},
 	}
+}
+
+// ensureInstallSchema applies 00017 columns if the migrate image was skipped on upgrade.
+func (s *Service) ensureInstallSchema(ctx context.Context) error {
+	if s.pool == nil {
+		return nil
+	}
+	stmts := []string{
+		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS install_kind TEXT NOT NULL DEFAULT 'agent'`,
+		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS panel_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS cert_email TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.pool.Exec(ctx, stmt); err != nil {
+			return mapErr(err)
+		}
+	}
+	_, _ = s.pool.Exec(ctx, `
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fleet_installations_install_kind_check'
+  ) THEN
+    ALTER TABLE fleet_installations
+      ADD CONSTRAINT fleet_installations_install_kind_check
+      CHECK (install_kind IN ('agent', 'dockpilot'));
+  END IF;
+END $$`)
+	return nil
 }
 
 func (s *Service) ensureSettings(ctx context.Context) (db.FleetSetting, error) {
@@ -258,6 +298,7 @@ func (s *Service) Overview(ctx context.Context) (OverviewResponse, error) {
 		return OverviewResponse{}, err
 	}
 	out := OverviewResponse{Currency: "RUB"}
+	var nextDue *time.Time
 	for _, n := range nodes {
 		out.ServersTotal++
 		switch n.Status {
@@ -274,24 +315,18 @@ func (s *Service) Overview(ctx context.Context) (OverviewResponse, error) {
 			out.AppsUnhealthy += n.Applications.Unhealthy
 		}
 		out.OpenIncidents += n.OpenIncidents
-	}
-
-	// Monthly cost / next due come from VPS payment accounts (Оплата), not manual Fleet forms.
-	var nextDue *time.Time
-	for _, acc := range s.listBillingAccounts(ctx) {
-		if !acc.Enabled {
-			continue
-		}
-		minor, currency := parseCachedCost(acc.CachedCost)
-		out.MonthlyCostMinor += minor
-		if currency != "" {
-			out.Currency = currency
-		}
-		if acc.CachedExpireDate.Valid {
-			t := acc.CachedExpireDate.Time
-			if nextDue == nil || t.Before(*nextDue) {
-				tt := t
-				nextDue = &tt
+		if n.Billing != nil {
+			out.MonthlyCostMinor += n.Billing.MonthlyEquiv
+			if n.Billing.Currency != "" {
+				out.Currency = n.Billing.Currency
+			}
+			if n.Billing.NextDueDate != nil {
+				if t, err := time.Parse("2006-01-02", *n.Billing.NextDueDate); err == nil {
+					if nextDue == nil || t.Before(*nextDue) {
+						tt := t
+						nextDue = &tt
+					}
+				}
 			}
 		}
 	}
@@ -455,7 +490,16 @@ func (s *Service) refreshLocalSnapshot(ctx context.Context) error {
 			apps = AppsDTO{Total: t, Running: r, Unhealthy: u}
 		}
 	}
-	payload, _ := json.Marshal(map[string]any{"metrics": snap, "applications": apps})
+	hostIP := ""
+	if s.hostIP != nil {
+		hostIP = strings.TrimSpace(s.hostIP(ctx))
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"metrics":      snap,
+		"applications": apps,
+		"host_ip":      hostIP,
+		"billing":      remoteBillingFromAccounts(s.listBillingAccounts(ctx)),
+	})
 	now := time.Now().UTC()
 	_, _ = s.q.InsertFleetSnapshot(ctx, db.InsertFleetSnapshotParams{
 		NodeID:           local.ID,

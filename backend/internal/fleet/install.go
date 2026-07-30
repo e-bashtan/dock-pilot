@@ -38,6 +38,9 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	if settings.Mode != ModeMaster {
 		return InstallationResponse{}, ErrForbidden
 	}
+	if err := s.ensureInstallSchema(ctx); err != nil {
+		return InstallationResponse{}, err
+	}
 	kind := strings.TrimSpace(req.Kind)
 	if kind == "" {
 		kind = "agent"

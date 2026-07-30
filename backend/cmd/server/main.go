@@ -101,6 +101,7 @@ func main() {
 	}
 	fleetSvc := fleet.NewService(
 		queries,
+		pool,
 		cipher,
 		logger,
 		cfg.Deploy.HostRoot,

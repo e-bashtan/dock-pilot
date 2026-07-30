@@ -639,6 +639,7 @@ export const en = {
     billingAccountAuto: "Auto-match by IP",
     billingAccountsEmpty: "No VPS payment accounts yet. Add them in Payments.",
     openPayments: "Payments",
+    openNodePayments: "Open node Payments",
     configurePayments: "Configure in Payments",
     daysLeft: "{days} days left",
     billingPeriod: "Period",
@@ -686,6 +687,9 @@ export const en = {
     kindAgent: "Monitoring agent",
     kindAgentHint: "Install the lightweight agent on a VPS without a DockPilot panel.",
     sshFormHint: "Same idea as console install: SSH access plus the public URL of the future panel.",
+    sshFormHintDockpilot:
+      "SSH access plus the public HTTPS URL of the future panel (DNS must point to this host).",
+    sshFormHintAgent: "SSH access to the VPS. A lightweight monitoring agent will be installed.",
     baseUrl: "Panel URL",
     panelUrl: "Panel URL",
     panelUrlHint: "Public HTTPS URL where this DockPilot will open (DNS A/AAAA must point to the VPS).",

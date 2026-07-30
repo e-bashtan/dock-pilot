@@ -247,11 +247,26 @@ type InstallationResponse struct {
 }
 
 type NodeStatusPayload struct {
-	NodeUID   string           `json:"node_uid"`
-	Name      string           `json:"name"`
-	Version   string           `json:"version"`
-	Mode      string           `json:"mode"`
-	Metrics   metrics.Snapshot `json:"metrics"`
-	Apps      AppsDTO          `json:"applications"`
-	Status    string           `json:"status"`
+	NodeUID   string                 `json:"node_uid"`
+	Name      string                 `json:"name"`
+	Version   string                 `json:"version"`
+	Mode      string                 `json:"mode"`
+	Metrics   metrics.Snapshot       `json:"metrics"`
+	Apps      AppsDTO                `json:"applications"`
+	Status    string                 `json:"status"`
+	HostIP    string                 `json:"host_ip,omitempty"`
+	Billing   []RemoteBillingAccount `json:"billing,omitempty"`
 }
+
+// RemoteBillingAccount is a credential-free payment snapshot from a managed DockPilot node.
+type RemoteBillingAccount struct {
+	ServerIP   string  `json:"server_ip"`
+	Provider   string  `json:"provider"`
+	Name       string  `json:"name"`
+	Status     string  `json:"status"`
+	Cost       string  `json:"cost"`
+	ExpireDate *string `json:"expire_date,omitempty"`
+	DaysLeft   *int    `json:"days_left,omitempty"`
+	Enabled    bool    `json:"enabled"`
+}
+
