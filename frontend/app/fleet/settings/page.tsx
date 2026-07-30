@@ -132,13 +132,57 @@ export default function FleetSettingsPage() {
       </div>
 
       {settings.mode === "standalone" && (
-        <div className="card">
-          <h2 className="section-title">{t("fleet.enableMasterTitle")}</h2>
-          <p className="muted">{t("fleet.enableMasterHint")}</p>
-          <button type="button" className="btn" disabled={busy} onClick={enableMaster}>
-            {t("fleet.enableMaster")}
-          </button>
-        </div>
+        <>
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <h2 className="section-title">{t("fleet.enableMasterTitle")}</h2>
+            <p className="muted">{t("fleet.enableMasterHint")}</p>
+            <button type="button" className="btn" disabled={busy} onClick={enableMaster}>
+              {t("fleet.enableMaster")}
+            </button>
+          </div>
+
+          <div className="card">
+            <h2 className="section-title">{t("fleet.joinAsSlaveTitle")}</h2>
+            <p className="muted">{t("fleet.joinAsSlaveHint")}</p>
+            <ol className="muted" style={{ margin: "0.75rem 0 1rem", paddingLeft: "1.25rem" }}>
+              <li>{t("fleet.joinAsSlaveStep1")}</li>
+              <li>{t("fleet.joinAsSlaveStep2")}</li>
+              <li>{t("fleet.joinAsSlaveStep3")}</li>
+            </ol>
+            {pairing ? (
+              <div>
+                <p>
+                  <code style={{ fontSize: "1.25rem", letterSpacing: "0.04em" }}>
+                    {pairing.code}
+                  </code>
+                </p>
+                <p className="muted" style={{ fontSize: "0.85rem" }}>
+                  {t("fleet.pairingCodeExpires", {
+                    time: formatDateTime(pairing.expires_at),
+                  })}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={busy}
+                  onClick={generatePairingCode}
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  {t("fleet.generatePairingCode")}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={generatePairingCode}
+              >
+                {t("fleet.generatePairingCode")}
+              </button>
+            )}
+          </div>
+        </>
       )}
 
       {isMaster && (

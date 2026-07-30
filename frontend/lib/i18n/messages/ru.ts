@@ -652,6 +652,9 @@ export const ru: Messages = {
     kindDockpilot: "Полный DockPilot",
     kindDockpilotHint:
       "Установка полной панели на VPS по SSH (root + пароль) и автоматическое сопряжение с Master.",
+    kindPairExisting: "Подключить существующий DockPilot",
+    kindPairExistingHint:
+      "На удалённом VPS панель уже установлена. Нужен код сопряжения из её настроек Fleet.",
     kindAgent: "Агент мониторинга",
     kindAgentHint: "Лёгкий агент на VPS без панели DockPilot.",
     sshFormHint: "Как при установке из консоли: SSH-доступ и публичный URL будущей панели.",
@@ -734,6 +737,13 @@ export const ru: Messages = {
     enableMasterHint:
       "Превратить эту панель в master для мониторинга нескольких серверов и агентов.",
     enableMaster: "Включить master mode",
+    joinAsSlaveTitle: "Подключить как slave (managed node)",
+    joinAsSlaveHint:
+      "Отдельной кнопки «стать slave» нет. Сгенерируйте код сопряжения, а на Master добавьте этот сервер (URL панели + код). Либо установите эту панель с Master по SSH — сопряжение произойдёт само.",
+    joinAsSlaveStep1: "Сгенерируйте одноразовый код на этой панели.",
+    joinAsSlaveStep2:
+      "На Master: Добавить сервер → Подключить существующий DockPilot → URL этой панели и код.",
+    joinAsSlaveStep3: "После сопряжения режим сам станет managed node.",
     disableMaster: "Выключить master mode",
     disableMasterConfirm:
       "Выключить master mode? Удалённые узлы перестанут синхронизироваться.",

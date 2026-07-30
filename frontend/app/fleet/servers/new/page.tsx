@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
 import type { FleetInstallation, FleetInstallationLog } from "@/lib/types";
 
-type WizardKind = "choose" | "form" | "install";
+type WizardKind = "choose" | "form" | "pair" | "install";
 type InstallKind = "dockpilot" | "agent";
 
 const TERMINAL_INSTALL = new Set(["completed", "failed", "cancelled"]);
@@ -25,6 +25,10 @@ export default function FleetNewServerPage() {
   const [password, setPassword] = useState("");
   const [panelUrl, setPanelUrl] = useState("");
   const [email, setEmail] = useState("");
+
+  const [pairName, setPairName] = useState("");
+  const [pairUrl, setPairUrl] = useState("");
+  const [pairCode, setPairCode] = useState("");
 
   const [install, setInstall] = useState<FleetInstallation | null>(null);
   const [logs, setLogs] = useState<FleetInstallationLog[]>([]);
@@ -111,6 +115,24 @@ export default function FleetNewServerPage() {
     }
   };
 
+  const submitPair = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.pairDockpilotNode({
+        name: pairName.trim(),
+        base_url: pairUrl.trim(),
+        pairing_code: pairCode.trim(),
+      });
+      window.location.href = "/fleet";
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("fleet.pairFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmHostKey = async () => {
     if (!install) return;
     setBusy(true);
@@ -172,12 +194,80 @@ export default function FleetNewServerPage() {
             type="button"
             className="card"
             style={{ textAlign: "left", cursor: "pointer" }}
+            onClick={() => {
+              setError(null);
+              setStep("pair");
+            }}
+          >
+            <h2 className="section-title">{t("fleet.kindPairExisting")}</h2>
+            <p className="muted">{t("fleet.kindPairExistingHint")}</p>
+          </button>
+          <button
+            type="button"
+            className="card"
+            style={{ textAlign: "left", cursor: "pointer" }}
             onClick={() => choose("agent")}
           >
             <h2 className="section-title">{t("fleet.kindAgent")}</h2>
             <p className="muted">{t("fleet.kindAgentHint")}</p>
           </button>
         </div>
+      )}
+
+      {step === "pair" && (
+        <form className="card" onSubmit={submitPair}>
+          <h2 className="section-title">{t("fleet.kindPairExisting")}</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t("fleet.kindPairExistingHint")}
+          </p>
+          <div className="field">
+            <label className="label" htmlFor="pair-name">
+              {t("common.name")}
+            </label>
+            <input
+              id="pair-name"
+              className="input"
+              value={pairName}
+              onChange={(e) => setPairName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="pair-url">
+              {t("fleet.panelUrl")}
+            </label>
+            <input
+              id="pair-url"
+              className="input"
+              type="url"
+              placeholder="https://slave.example.com"
+              value={pairUrl}
+              onChange={(e) => setPairUrl(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="pair-code">
+              {t("fleet.pairingCode")}
+            </label>
+            <input
+              id="pair-code"
+              className="input"
+              value={pairCode}
+              onChange={(e) => setPairCode(e.target.value)}
+              required
+              autoComplete="off"
+            />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setStep("choose")}>
+              {t("common.back")}
+            </button>
+            <button type="submit" className="btn" disabled={busy}>
+              {busy ? t("common.loading") : t("fleet.pairServer")}
+            </button>
+          </div>
+        </form>
       )}
 
       {step === "form" && (

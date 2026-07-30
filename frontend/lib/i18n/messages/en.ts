@@ -651,6 +651,9 @@ export const en = {
     kindDockpilot: "Full DockPilot",
     kindDockpilotHint:
       "Install the full panel on a VPS via SSH (root + password), then pair it to this Master.",
+    kindPairExisting: "Connect existing DockPilot",
+    kindPairExistingHint:
+      "The remote panel already runs DockPilot. Use a pairing code from its Fleet settings.",
     kindAgent: "Monitoring agent",
     kindAgentHint: "Install the lightweight agent on a VPS without a DockPilot panel.",
     sshFormHint: "Same idea as console install: SSH access plus the public URL of the future panel.",
@@ -732,6 +735,13 @@ export const en = {
     enableMasterHint:
       "Turn this panel into a fleet master to monitor multiple servers and agents.",
     enableMaster: "Enable master mode",
+    joinAsSlaveTitle: "Join as slave (managed node)",
+    joinAsSlaveHint:
+      "You do not enable slave mode here. Generate a pairing code, then add this panel from the Master (Add server → Full DockPilot with pairing, or the Master installs it over SSH).",
+    joinAsSlaveStep1: "Generate a one-time pairing code on this panel.",
+    joinAsSlaveStep2:
+      "On the Master: Add server → Connect existing DockPilot → paste this panel URL and the code.",
+    joinAsSlaveStep3: "After pairing, this panel becomes a managed node automatically.",
     disableMaster: "Disable master mode",
     disableMasterConfirm:
       "Disable master mode? Remote nodes will stop syncing until you enable it again.",
