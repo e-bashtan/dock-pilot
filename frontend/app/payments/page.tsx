@@ -370,7 +370,7 @@ export default function PaymentsPage() {
                             fontWeight: 600,
                             color:
                               a.days_left <= a.alert_days
-                                ? "var(--warn, #b45309)"
+                                ? "var(--danger, #ef4444)"
                                 : "var(--ok, #15803d)",
                           }}
                         >

@@ -25,12 +25,19 @@ export function sortFleetNodes(nodes: FleetNode[]): FleetNode[] {
 }
 
 function isBillingDue(node: FleetNode): boolean {
+  const days = node.billing?.days_left;
+  if (typeof days === "number") {
+    const alert = node.billing?.alert_days && node.billing.alert_days > 0
+      ? node.billing.alert_days
+      : 10;
+    return days <= alert;
+  }
   const due = node.billing?.next_due_date;
   if (!due) return false;
   const dueDate = new Date(due);
   if (Number.isNaN(dueDate.getTime())) return false;
-  const days = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-  return days <= 30;
+  const left = (dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+  return left <= 10;
 }
 
 function hasProblems(node: FleetNode): boolean {

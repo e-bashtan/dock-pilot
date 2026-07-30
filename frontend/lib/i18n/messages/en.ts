@@ -647,6 +647,7 @@ export const en = {
     configurePayments: "Configure in Payments",
     daysLeft: "{days} days left",
     daysLeftShort: "{days}d",
+    dueShort: "due {date}",
     renameServer: "Server name",
     saveName: "Save name",
     nameSaved: "Name saved",

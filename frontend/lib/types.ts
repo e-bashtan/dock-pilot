@@ -573,6 +573,7 @@ export interface FleetBilling {
   server_ip?: string;
   cost_raw?: string;
   days_left?: number;
+  alert_days?: number;
 }
 
 export interface UpdateFleetNodeRequest {

@@ -60,6 +60,7 @@ type BillingDTO struct {
 	ServerIP         string  `json:"server_ip,omitempty"`
 	CostRaw          string  `json:"cost_raw,omitempty"`
 	DaysLeft         *int    `json:"days_left,omitempty"`
+	AlertDays        int     `json:"alert_days,omitempty"`
 }
 
 // UpdateNodeBillingRequest links a Fleet node to a VPS payment account from /payments.
@@ -271,6 +272,7 @@ type RemoteBillingAccount struct {
 	Cost       string  `json:"cost"`
 	ExpireDate *string `json:"expire_date,omitempty"`
 	DaysLeft   *int    `json:"days_left,omitempty"`
+	AlertDays  int     `json:"alert_days,omitempty"`
 	Enabled    bool    `json:"enabled"`
 }
 

@@ -53,6 +53,10 @@ func parseCachedCost(raw string) (minor int64, currency string) {
 
 func billingDTOFromAccount(acc db.BillingAccount) *BillingDTO {
 	minor, currency := parseCachedCost(acc.CachedCost)
+	alertDays := int(acc.AlertDays)
+	if alertDays <= 0 {
+		alertDays = 10
+	}
 	dto := &BillingDTO{
 		CostMinor:        minor,
 		Currency:         currency,
@@ -64,6 +68,7 @@ func billingDTOFromAccount(acc db.BillingAccount) *BillingDTO {
 		ServerIP:         acc.ServerIp,
 		CostRaw:          acc.CachedCost,
 		BillingAccountID: acc.ID.String(),
+		AlertDays:        alertDays,
 	}
 	if name := strings.TrimSpace(acc.CachedName); name != "" {
 		dto.Provider = name
@@ -87,10 +92,13 @@ func billingDTOFromManual(bill db.FleetNodeBilling) *BillingDTO {
 		ProviderURL:  bill.ProviderUrl,
 		MonthlyEquiv: monthlyEquiv(bill.CostMinor, bill.Period),
 		Mode:         "manual",
+		AlertDays:    10,
 	}
 	if bill.NextDueDate.Valid {
 		d := bill.NextDueDate.Time.Format("2006-01-02")
 		dto.NextDueDate = &d
+		days := int(bill.NextDueDate.Time.UTC().Truncate(24*time.Hour).Sub(time.Now().UTC().Truncate(24*time.Hour)).Hours() / 24)
+		dto.DaysLeft = &days
 	}
 	return dto
 }
@@ -161,6 +169,10 @@ func snapshotHostname(payload []byte) string {
 
 func billingDTOFromRemote(acc RemoteBillingAccount) *BillingDTO {
 	minor, currency := parseCachedCost(acc.Cost)
+	alertDays := acc.AlertDays
+	if alertDays <= 0 {
+		alertDays = 10
+	}
 	dto := &BillingDTO{
 		CostMinor:    minor,
 		Currency:     currency,
@@ -171,6 +183,7 @@ func billingDTOFromRemote(acc RemoteBillingAccount) *BillingDTO {
 		ServerIP:     acc.ServerIP,
 		CostRaw:      acc.Cost,
 		DaysLeft:     acc.DaysLeft,
+		AlertDays:    alertDays,
 	}
 	if name := strings.TrimSpace(acc.Name); name != "" {
 		dto.Provider = name
@@ -178,6 +191,12 @@ func billingDTOFromRemote(acc RemoteBillingAccount) *BillingDTO {
 	if acc.ExpireDate != nil && strings.TrimSpace(*acc.ExpireDate) != "" {
 		d := strings.TrimSpace(*acc.ExpireDate)
 		dto.NextDueDate = &d
+		if dto.DaysLeft == nil {
+			if t, err := time.Parse("2006-01-02", d); err == nil {
+				days := int(t.UTC().Truncate(24*time.Hour).Sub(time.Now().UTC().Truncate(24*time.Hour)).Hours() / 24)
+				dto.DaysLeft = &days
+			}
+		}
 	}
 	return dto
 }

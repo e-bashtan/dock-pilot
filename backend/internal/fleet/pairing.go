@@ -302,12 +302,13 @@ func remoteBillingFromAccounts(rows []db.BillingAccount) []RemoteBillingAccount 
 			continue
 		}
 		item := RemoteBillingAccount{
-			ServerIP: row.ServerIp,
-			Provider: row.Provider,
-			Name:     row.CachedName,
-			Status:   row.CachedStatus,
-			Cost:     row.CachedCost,
-			Enabled:  true,
+			ServerIP:  row.ServerIp,
+			Provider:  row.Provider,
+			Name:      row.CachedName,
+			Status:    row.CachedStatus,
+			Cost:      row.CachedCost,
+			Enabled:   true,
+			AlertDays: int(row.AlertDays),
 		}
 		if row.CachedExpireDate.Valid {
 			d := row.CachedExpireDate.Time.Format("2006-01-02")

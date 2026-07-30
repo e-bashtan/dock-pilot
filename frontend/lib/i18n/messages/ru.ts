@@ -648,6 +648,7 @@ export const ru: Messages = {
     configurePayments: "Настроить в Оплате",
     daysLeft: "Осталось {days} дн.",
     daysLeftShort: "{days}д",
+    dueShort: "до {date}",
     renameServer: "Имя сервера",
     saveName: "Сохранить имя",
     nameSaved: "Имя сохранено",

@@ -202,10 +202,17 @@ function FleetNodeRow({
     ((node.billing.monthly_equiv_minor ?? node.billing.cost_minor ?? 0) > 0 ||
       !!node.billing.next_due_date);
   const dueShort = node.billing?.next_due_date
-    ? formatShortDate(node.billing.next_due_date)
+    ? formatDueDate(node.billing.next_due_date)
     : "";
   const provider =
     node.billing?.provider_name || node.billing?.server_ip || "";
+  const alertDays =
+    node.billing?.alert_days && node.billing.alert_days > 0
+      ? node.billing.alert_days
+      : 10;
+  const billingDueSoon =
+    typeof node.billing?.days_left === "number" &&
+    node.billing.days_left <= alertDays;
 
   return (
     <article className="fleet-node-card">
@@ -326,20 +333,22 @@ function FleetNodeRow({
             )}
             {dueShort && (
               <span
-                className="fleet-metric"
+                className={`fleet-metric${billingDueSoon ? " fleet-metric-warn" : ""}`}
                 title={
                   node.billing?.next_due_date
-                    ? formatDateTime(node.billing.next_due_date)
-                    : undefined
+                    ? `${t("fleet.nextDue")} ${formatDateTime(node.billing.next_due_date)}`
+                    : t("fleet.nextDueDate")
                 }
               >
                 <IconCalendar />
-                <span>{dueShort}</span>
+                <span>
+                  {t("fleet.dueShort", { date: dueShort })}
+                </span>
               </span>
             )}
             {typeof node.billing?.days_left === "number" && (
               <span
-                className={`fleet-metric${node.billing.days_left <= 7 ? " fleet-metric-warn" : ""}`}
+                className={`fleet-metric${billingDueSoon ? " fleet-metric-warn" : ""}`}
                 title={t("fleet.daysLeft", { days: node.billing.days_left })}
               >
                 <IconClock />
@@ -365,11 +374,11 @@ function FleetNodeRow({
   );
 }
 
-function formatShortDate(value: string): string {
+function formatDueDate(value: string): string {
   const raw = value.trim().slice(0, 10);
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
   if (!m) return raw;
-  return `${m[3]}.${m[2]}`;
+  return `${m[3]}.${m[2]}.${m[1]}`;
 }
 
 function formatShortDateTime(

@@ -501,6 +501,127 @@ h3 {
   text-decoration: underline;
 }
 
+.fleet-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.fleet-detail-page > .card {
+  margin: 0;
+}
+
+.fleet-detail-page > .card + .card {
+  margin-top: 0;
+}
+
+.fleet-rename-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.fleet-rename-row .field {
+  flex: 1 1 14rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.fleet-rename-row .btn {
+  flex: 0 0 auto;
+}
+
+.fleet-kv {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 8.5rem) minmax(0, 1fr);
+  column-gap: 0.85rem;
+  row-gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  align-items: baseline;
+}
+
+.fleet-kv dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.fleet-kv dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-word;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-billing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.fleet-billing-grid .field {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.fleet-billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.fleet-billing-actions .checkbox-row {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fleet-billing-actions .btn {
+  margin: 0;
+}
+
+.fleet-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.fleet-detail-metric {
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--border) 35%, transparent);
+}
+
+.fleet-detail-metric-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+.fleet-detail-metric-value {
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 720px) {
   .fleet-summary {
     grid-template-columns: 1fr;
@@ -523,6 +644,28 @@ h3 {
 
   .fleet-metric-sep {
     display: none;
+  }
+
+  .fleet-detail-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fleet-kv {
+    grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+  }
+
+  .fleet-billing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fleet-billing-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fleet-billing-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 

@@ -170,7 +170,7 @@ export default function FleetServerDetailPage() {
   }
 
   return (
-    <div>
+    <div className="fleet-detail-page">
       <div className="page-header">
         <div>
           <h1>{node.name}</h1>
@@ -179,7 +179,7 @@ export default function FleetServerDetailPage() {
             <FleetNodeBadges role={node.role} connectionType={node.connection_type} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div className="page-actions">
           <Link href="/fleet" className="btn btn-secondary">
             {t("common.back")}
           </Link>
@@ -208,132 +208,136 @@ export default function FleetServerDetailPage() {
       {error && <div className="alert alert-error">{error}</div>}
 
       <form className="card" onSubmit={saveName}>
-        <h2 className="section-title">{t("fleet.renameServer")}</h2>
         {nameMsg && <div className="alert alert-success">{nameMsg}</div>}
-        <div className="field">
-          <label className="label" htmlFor="node-name">
-            {t("common.name")}
-          </label>
-          <input
-            id="node-name"
-            className="input"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            required
-          />
-          {node.hostname && node.hostname !== node.name && (
-            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
-              {t("fleet.hostnameHint", { hostname: node.hostname })}
-            </p>
-          )}
+        <div className="fleet-rename-row">
+          <div className="field">
+            <label className="label" htmlFor="node-name">
+              {t("fleet.renameServer")}
+            </label>
+            <input
+              id="node-name"
+              className="input"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              required
+            />
+            {node.hostname && node.hostname !== node.name && (
+              <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.8rem" }}>
+                {t("fleet.hostnameHint", { hostname: node.hostname })}
+              </p>
+            )}
+          </div>
+          <button
+            type="submit"
+            className="btn"
+            disabled={busy || editName.trim() === node.name}
+          >
+            {busy ? t("common.saving") : t("fleet.saveName")}
+          </button>
         </div>
-        <button
-          type="submit"
-          className="btn"
-          disabled={busy || editName.trim() === node.name}
-          style={{ marginTop: "0.75rem" }}
-        >
-          {busy ? t("common.saving") : t("fleet.saveName")}
-        </button>
       </form>
 
-      <div className="grid-2">
+      {node.metrics && (
         <div className="card">
-          <h2 className="section-title">{t("fleet.nodeInfo")}</h2>
-          <dl style={{ margin: 0, fontSize: "0.9rem" }}>
-            <dt className="muted">{t("fleet.nodeUid")}</dt>
-            <dd>{node.node_uid}</dd>
-            {node.hostname && (
-              <>
-                <dt className="muted">{t("fleet.hostname")}</dt>
-                <dd>{node.hostname}</dd>
-              </>
-            )}
-            {node.version && (
-              <>
-                <dt className="muted">{t("fleet.version")}</dt>
-                <dd>{node.version}</dd>
-              </>
-            )}
-            {node.agent_version && (
-              <>
-                <dt className="muted">{t("fleet.agentVersion")}</dt>
-                <dd>{node.agent_version}</dd>
-              </>
-            )}
-            {node.last_seen_at && (
-              <>
-                <dt className="muted">{t("fleet.lastSeen")}</dt>
-                <dd>{formatDateTime(node.last_seen_at)}</dd>
-              </>
-            )}
-            {(node.os_name || node.os_version) && (
-              <>
-                <dt className="muted">{t("fleet.os")}</dt>
-                <dd>
-                  {[node.os_name, node.os_version].filter(Boolean).join(" ")}
-                </dd>
-              </>
-            )}
-            {node.kernel && (
-              <>
-                <dt className="muted">{t("fleet.kernel")}</dt>
-                <dd>{node.kernel}</dd>
-              </>
-            )}
-            {node.architecture && (
-              <>
-                <dt className="muted">{t("fleet.architecture")}</dt>
-                <dd>{node.architecture}</dd>
-              </>
-            )}
-          </dl>
-        </div>
-
-        {node.metrics && (
-          <div className="card">
-            <h2 className="section-title">{t("fleet.metrics")}</h2>
-            {node.status === "offline" && (
-              <div className="alert alert-error" style={{ marginBottom: "0.75rem" }}>
-                {t("fleet.metricsStale")}
-              </div>
-            )}
-            <div className="server-status-grid">
-              <div>
-                <div className="label">CPU</div>
-                <div>{formatPercent(node.metrics.cpu_percent)}</div>
-              </div>
-              <div>
-                <div className="label">{t("fleet.memory")}</div>
-                <div>
-                  {formatBytes(node.metrics.memory_used_bytes)} /{" "}
-                  {formatBytes(node.metrics.memory_total_bytes)}
-                </div>
-              </div>
-              <div>
-                <div className="label">{t("fleet.disk")}</div>
-                <div>{formatPercent(node.metrics.disk_used_percent)}</div>
+          <h2 className="section-title">{t("fleet.metrics")}</h2>
+          {node.status === "offline" && (
+            <div className="alert alert-error" style={{ marginBottom: "0.75rem" }}>
+              {t("fleet.metricsStale")}
+            </div>
+          )}
+          <div className="fleet-detail-metrics">
+            <div className="fleet-detail-metric">
+              <div className="fleet-detail-metric-label">CPU</div>
+              <div className="fleet-detail-metric-value">
+                {formatPercent(node.metrics.cpu_percent)}
               </div>
             </div>
-            <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
-              {t("fleet.uptime")}: {formatUptime(node.metrics.uptime_seconds)}
-            </p>
+            <div className="fleet-detail-metric">
+              <div className="fleet-detail-metric-label">{t("fleet.memory")}</div>
+              <div
+                className="fleet-detail-metric-value"
+                title={`${formatBytes(node.metrics.memory_used_bytes)} / ${formatBytes(node.metrics.memory_total_bytes)}`}
+              >
+                {formatBytes(node.metrics.memory_used_bytes)}/{formatBytes(node.metrics.memory_total_bytes)}
+              </div>
+            </div>
+            <div className="fleet-detail-metric">
+              <div className="fleet-detail-metric-label">{t("fleet.disk")}</div>
+              <div className="fleet-detail-metric-value">
+                {formatPercent(node.metrics.disk_used_percent)}
+              </div>
+            </div>
+            <div className="fleet-detail-metric">
+              <div className="fleet-detail-metric-label">{t("fleet.uptime")}</div>
+              <div className="fleet-detail-metric-value">
+                {formatUptime(node.metrics.uptime_seconds)}
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-
-      {node.applications && (
-        <div className="card">
-          <h2 className="section-title">{t("fleet.applications")}</h2>
-          <p>
-            {t("fleet.appsLine", {
-              running: node.applications.running,
-              total: node.applications.total,
-              unhealthy: node.applications.unhealthy,
-            })}
-          </p>
         </div>
       )}
+
+      <div className="card">
+        <h2 className="section-title">{t("fleet.nodeInfo")}</h2>
+        <dl className="fleet-kv">
+          <dt>{t("fleet.nodeUid")}</dt>
+          <dd>{node.node_uid}</dd>
+          {node.hostname && (
+            <>
+              <dt>{t("fleet.hostname")}</dt>
+              <dd>{node.hostname}</dd>
+            </>
+          )}
+          {node.version && (
+            <>
+              <dt>{t("fleet.version")}</dt>
+              <dd>{node.version}</dd>
+            </>
+          )}
+          {node.agent_version && (
+            <>
+              <dt>{t("fleet.agentVersion")}</dt>
+              <dd>{node.agent_version}</dd>
+            </>
+          )}
+          {node.last_seen_at && (
+            <>
+              <dt>{t("fleet.lastSeen")}</dt>
+              <dd>{formatDateTime(node.last_seen_at)}</dd>
+            </>
+          )}
+          {(node.os_name || node.os_version) && (
+            <>
+              <dt>{t("fleet.os")}</dt>
+              <dd>{[node.os_name, node.os_version].filter(Boolean).join(" ")}</dd>
+            </>
+          )}
+          {node.kernel && (
+            <>
+              <dt>{t("fleet.kernel")}</dt>
+              <dd>{node.kernel}</dd>
+            </>
+          )}
+          {node.architecture && (
+            <>
+              <dt>{t("fleet.architecture")}</dt>
+              <dd>{node.architecture}</dd>
+            </>
+          )}
+          {node.applications && (
+            <>
+              <dt>{t("fleet.applications")}</dt>
+              <dd>
+                {t("fleet.appsLine", {
+                  running: node.applications.running,
+                  total: node.applications.total,
+                  unhealthy: node.applications.unhealthy,
+                })}
+              </dd>
+            </>
+          )}
+        </dl>
+      </div>
 
       <form className="card" onSubmit={saveBilling}>
         <h2 className="section-title">{t("fleet.billing")}</h2>
@@ -368,7 +372,7 @@ export default function FleetServerDetailPage() {
           </p>
         </div>
 
-        <div className="form-grid">
+        <div className="fleet-billing-grid">
           <div className="field">
             <label className="label" htmlFor="bill-cost">
               {t("fleet.costMajor")}
@@ -450,19 +454,21 @@ export default function FleetServerDetailPage() {
             />
           </div>
         </div>
-        <label className="label checkbox-row" htmlFor="bill-auto-renew" style={{ marginTop: "0.75rem" }}>
-          <input
-            id="bill-auto-renew"
-            type="checkbox"
-            checked={billingAutoRenew}
-            onChange={(e) => setBillingAutoRenew(e.target.checked)}
-            disabled={linkedAccount}
-          />
-          {t("fleet.autoRenew")}
-        </label>
-        <button type="submit" className="btn" disabled={busy} style={{ marginTop: "0.75rem" }}>
-          {busy ? t("common.saving") : t("fleet.saveBilling")}
-        </button>
+        <div className="fleet-billing-actions">
+          <label className="checkbox-row" htmlFor="bill-auto-renew">
+            <input
+              id="bill-auto-renew"
+              type="checkbox"
+              checked={billingAutoRenew}
+              onChange={(e) => setBillingAutoRenew(e.target.checked)}
+              disabled={linkedAccount}
+            />
+            <span>{t("fleet.autoRenew")}</span>
+          </label>
+          <button type="submit" className="btn" disabled={busy}>
+            {busy ? t("common.saving") : t("fleet.saveBilling")}
+          </button>
+        </div>
       </form>
 
       {node.services && node.services.length > 0 && (

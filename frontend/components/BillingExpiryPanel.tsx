@@ -8,8 +8,7 @@ import type { BillingAccount } from "@/lib/types";
 
 function toneFor(daysLeft: number | undefined, alertDays: number): string {
   if (daysLeft == null) return "var(--muted)";
-  if (daysLeft <= 0) return "var(--danger, #b91c1c)";
-  if (daysLeft <= alertDays) return "var(--warn, #b45309)";
+  if (daysLeft <= alertDays) return "var(--danger, #ef4444)";
   return "var(--ok, #15803d)";
 }
 
