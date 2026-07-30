@@ -83,6 +83,10 @@ func billingDTOFromAccount(acc db.BillingAccount) *BillingDTO {
 }
 
 func billingDTOFromManual(bill db.FleetNodeBilling) *BillingDTO {
+	alertDays := int(bill.AlertDays)
+	if alertDays <= 0 {
+		alertDays = 10
+	}
 	dto := &BillingDTO{
 		CostMinor:    bill.CostMinor,
 		Currency:     bill.Currency,
@@ -92,7 +96,7 @@ func billingDTOFromManual(bill db.FleetNodeBilling) *BillingDTO {
 		ProviderURL:  bill.ProviderUrl,
 		MonthlyEquiv: monthlyEquiv(bill.CostMinor, bill.Period),
 		Mode:         "manual",
-		AlertDays:    10,
+		AlertDays:    alertDays,
 	}
 	if bill.NextDueDate.Valid {
 		d := bill.NextDueDate.Time.Format("2006-01-02")

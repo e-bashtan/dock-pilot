@@ -719,6 +719,7 @@ export const en = {
     costMajor: "Cost (major units)",
     currency: "Currency",
     nextDueDate: "Next due date",
+    alertDays: "Warn N days before",
     providerName: "Provider",
     providerUrl: "Provider URL",
     autoRenew: "Auto-renew",

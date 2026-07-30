@@ -72,6 +72,7 @@ type UpdateNodeBillingRequest struct {
 	Period           string `json:"period"`
 	NextDueDate      string `json:"next_due_date"`
 	AutoRenew        bool   `json:"auto_renew"`
+	AlertDays        int    `json:"alert_days"`
 	Provider         string `json:"provider_name"`
 	ProviderURL      string `json:"provider_url"`
 	Comment          string `json:"comment"`

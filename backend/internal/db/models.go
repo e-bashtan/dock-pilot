@@ -163,6 +163,7 @@ type FleetNodeBilling struct {
 	Period            string      `json:"period"`
 	NextDueDate       pgtype.Date `json:"next_due_date"`
 	AutoRenew         bool        `json:"auto_renew"`
+	AlertDays         int32       `json:"alert_days"`
 	Comment           string      `json:"comment"`
 	CreatedAt         time.Time   `json:"created_at"`
 	UpdatedAt         time.Time   `json:"updated_at"`

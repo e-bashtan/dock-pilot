@@ -400,6 +400,7 @@ CREATE TABLE fleet_node_billing (
         CHECK (period IN ('monthly', 'quarterly', 'yearly', 'custom')),
     next_due_date DATE,
     auto_renew BOOLEAN NOT NULL DEFAULT false,
+    alert_days INT NOT NULL DEFAULT 10 CHECK (alert_days >= 1 AND alert_days <= 90),
     comment TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

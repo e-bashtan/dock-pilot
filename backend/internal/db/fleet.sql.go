@@ -411,7 +411,7 @@ func (q *Queries) GetFleetNode(ctx context.Context, id uuid.UUID) (FleetNode, er
 }
 
 const getFleetNodeBilling = `-- name: GetFleetNodeBilling :one
-SELECT id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, comment, created_at, updated_at FROM fleet_node_billing WHERE node_id = $1
+SELECT id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, alert_days, comment, created_at, updated_at FROM fleet_node_billing WHERE node_id = $1
 `
 
 func (q *Queries) GetFleetNodeBilling(ctx context.Context, nodeID uuid.UUID) (FleetNodeBilling, error) {
@@ -430,6 +430,7 @@ func (q *Queries) GetFleetNodeBilling(ctx context.Context, nodeID uuid.UUID) (Fl
 		&i.Period,
 		&i.NextDueDate,
 		&i.AutoRenew,
+		&i.AlertDays,
 		&i.Comment,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -1046,7 +1047,7 @@ func (q *Queries) ListFleetInstallationLogs(ctx context.Context, arg ListFleetIn
 }
 
 const listFleetNodeBilling = `-- name: ListFleetNodeBilling :many
-SELECT id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, comment, created_at, updated_at FROM fleet_node_billing
+SELECT id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, alert_days, comment, created_at, updated_at FROM fleet_node_billing
 `
 
 func (q *Queries) ListFleetNodeBilling(ctx context.Context) ([]FleetNodeBilling, error) {
@@ -1071,6 +1072,7 @@ func (q *Queries) ListFleetNodeBilling(ctx context.Context) ([]FleetNodeBilling,
 			&i.Period,
 			&i.NextDueDate,
 			&i.AutoRenew,
+			&i.AlertDays,
 			&i.Comment,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -1687,9 +1689,9 @@ func (q *Queries) UpdateFleetSettings(ctx context.Context, arg UpdateFleetSettin
 const upsertFleetNodeBilling = `-- name: UpsertFleetNodeBilling :one
 INSERT INTO fleet_node_billing (
     node_id, billing_account_id, mode, provider_name, provider_url, external_service_id,
-    cost_minor, currency, period, next_due_date, auto_renew, comment
+    cost_minor, currency, period, next_due_date, auto_renew, alert_days, comment
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 ON CONFLICT (node_id) DO UPDATE SET
     billing_account_id = EXCLUDED.billing_account_id,
@@ -1702,9 +1704,10 @@ ON CONFLICT (node_id) DO UPDATE SET
     period = EXCLUDED.period,
     next_due_date = EXCLUDED.next_due_date,
     auto_renew = EXCLUDED.auto_renew,
+    alert_days = EXCLUDED.alert_days,
     comment = EXCLUDED.comment,
     updated_at = now()
-RETURNING id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, comment, created_at, updated_at
+RETURNING id, node_id, billing_account_id, mode, provider_name, provider_url, external_service_id, cost_minor, currency, period, next_due_date, auto_renew, alert_days, comment, created_at, updated_at
 `
 
 type UpsertFleetNodeBillingParams struct {
@@ -1719,6 +1722,7 @@ type UpsertFleetNodeBillingParams struct {
 	Period            string      `json:"period"`
 	NextDueDate       pgtype.Date `json:"next_due_date"`
 	AutoRenew         bool        `json:"auto_renew"`
+	AlertDays         int32       `json:"alert_days"`
 	Comment           string      `json:"comment"`
 }
 
@@ -1735,6 +1739,7 @@ func (q *Queries) UpsertFleetNodeBilling(ctx context.Context, arg UpsertFleetNod
 		arg.Period,
 		arg.NextDueDate,
 		arg.AutoRenew,
+		arg.AlertDays,
 		arg.Comment,
 	)
 	var i FleetNodeBilling
@@ -1751,6 +1756,7 @@ func (q *Queries) UpsertFleetNodeBilling(ctx context.Context, arg UpsertFleetNod
 		&i.Period,
 		&i.NextDueDate,
 		&i.AutoRenew,
+		&i.AlertDays,
 		&i.Comment,
 		&i.CreatedAt,
 		&i.UpdatedAt,

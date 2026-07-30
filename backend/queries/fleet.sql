@@ -267,9 +267,9 @@ LIMIT $3;
 -- name: UpsertFleetNodeBilling :one
 INSERT INTO fleet_node_billing (
     node_id, billing_account_id, mode, provider_name, provider_url, external_service_id,
-    cost_minor, currency, period, next_due_date, auto_renew, comment
+    cost_minor, currency, period, next_due_date, auto_renew, alert_days, comment
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
 )
 ON CONFLICT (node_id) DO UPDATE SET
     billing_account_id = EXCLUDED.billing_account_id,
@@ -282,6 +282,7 @@ ON CONFLICT (node_id) DO UPDATE SET
     period = EXCLUDED.period,
     next_due_date = EXCLUDED.next_due_date,
     auto_renew = EXCLUDED.auto_renew,
+    alert_days = EXCLUDED.alert_days,
     comment = EXCLUDED.comment,
     updated_at = now()
 RETURNING *;

@@ -452,6 +452,7 @@ func (s *Service) UpdateNodeBilling(ctx context.Context, id uuid.UUID, req Updat
 			Period:            "monthly",
 			NextDueDate:       pgtype.Date{},
 			AutoRenew:         false,
+			AlertDays:         acc.AlertDays,
 			Comment:           strings.TrimSpace(req.Comment),
 		})
 		if err != nil {
@@ -474,6 +475,13 @@ func (s *Service) UpdateNodeBilling(ctx context.Context, id uuid.UUID, req Updat
 	default:
 		return NodeResponse{}, ErrInvalidInput
 	}
+	alertDays := req.AlertDays
+	if alertDays <= 0 {
+		alertDays = 10
+	}
+	if alertDays > 90 {
+		return NodeResponse{}, fmt.Errorf("%w: alert_days", ErrInvalidInput)
+	}
 	var due pgtype.Date
 	if d := strings.TrimSpace(req.NextDueDate); d != "" {
 		t, err := time.Parse("2006-01-02", d)
@@ -494,6 +502,7 @@ func (s *Service) UpdateNodeBilling(ctx context.Context, id uuid.UUID, req Updat
 		Period:            period,
 		NextDueDate:       due,
 		AutoRenew:         req.AutoRenew,
+		AlertDays:         int32(alertDays),
 		Comment:           strings.TrimSpace(req.Comment),
 	})
 	if err != nil {

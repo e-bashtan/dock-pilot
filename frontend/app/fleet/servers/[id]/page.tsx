@@ -39,6 +39,7 @@ export default function FleetServerDetailPage() {
   const [billingProvider, setBillingProvider] = useState("");
   const [billingProviderUrl, setBillingProviderUrl] = useState("");
   const [billingAutoRenew, setBillingAutoRenew] = useState(false);
+  const [billingAlertDays, setBillingAlertDays] = useState(10);
   const [billingMsg, setBillingMsg] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [nameMsg, setNameMsg] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function FleetServerDetailPage() {
       setBillingProvider(row.billing.provider_name || "");
       setBillingProviderUrl(row.billing.provider_url || "");
       setBillingAutoRenew(!!row.billing.auto_renew);
+      setBillingAlertDays(row.billing.alert_days && row.billing.alert_days > 0 ? row.billing.alert_days : 10);
     } else {
       setBillingCost("");
       setBillingCurrency("RUB");
@@ -63,6 +65,7 @@ export default function FleetServerDetailPage() {
       setBillingProvider("");
       setBillingProviderUrl("");
       setBillingAutoRenew(false);
+      setBillingAlertDays(10);
     }
   };
 
@@ -139,6 +142,7 @@ export default function FleetServerDetailPage() {
         period: billingPeriod,
         next_due_date: billingDue.trim() || undefined,
         auto_renew: billingAutoRenew,
+        alert_days: billingAlertDays,
         provider_name: billingProvider.trim() || undefined,
         provider_url: billingProviderUrl.trim() || undefined,
       });
@@ -426,6 +430,21 @@ export default function FleetServerDetailPage() {
               type="date"
               value={billingDue}
               onChange={(e) => setBillingDue(e.target.value)}
+              disabled={linkedAccount}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-alert-days">
+              {t("fleet.alertDays")}
+            </label>
+            <input
+              id="bill-alert-days"
+              className="input"
+              type="number"
+              min={1}
+              max={90}
+              value={billingAlertDays}
+              onChange={(e) => setBillingAlertDays(Number(e.target.value) || 10)}
               disabled={linkedAccount}
             />
           </div>

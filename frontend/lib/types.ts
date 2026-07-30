@@ -587,6 +587,7 @@ export interface UpdateFleetNodeBillingRequest {
   period?: string;
   next_due_date?: string;
   auto_renew?: boolean;
+  alert_days?: number;
   provider_name?: string;
   provider_url?: string;
   comment?: string;

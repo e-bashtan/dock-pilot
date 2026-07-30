@@ -721,6 +721,7 @@ export const ru: Messages = {
     costMajor: "Стоимость (основные единицы)",
     currency: "Валюта",
     nextDueDate: "Дата следующей оплаты",
+    alertDays: "Предупреждать за N дней",
     providerName: "Провайдер",
     providerUrl: "URL провайдера",
     autoRenew: "Автопродление",
