@@ -1,7 +1,7 @@
 package sites
 
 import (
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 func toSiteResponse(site db.Site, domains []db.SiteDomain, envVars []db.SiteEnvVar) SiteResponse {

@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
 )
 
 // RunSiteContainer starts (or recreates) the site container from the last built image.

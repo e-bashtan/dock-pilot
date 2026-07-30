@@ -22,7 +22,7 @@ export function BrandLogo({
         <>
           <Image
             src="/logo-small.png"
-            alt="DockPilot"
+            alt="Barn"
             width={1024}
             height={682}
             priority
@@ -30,7 +30,7 @@ export function BrandLogo({
           />
           <Image
             src="/logo-full.png"
-            alt="DockPilot"
+            alt="Barn"
             width={1024}
             height={682}
             priority
@@ -40,7 +40,7 @@ export function BrandLogo({
       ) : (
         <Image
           src="/logo-full.png"
-          alt="DockPilot"
+          alt="Barn"
           width={1024}
           height={682}
           priority

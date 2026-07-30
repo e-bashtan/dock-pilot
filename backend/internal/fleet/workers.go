@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 type PollingWorker struct {
@@ -44,7 +44,7 @@ func (w *PollingWorker) tick(ctx context.Context) {
 	if err != nil || mode != ModeMaster {
 		return
 	}
-	nodes, err := w.svc.q.ListDockpilotNodes(ctx)
+	nodes, err := w.svc.q.ListBarnNodes(ctx)
 	if err != nil {
 		return
 	}
@@ -113,7 +113,7 @@ func (w *PollingWorker) pollNode(ctx context.Context, node db.FleetNode) {
 		AppsUnhealthy:    pgInt4(status.Apps.Unhealthy),
 		Payload:          payload,
 	})
-	caps, _ := json.Marshal(DockpilotCapabilities())
+	caps, _ := json.Marshal(BarnCapabilities())
 	prev := node.Status
 	_, _ = w.svc.q.UpdateFleetNodePoll(ctx, db.UpdateFleetNodePollParams{
 		ID:           node.ID,

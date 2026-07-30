@@ -12,7 +12,7 @@ func TestParseVolumeConfig_namedVolume(t *testing.T) {
 	if len(mounts) != 1 || mounts[0].Target != "/data" || mounts[0].Type != "volume" {
 		t.Fatalf("mounts: %+v", mounts)
 	}
-	want := "dockpilot-eugen-bash-dict-data"
+	want := "barn-eugen-bash-dict-data"
 	if mounts[0].Source != want {
 		t.Fatalf("source %q want %q", mounts[0].Source, want)
 	}
@@ -31,5 +31,15 @@ func TestParseVolumeConfig_bindMount(t *testing.T) {
 	}
 	if len(ensure) != 0 {
 		t.Fatalf("unexpected volumes: %v", ensure)
+	}
+}
+
+func TestParseVolumeConfig_legacyPrefixKept(t *testing.T) {
+	mounts, _, err := ParseVolumeConfig("site", []string{"dockpilot-site-data:/data"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mounts[0].Source != "dockpilot-site-data" {
+		t.Fatalf("got %q", mounts[0].Source)
 	}
 }

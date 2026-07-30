@@ -1,0 +1,34 @@
+# Migrations against bundled PostgreSQL (postgres service must be running).
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-barn-postgres:latest}
+    container_name: barn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-barn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-barn}
+    volumes:
+      - barn_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barn} -d ${POSTGRES_DB:-barn}"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  migrate:
+    image: ${MIGRATE_IMAGE:-barn-migrate:latest}
+    container_name: barn-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: ${DATABASE_URL:?set DATABASE_URL in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  barn_pg:

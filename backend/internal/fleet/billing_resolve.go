@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 var costNumberRe = regexp.MustCompile(`(\d+(?:[.,]\d+)?)`)
@@ -325,8 +325,8 @@ func (s *Service) resolveNodeBilling(
 		matchIP = hostIP
 	}
 
-	// DockPilot slaves: payment lives on the node — prefer remote over Master manual leftovers.
-	if row.ConnectionType == ConnDockpilot {
+	// Barn slaves: payment lives on the node — prefer remote over Master manual leftovers.
+	if row.ConnectionType == ConnBarn {
 		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
 			return dto
 		}

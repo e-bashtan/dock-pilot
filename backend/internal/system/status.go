@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/hostexec"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/hostexec"
 )
 
 type DiskInfo struct {

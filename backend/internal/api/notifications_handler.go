@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
+	notifpkg "github.com/ebash/barn/backend/internal/notifications"
 )
 
 type NotificationsHandler struct {

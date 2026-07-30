@@ -2,7 +2,7 @@ import type { Messages } from "./en";
 
 export const ru: Messages = {
   meta: {
-    title: "DockPilot",
+    title: "Амбар",
     description: "Управление сайтами на Docker на вашем VPS",
   },
   common: {
@@ -71,7 +71,7 @@ export const ru: Messages = {
     title: "Сканирование QR",
     hint: "Наведите камеру на QR-код на экране компьютера",
     cameraDenied: "Нет доступа к камере. Разрешите камеру в настройках браузера.",
-    invalidQr: "Это не QR для входа в DockPilot. Попробуйте снова.",
+    invalidQr: "Это не QR для входа в Амбар. Попробуйте снова.",
   },
   mobileQr: {
     title: "Вход с телефона",
@@ -147,7 +147,7 @@ export const ru: Messages = {
     pruneHint: "Удалить неиспользуемые образы (в т.ч. с тегами), остановленные контейнеры и кэш сборки",
     pruneDone: "Удалено образов: {images}, контейнеров: {containers}, освобождено {freed}",
     pruneFailed: "Не удалось очистить Docker",
-    updateTitle: "Обновление DockPilot",
+    updateTitle: "Обновление Амбар",
     updateCurrent: "Текущая",
     updateLatest: "Последняя",
     updateAvailable: "Можно обновить до {version}",
@@ -157,9 +157,9 @@ export const ru: Messages = {
     updateTo: "Обновить до {version}",
     updateRunning: "Обновление…",
     updateConfirm:
-      "Скачать и установить DockPilot {version}? Панель может кратко отключиться при пересоздании контейнеров.",
+      "Скачать и установить Амбар {version}? Панель может кратко отключиться при пересоздании контейнеров.",
     updateConfirmLatest:
-      "Скачать и установить последний релиз DockPilot? Панель может кратко отключиться при пересоздании контейнеров.",
+      "Скачать и установить последний релиз Амбар? Панель может кратко отключиться при пересоздании контейнеров.",
     updateStarted: "Обновление запущено на сервере",
     updateDone: "Обновление завершено — перезагрузите страницу",
     updateFailed: "Обновление не удалось",
@@ -251,9 +251,9 @@ export const ru: Messages = {
     dockerVolumes: "Docker-тома",
     volumesHint:
       "Как в compose. Именованные тома на хосте с префиксом {prefix} (например, {example} → {result}).",
-    volumePrefix: "dockpilot-<slug>-",
+    volumePrefix: "barn-<slug>-",
     volumeExample: "dict-data:/data",
-    volumeResult: "dockpilot-my-site-dict-data",
+    volumeResult: "barn-my-site-dict-data",
     volumeMounts: "Монтирование томов (service volumes)",
     namedVolumes: "Именованные тома (top-level volumes:)",
     hostNetworkLabel:
@@ -389,7 +389,7 @@ export const ru: Messages = {
   backups: {
     title: "Бэкапы",
     subtitle:
-      "Полный снимок DockPilot (БД панели + managed Postgres + секреты) и дампы отдельных БД — всё в S3.",
+      "Полный снимок Амбар (БД панели + managed Postgres + секреты) и дампы отдельных БД — всё в S3.",
     loadFailed: "Не удалось загрузить бэкапы",
     saved: "Сохранено",
     destination: "Назначение S3 (полные снимки)",
@@ -398,7 +398,7 @@ export const ru: Messages = {
     scheduleEnabled: "Ежедневный полный бэкап",
     keysSet: "Сохранено — оставьте пустым, чтобы не менять",
     clearKeys: "Очистить сохранённые ключи S3",
-    fullTitle: "Полные снимки DockPilot",
+    fullTitle: "Полные снимки Амбар",
     fullHint:
       "Включает БД панели, все managed-базы и secrets.env. Сайты после restore — redeploy из git.",
     createFull: "Создать полный бэкап",
@@ -611,7 +611,7 @@ export const ru: Messages = {
   },
   fleet: {
     title: "Флот",
-    subtitle: "Мониторинг всех серверов DockPilot и агентов из одной панели.",
+    subtitle: "Мониторинг всех серверов Амбар и агентов из одной панели.",
     settingsLink: "Настройки флота",
     addServer: "Добавить сервер",
     loadFailed: "Не удалось загрузить данные флота",
@@ -632,7 +632,7 @@ export const ru: Messages = {
     billingSection: "Оплата",
     monitoringWaiting: "Ждём метрики…",
     metricsStale:
-      "Агент не отвечает — метрики ниже с последнего heartbeat. Проверьте dockpilot-agent на хосте.",
+      "Агент не отвечает — метрики ниже с последнего heartbeat. Проверьте barn-agent на хосте.",
     billingNotSet: "Оплата не задана",
     setBilling: "Задать оплату",
     editBilling: "Изменить",
@@ -674,13 +674,13 @@ export const ru: Messages = {
     manageLocal: "Управление сайтами",
     viewDetails: "Подробнее",
     badgeMaster: "MASTER",
-    badgeDockpilot: "DOCKPILOT",
+    badgeBarn: "АМБАР",
     badgeMonitored: "MONITORED",
     filter: {
       all: "Все",
       problems: "Проблемы",
       offline: "Offline",
-      dockpilot: "DockPilot",
+      barn: "Амбар",
       monitored: "Monitored",
       billing_due: "Оплата скоро",
     },
@@ -690,23 +690,23 @@ export const ru: Messages = {
       offline: "Offline",
     },
     newServerTitle: "Добавить сервер",
-    newServerSubtitle: "Установите полную панель DockPilot или лёгкий агент мониторинга по SSH.",
-    kindDockpilot: "Полный DockPilot",
-    kindDockpilotHint:
+    newServerSubtitle: "Установите полную панель Амбар или лёгкий агент мониторинга по SSH.",
+    kindBarn: "Полный Амбар",
+    kindBarnHint:
       "Установка полной панели на VPS по SSH (root + пароль) и автоматическое сопряжение с Master.",
-    kindPairExisting: "Подключить существующий DockPilot",
+    kindPairExisting: "Подключить существующий Амбар",
     kindPairExistingHint:
       "На удалённом VPS панель уже установлена. Нужен код сопряжения из её настроек Fleet.",
     kindAgent: "Агент мониторинга",
-    kindAgentHint: "Лёгкий агент на VPS без панели DockPilot.",
+    kindAgentHint: "Лёгкий агент на VPS без панели Амбар.",
     sshFormHint: "Как при установке из консоли: SSH-доступ и публичный URL будущей панели.",
-    sshFormHintDockpilot:
+    sshFormHintBarn:
       "SSH-доступ и публичный HTTPS URL будущей панели (DNS должен указывать на этот хост).",
     sshFormHintAgent: "SSH-доступ к VPS. Будет установлен лёгкий агент мониторинга.",
     baseUrl: "URL панели",
     panelUrl: "URL панели",
     panelUrlHint:
-      "Публичный HTTPS-адрес, по которому потом откроется DockPilot (DNS A/AAAA должен указывать на VPS).",
+      "Публичный HTTPS-адрес, по которому потом откроется Амбар (DNS A/AAAA должен указывать на VPS).",
     certEmail: "Email для Let's Encrypt",
     certEmailHint: "Необязательно. По умолчанию admin@<домен панели>.",
     sshHost: "SSH-хост (IP или hostname)",
@@ -788,7 +788,7 @@ export const ru: Messages = {
       "Отдельной кнопки «стать slave» нет. Сгенерируйте код сопряжения, а на Master добавьте этот сервер (URL панели + код). Либо установите эту панель с Master по SSH — сопряжение произойдёт само.",
     joinAsSlaveStep1: "Сгенерируйте одноразовый код на этой панели.",
     joinAsSlaveStep2:
-      "На Master: Добавить сервер → Подключить существующий DockPilot → URL этой панели и код.",
+      "На Master: Добавить сервер → Подключить существующий Амбар → URL этой панели и код.",
     joinAsSlaveStep3: "После сопряжения режим сам станет managed node.",
     disableMaster: "Выключить master mode",
     disableMasterConfirm:

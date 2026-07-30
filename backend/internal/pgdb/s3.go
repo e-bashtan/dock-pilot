@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ebash/dock-pilot/backend/internal/s3util"
+	"github.com/ebash/barn/backend/internal/s3util"
 )
 
 type s3Config = s3util.Config

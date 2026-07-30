@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/metrics"
 )
 
 type SettingsResponse struct {
@@ -157,7 +157,7 @@ type PairingCodeResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-type PairDockpilotRequest struct {
+type PairBarnRequest struct {
 	Name         string `json:"name"`
 	URL          string `json:"url"`
 	BaseURL      string `json:"base_url"`
@@ -220,7 +220,7 @@ type AgentRegisterResponse struct {
 }
 
 type CreateAgentInstallRequest struct {
-	Kind         string `json:"kind"` // agent | dockpilot
+	Kind         string `json:"kind"` // agent | barn | dockpilot (legacy)
 	Name         string `json:"name"`
 	Host         string `json:"host"`
 	Port         int    `json:"port"`
@@ -266,7 +266,7 @@ type NodeStatusPayload struct {
 	Billing   []RemoteBillingAccount `json:"billing,omitempty"`
 }
 
-// RemoteBillingAccount is a credential-free payment snapshot from a managed DockPilot node.
+// RemoteBillingAccount is a credential-free payment snapshot from a managed Barn node.
 type RemoteBillingAccount struct {
 	ServerIP   string  `json:"server_ip"`
 	Provider   string  `json:"provider"`

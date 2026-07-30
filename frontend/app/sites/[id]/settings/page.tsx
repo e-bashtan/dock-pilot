@@ -242,9 +242,9 @@ export default function SiteSettingsPage() {
         <h3>{t("siteSettings.dockerVolumes")}</h3>
         <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "0.75rem" }}>
           {t("siteSettings.volumesHint", {
-            prefix: "dockpilot-<slug>-",
+            prefix: "barn-<slug>-",
             example: "dict-data:/data",
-            result: "dockpilot-my-site-dict-data",
+            result: "barn-my-site-dict-data",
           })}
         </p>
         <div className="field">

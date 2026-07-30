@@ -1,3 +1,4 @@
+# LEGACY: Use docker-compose.barn-migrate.yml for new installs.
 # Migrations against bundled PostgreSQL (postgres service must be running).
 services:
   postgres:

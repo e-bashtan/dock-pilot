@@ -1,6 +1,6 @@
 package sites
 
-import "github.com/ebash/dock-pilot/backend/internal/db"
+import "github.com/ebash/barn/backend/internal/db"
 
 // UsesHostNetwork reports whether the site container runs with network_mode: host.
 func UsesHostNetwork(site db.Site) bool {

@@ -9,8 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
+	"github.com/ebash/barn/backend/internal/healthcheck"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
 type SitesHandler struct {

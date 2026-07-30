@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"strings"
 
-	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
-	"github.com/ebash/dock-pilot/backend/internal/billing"
-	"github.com/ebash/dock-pilot/backend/internal/fleet"
-	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
-	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
-	"github.com/ebash/dock-pilot/backend/internal/pgdb"
-	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
-	"github.com/ebash/dock-pilot/backend/internal/system"
+	deploysvc "github.com/ebash/barn/backend/internal/deployments"
+	"github.com/ebash/barn/backend/internal/billing"
+	"github.com/ebash/barn/backend/internal/fleet"
+	notifpkg "github.com/ebash/barn/backend/internal/notifications"
+	"github.com/ebash/barn/backend/internal/panelbackup"
+	"github.com/ebash/barn/backend/internal/pgdb"
+	secretpkg "github.com/ebash/barn/backend/internal/secrets"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
+	"github.com/ebash/barn/backend/internal/system"
 )
 
 type errorBody struct {

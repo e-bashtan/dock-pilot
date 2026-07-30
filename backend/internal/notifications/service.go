@@ -12,10 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/pgdb"
-	"github.com/ebash/dock-pilot/backend/internal/secrets"
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/pgdb"
+	"github.com/ebash/barn/backend/internal/secrets"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
 // LocalAlertGate optionally suppresses local Telegram user alerts
@@ -113,7 +113,7 @@ func (s *Service) SendTest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	text := "<b>DockPilot</b>\nТестовое уведомление — Telegram настроен."
+	text := "<b>Barn</b>\nТестовое уведомление — Telegram настроен."
 	if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, text, settings.TelegramHttpProxy); err != nil {
 		return fmt.Errorf("telegram: %w", err)
 	}
@@ -406,7 +406,7 @@ func isIncidentTransition(prev, current string) bool {
 func formatDailyDigest(rows []digestItem, names map[string]string, now time.Time, tz string) string {
 	localNow := now.In(digestLocation(tz))
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>DockPilot — ежедневный отчёт</b>\n%s\n\n", localNow.Format("2006-01-02 15:04 MST"))
+	fmt.Fprintf(&b, "<b>Barn — ежедневный отчёт</b>\n%s\n\n", localNow.Format("2006-01-02 15:04 MST"))
 	if len(rows) == 0 {
 		b.WriteString("Нет сайтов и баз в панели.")
 		return b.String()
@@ -440,7 +440,7 @@ func formatIncident(name string, h digestItem) string {
 		label = "Postgres"
 	}
 	return fmt.Sprintf(
-		"<b>DockPilot — %s</b>\n%s: %s\nСтатус: <b>%s</b>\n%s",
+		"<b>Barn — %s</b>\n%s: %s\nСтатус: <b>%s</b>\n%s",
 		title,
 		label,
 		escapeHTML(name),

@@ -1,0 +1,43 @@
+[Unit]
+Description=Barn Fleet Agent
+Documentation=https://github.com/ebasht/barn
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=barn-agent
+Group=barn-agent
+# Self-heal ownership if register previously wrote config as root.
+ExecStartPre=+/bin/chown -R barn-agent:barn-agent /etc/barn-agent /var/lib/barn-agent
+ExecStartPre=+/bin/chmod 0755 /etc/barn-agent
+ExecStartPre=+/bin/chmod 0600 /etc/barn-agent/config.json
+ExecStart=/usr/local/bin/barn-agent -config /etc/barn-agent/config.json
+Restart=always
+RestartSec=5
+
+# Least privilege compatible with /proc metrics and systemctl status reads.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Config + durable outbox
+ReadWritePaths=/etc/barn-agent /var/lib/barn-agent
+PrivateDevices=false
+
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+Environment=HOME=/var/lib/barn-agent
+
+[Install]
+WantedBy=multi-user.target

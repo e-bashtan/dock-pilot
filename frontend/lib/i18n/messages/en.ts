@@ -1,6 +1,6 @@
 export const en = {
   meta: {
-    title: "DockPilot",
+    title: "Barn",
     description: "Manage Docker-based websites on your VPS",
   },
   common: {
@@ -69,7 +69,7 @@ export const en = {
     title: "Scan sign-in QR",
     hint: "Point the camera at the QR code on your computer screen",
     cameraDenied: "Camera access denied. Allow camera in browser settings.",
-    invalidQr: "Not a DockPilot sign-in QR. Try again.",
+    invalidQr: "Not a Barn sign-in QR. Try again.",
   },
   mobileQr: {
     title: "Sign in on phone",
@@ -145,7 +145,7 @@ export const en = {
     pruneHint: "Remove unused images (incl. tagged), stopped containers, and build cache",
     pruneDone: "Cleaned {images} image(s), {containers} container(s), freed {freed}",
     pruneFailed: "Docker cleanup failed",
-    updateTitle: "DockPilot update",
+    updateTitle: "Barn update",
     updateCurrent: "Current",
     updateLatest: "Latest",
     updateAvailable: "Update available → {version}",
@@ -155,9 +155,9 @@ export const en = {
     updateTo: "Update to {version}",
     updateRunning: "Updating…",
     updateConfirm:
-      "Download and install DockPilot {version}? The panel may briefly disconnect while containers recreate.",
+      "Download and install Barn {version}? The panel may briefly disconnect while containers recreate.",
     updateConfirmLatest:
-      "Download and install the latest DockPilot release? The panel may briefly disconnect while containers recreate.",
+      "Download and install the latest Barn release? The panel may briefly disconnect while containers recreate.",
     updateStarted: "Update started on the server",
     updateDone: "Update finished — reload the page",
     updateFailed: "Update failed",
@@ -249,9 +249,9 @@ export const en = {
     dockerVolumes: "Docker volumes",
     volumesHint:
       "Compose-style persistence. Named volumes are prefixed with {prefix} on the host (e.g. {example} → {result}).",
-    volumePrefix: "dockpilot-<slug>-",
+    volumePrefix: "barn-<slug>-",
     volumeExample: "dict-data:/data",
-    volumeResult: "dockpilot-my-site-dict-data",
+    volumeResult: "barn-my-site-dict-data",
     volumeMounts: "Volume mounts (service volumes)",
     namedVolumes: "Named volumes (top-level volumes:)",
     hostNetworkLabel:
@@ -388,7 +388,7 @@ export const en = {
   backups: {
     title: "Backups",
     subtitle:
-      "Full DockPilot snapshot (panel DB + managed Postgres + secrets) and per-database dumps — all in S3.",
+      "Full Barn snapshot (panel DB + managed Postgres + secrets) and per-database dumps — all in S3.",
     loadFailed: "Failed to load backups",
     saved: "Saved",
     destination: "S3 destination (full snapshots)",
@@ -397,7 +397,7 @@ export const en = {
     scheduleEnabled: "Daily full backup",
     keysSet: "Saved — leave empty to keep",
     clearKeys: "Clear saved S3 keys",
-    fullTitle: "Full DockPilot snapshots",
+    fullTitle: "Full Barn snapshots",
     fullHint:
       "Includes panel database, all managed databases, and secrets.env. Sites redeploy from git after restore.",
     createFull: "Create full backup",
@@ -610,7 +610,7 @@ export const en = {
   },
   fleet: {
     title: "Fleet",
-    subtitle: "Monitor all DockPilot servers and agents from one place.",
+    subtitle: "Monitor all Barn servers and agents from one place.",
     settingsLink: "Fleet settings",
     addServer: "Add server",
     loadFailed: "Failed to load fleet data",
@@ -631,7 +631,7 @@ export const en = {
     billingSection: "Payment",
     monitoringWaiting: "Waiting for metrics…",
     metricsStale:
-      "Agent is not reporting — metrics below are from the last heartbeat. Check dockpilot-agent on the host.",
+      "Agent is not reporting — metrics below are from the last heartbeat. Check barn-agent on the host.",
     billingNotSet: "Payment not set",
     setBilling: "Set payment",
     editBilling: "Edit",
@@ -673,13 +673,13 @@ export const en = {
     manageLocal: "Manage sites",
     viewDetails: "Details",
     badgeMaster: "MASTER",
-    badgeDockpilot: "DOCKPILOT",
+    badgeBarn: "BARN",
     badgeMonitored: "MONITORED",
     filter: {
       all: "All",
       problems: "Problems",
       offline: "Offline",
-      dockpilot: "DockPilot",
+      barn: "Barn",
       monitored: "Monitored",
       billing_due: "Billing due",
     },
@@ -689,22 +689,22 @@ export const en = {
       offline: "Offline",
     },
     newServerTitle: "Add server",
-    newServerSubtitle: "Install a full DockPilot panel or a lightweight monitoring agent over SSH.",
-    kindDockpilot: "Full DockPilot",
-    kindDockpilotHint:
+    newServerSubtitle: "Install a full Barn panel or a lightweight monitoring agent over SSH.",
+    kindBarn: "Full Barn",
+    kindBarnHint:
       "Install the full panel on a VPS via SSH (root + password), then pair it to this Master.",
-    kindPairExisting: "Connect existing DockPilot",
+    kindPairExisting: "Connect existing Barn",
     kindPairExistingHint:
-      "The remote panel already runs DockPilot. Use a pairing code from its Fleet settings.",
+      "The remote panel already runs Barn. Use a pairing code from its Fleet settings.",
     kindAgent: "Monitoring agent",
-    kindAgentHint: "Install the lightweight agent on a VPS without a DockPilot panel.",
+    kindAgentHint: "Install the lightweight agent on a VPS without a Barn panel.",
     sshFormHint: "Same idea as console install: SSH access plus the public URL of the future panel.",
-    sshFormHintDockpilot:
+    sshFormHintBarn:
       "SSH access plus the public HTTPS URL of the future panel (DNS must point to this host).",
     sshFormHintAgent: "SSH access to the VPS. A lightweight monitoring agent will be installed.",
     baseUrl: "Panel URL",
     panelUrl: "Panel URL",
-    panelUrlHint: "Public HTTPS URL where this DockPilot will open (DNS A/AAAA must point to the VPS).",
+    panelUrlHint: "Public HTTPS URL where this Barn will open (DNS A/AAAA must point to the VPS).",
     certEmail: "Let's Encrypt email",
     certEmailHint: "Optional. Defaults to admin@<panel-domain>.",
     sshHost: "SSH host (IP or hostname)",
@@ -783,10 +783,10 @@ export const en = {
     enableMaster: "Enable master mode",
     joinAsSlaveTitle: "Join as slave (managed node)",
     joinAsSlaveHint:
-      "You do not enable slave mode here. Generate a pairing code, then add this panel from the Master (Add server → Full DockPilot with pairing, or the Master installs it over SSH).",
+      "You do not enable slave mode here. Generate a pairing code, then add this panel from the Master (Add server → Full Barn with pairing, or the Master installs it over SSH).",
     joinAsSlaveStep1: "Generate a one-time pairing code on this panel.",
     joinAsSlaveStep2:
-      "On the Master: Add server → Connect existing DockPilot → paste this panel URL and the code.",
+      "On the Master: Add server → Connect existing Barn → paste this panel URL and the code.",
     joinAsSlaveStep3: "After pairing, this panel becomes a managed node automatically.",
     disableMaster: "Disable master mode",
     disableMasterConfirm:

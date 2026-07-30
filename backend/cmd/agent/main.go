@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/agent"
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/agent"
+	"github.com/ebash/barn/backend/internal/metrics"
 )
 
 // Set via: go build -ldflags "-X main.version=v1.2.3"
@@ -56,7 +56,7 @@ func main() {
 	defer stop()
 
 	runner := agent.NewRunner(cfg, version, logger)
-	logger.Info("dockpilot-agent starting",
+	logger.Info("barn-agent starting",
 		"version", version,
 		"master_url", cfg.MasterURL,
 		"node_uid", cfg.NodeUID,
@@ -66,7 +66,7 @@ func main() {
 		logger.Error("runner stopped", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("dockpilot-agent stopped")
+	logger.Info("barn-agent stopped")
 }
 
 func runRegister(logger *slog.Logger, configPath, masterURL, regToken, nodeUID string) error {
@@ -90,7 +90,7 @@ func runRegister(logger *slog.Logger, configPath, masterURL, regToken, nodeUID s
 	}
 
 	client := agent.NewClient(masterURL, "")
-	client.UserAgent = "dockpilot-agent/" + version
+	client.UserAgent = "barn-agent/" + version
 
 	ctx := context.Background()
 	resp, err := client.Register(ctx, agent.RegisterRequest{

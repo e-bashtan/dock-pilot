@@ -28,7 +28,7 @@ func TestConsumeBuildOutput_errorInStream(t *testing.T) {
 }
 
 func TestImageTagForSlug(t *testing.T) {
-	if got := ImageTagForSlug("Eugen-Bash"); got != "dockpilot/eugen-bash:latest" {
+	if got := ImageTagForSlug("Eugen-Bash"); got != "barn/eugen-bash:latest" {
 		t.Fatalf("got %q", got)
 	}
 }

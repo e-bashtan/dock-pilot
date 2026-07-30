@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
+	"github.com/ebash/barn/backend/internal/db"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
 type Service struct {

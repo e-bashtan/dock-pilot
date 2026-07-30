@@ -117,7 +117,7 @@ export function PostgresBackupsPanel({ instanceId }: { instanceId: string }) {
   const [s3Endpoint, setS3Endpoint] = useState("");
   const [s3Region, setS3Region] = useState("ru-central1");
   const [s3Bucket, setS3Bucket] = useState("");
-  const [s3Prefix, setS3Prefix] = useState("dock-pilot/pg-backups");
+  const [s3Prefix, setS3Prefix] = useState("barn/pg-backups");
   const [s3Access, setS3Access] = useState("");
   const [s3Secret, setS3Secret] = useState("");
   const [s3PathStyle, setS3PathStyle] = useState(false);

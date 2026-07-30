@@ -17,9 +17,9 @@ const (
 	ModeMaster      = "master"
 	ModeManagedNode = "managed_node"
 
-	ConnLocal     = "local"
-	ConnDockpilot = "dockpilot"
-	ConnAgent     = "agent"
+	ConnLocal = "local"
+	ConnBarn  = "barn"
+	ConnAgent = "agent"
 
 	RoleMaster = "master"
 	RoleNode   = "node"
@@ -107,7 +107,7 @@ func HasScope(scopes []string, need string) bool {
 
 func MasterCapabilities() []string {
 	return []string{
-		"system_metrics", "dockpilot_apps", "deployments", "postgres", "backups", "billing",
+		"system_metrics", "barn_apps", "deployments", "postgres", "backups", "billing",
 	}
 }
 
@@ -115,8 +115,24 @@ func AgentCapabilities() []string {
 	return []string{"system_metrics", "systemd_units"}
 }
 
-func DockpilotCapabilities() []string {
+func BarnCapabilities() []string {
 	return []string{
-		"system_metrics", "dockpilot_apps", "deployments", "postgres", "backups", "billing",
+		"system_metrics", "barn_apps", "deployments", "postgres", "backups", "billing",
 	}
+}
+
+// NormalizeConnectionType maps legacy "dockpilot" to "barn"
+func NormalizeConnectionType(connType string) string {
+	if connType == "dockpilot" {
+		return ConnBarn
+	}
+	return connType
+}
+
+// NormalizeInstallKind maps legacy "dockpilot" to "barn"
+func NormalizeInstallKind(kind string) string {
+	if kind == "dockpilot" {
+		return "barn"
+	}
+	return kind
 }

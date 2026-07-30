@@ -14,9 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
-	"github.com/ebash/dock-pilot/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/db"
+	notifpkg "github.com/ebash/barn/backend/internal/notifications"
+	"github.com/ebash/barn/backend/internal/secrets"
 )
 
 type Service struct {
@@ -283,7 +283,7 @@ func (s *Service) refreshOne(ctx context.Context, row db.BillingAccount, sendAle
 		return nil
 	}
 	msg := fmt.Sprintf(
-		"<b>DockPilot — оплата VPS</b>\nIP: <code>%s</code>\n%s\nИстекает: <b>%s</b> (через %d дн.)\n%s",
+		"<b>Barn — оплата VPS</b>\nIP: <code>%s</code>\n%s\nИстекает: <b>%s</b> (через %d дн.)\n%s",
 		row.ServerIp,
 		escapeHTML(vds.Name),
 		expire.Time.Format("2006-01-02"),

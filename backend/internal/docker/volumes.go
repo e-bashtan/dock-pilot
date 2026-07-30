@@ -14,7 +14,8 @@ type Mount struct {
 }
 
 // ParseVolumeConfig resolves Compose-style volume lines for a site.
-// Named volumes (not absolute paths) are prefixed with dockpilot-{slug}- unless already prefixed.
+// Named volumes (not absolute paths) are prefixed with barn-{slug}- unless already prefixed
+// (including legacy dockpilot-{slug}- names).
 func ParseVolumeConfig(slug string, mountLines, namedVolumeLines []string) ([]Mount, []string, error) {
 	prefix := volumePrefix(slug)
 	seenVolumes := map[string]struct{}{}
@@ -61,7 +62,11 @@ func volumePrefix(slug string) string {
 	if s == "" {
 		s = "site"
 	}
-	return "dockpilot-" + s + "-"
+	return "barn-" + s + "-"
+}
+
+func hasManagedVolumePrefix(name string) bool {
+	return strings.HasPrefix(name, "barn-") || strings.HasPrefix(name, "dockpilot-")
 }
 
 func qualifyVolumeName(prefix, name string) string {
@@ -69,7 +74,7 @@ func qualifyVolumeName(prefix, name string) string {
 	if name == "" {
 		return prefix + "data"
 	}
-	if strings.HasPrefix(name, "dockpilot-") {
+	if hasManagedVolumePrefix(name) {
 		return name
 	}
 	return prefix + sanitizeVolumeComponent(name)

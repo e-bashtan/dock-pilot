@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
-	"github.com/ebash/dock-pilot/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/secrets"
 )
 
 type SiteHealthProvider interface {
@@ -115,7 +115,7 @@ BEGIN
   ) THEN
     ALTER TABLE fleet_installations
       ADD CONSTRAINT fleet_installations_install_kind_check
-      CHECK (install_kind IN ('agent', 'dockpilot'));
+      CHECK (install_kind IN ('agent', 'barn'));
   END IF;
 END $$`)
 	return nil

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Restore a DockPilot full snapshot (tar.gz from S3) onto a VPS after install.sh.
+# Restore a Barn full snapshot (tar.gz from S3) onto a VPS after install.sh.
 #
 # Bundle layout (created by panel backup):
 #   manifest.json
 #   secrets.env
-#   panel/dockpilot.sql.gz
+#   panel/barn.sql.gz
 #   managed/<db>.sql.gz
 #
 # Typical flow on a new VPS:
@@ -15,10 +15,10 @@
 # Requires: docker, gunzip, tar. Download via aws CLI, yc, or --file.
 set -euo pipefail
 
-INSTALL_DIR="${DOCK_PILOT_INSTALL_DIR:-/opt/dock-pilot}"
-COMPOSE_FILE="${DOCK_PILOT_COMPOSE:-docker-compose.dock-pilot.yml}"
-PANEL_PG_CONTAINER="${PANEL_POSTGRES_CONTAINER:-dock-pilot-postgres}"
-MANAGED_PG_CONTAINER="${MANAGED_POSTGRES_CONTAINER:-dockpilot-postgres}"
+INSTALL_DIR="${BARN_INSTALL_DIR:-${DOCK_PILOT_INSTALL_DIR:-/opt/barn}}"
+COMPOSE_FILE="${BARN_COMPOSE:-${DOCK_PILOT_COMPOSE:-docker-compose.barn.yml}}"
+PANEL_PG_CONTAINER="${PANEL_POSTGRES_CONTAINER:-barn-postgres}"
+MANAGED_PG_CONTAINER="${MANAGED_POSTGRES_CONTAINER:-barn-postgres}"
 
 S3_URI=""
 LOCAL_FILE=""
@@ -41,12 +41,12 @@ Download / input:
   --aws-profile NAME    AWS CLI profile
 
 Install target:
-  --install-dir DIR     DockPilot install path (default: ${INSTALL_DIR})
+  --install-dir DIR     Barn install path (default: ${INSTALL_DIR})
   --compose-file NAME   Compose file name under install dir (default: ${COMPOSE_FILE})
 
 Steps (all on by default):
   --skip-secrets        Do not merge secrets.env into .env
-  --skip-panel          Do not restore panel/dockpilot.sql.gz
+  --skip-panel          Do not restore panel/barn.sql.gz
   --skip-migrate        Do not run panel migrations after panel restore
   --skip-managed        Do not restore managed/*.sql.gz
 
@@ -245,10 +245,30 @@ tar -xzf "$BUNDLE" -C "$EXTRACT"
 
 # Support both flat layout and a single top-level directory
 ROOT="$EXTRACT"
-if [[ ! -f "$ROOT/manifest.json" && ! -f "$ROOT/panel/dockpilot.sql.gz" ]]; then
+panel_dump=""
+for cand in panel/barn.sql.gz panel/dockpilot.sql.gz; do
+  if [[ -f "$ROOT/$cand" ]]; then
+    panel_dump="$ROOT/$cand"
+    break
+  fi
+done
+if [[ ! -f "$ROOT/manifest.json" && -z "$panel_dump" ]]; then
   for d in "$EXTRACT"/*; do
-    if [[ -d "$d" && ( -f "$d/manifest.json" || -f "$d/panel/dockpilot.sql.gz" ) ]]; then
-      ROOT="$d"
+    if [[ -d "$d" ]]; then
+      for cand in panel/barn.sql.gz panel/dockpilot.sql.gz; do
+        if [[ -f "$d/manifest.json" || -f "$d/$cand" ]]; then
+          ROOT="$d"
+          [[ -f "$d/$cand" ]] && panel_dump="$d/$cand"
+          break 2
+        fi
+      done
+    fi
+  done
+fi
+if [[ -z "$panel_dump" ]]; then
+  for cand in panel/barn.sql.gz panel/dockpilot.sql.gz; do
+    if [[ -f "$ROOT/$cand" ]]; then
+      panel_dump="$ROOT/$cand"
       break
     fi
   done
@@ -277,13 +297,14 @@ if [[ "$SKIP_SECRETS" -eq 0 ]]; then
   )
 fi
 
-PANEL_USER="${POSTGRES_USER:-dockpilot}"
+PANEL_USER="${POSTGRES_USER:-barn}"
 PANEL_PASS="${POSTGRES_PASSWORD:-}"
-PANEL_DB="${POSTGRES_DB:-dockpilot}"
+PANEL_DB="${POSTGRES_DB:-barn}"
 [[ -n "$PANEL_PASS" ]] || die "POSTGRES_PASSWORD empty after secrets merge"
 
 if [[ "$SKIP_PANEL" -eq 0 ]]; then
-  restore_panel_sql "$ROOT/panel/dockpilot.sql.gz" "$PANEL_USER" "$PANEL_PASS" "$PANEL_DB"
+  [[ -n "$panel_dump" ]] || die "panel dump missing (expected panel/barn.sql.gz or panel/dockpilot.sql.gz)"
+  restore_panel_sql "$panel_dump" "$PANEL_USER" "$PANEL_PASS" "$PANEL_DB"
 fi
 
 if [[ "$SKIP_MIGRATE" -eq 0 ]]; then

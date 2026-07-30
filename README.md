@@ -1,8 +1,10 @@
-# DockPilot
+# Barn (Амбар)
 
 Панель для управления сайтами и ботами на Docker на VPS: деплой, nginx, SSL, мониторинг, Telegram-уведомления.
 
 Стек: Go API · Next.js UI · PostgreSQL · Docker · nginx · certbot.
+
+> **Ребрендинг:** DockPilot → Barn. Старые установки работают, новые используют `/opt/barn` и barn-* образы.
 
 ---
 
@@ -19,17 +21,17 @@
 
 ```bash
 curl -fsSL -H "Accept: application/vnd.github.raw+json" \
-  "https://api.github.com/repos/ebasht/dock-pilot/contents/scripts/install.sh?ref=main" \
-  -o /tmp/dock-pilot-install.sh
+  "https://api.github.com/repos/ebasht/barn/contents/scripts/install.sh?ref=main" \
+  -o /tmp/barn-install.sh
 
 # С доменом и HTTPS:
-sudo bash /tmp/dock-pilot-install.sh \
+sudo bash /tmp/barn-install.sh \
   --domain panel.example.com \
   --email you@example.com \
   --version latest
 
 # Без домена (доступ по IP:порт):
-sudo bash /tmp/dock-pilot-install.sh --version latest
+sudo bash /tmp/barn-install.sh --version latest
 ```
 
 Опции:
@@ -41,13 +43,14 @@ sudo bash /tmp/dock-pilot-install.sh --version latest
 | `--skip-cert` | С `--domain`: HTTP без TLS для панели |
 | `--skip-packages` | Docker/nginx/certbot уже установлены |
 | `--reset-db` | Сбросить volume PostgreSQL (данные панели пропадут) |
+| `--install-dir` | Путь установки (по умолчанию `/opt/barn`, для legacy `/opt/dock-pilot`) |
 
 После установки:
 
 - С доменом: `https://panel.example.com`
 - Без домена: `http://VPS_IP:8888` (откройте порт в firewall)
-- API-токен: в выводе скрипта и в `/opt/dock-pilot/credentials.txt`
-- Файлы: `/opt/dock-pilot`
+- API-токен: в выводе скрипта и в `/opt/barn/credentials.txt`
+- Файлы: `/opt/barn` (новые) или `/opt/dock-pilot` (legacy)
 
 В UI введите токен (хранится в `localStorage` до выхода). На телефоне можно войти по QR с десктопа.
 
@@ -59,31 +62,33 @@ sudo bash /tmp/dock-pilot-install.sh --version latest
 
 ```bash
 curl -fsSL -H "Accept: application/vnd.github.raw+json" \
-  "https://api.github.com/repos/ebasht/dock-pilot/contents/scripts/dock-pilot-upgrade.sh?ref=main" \
-  -o /tmp/dock-pilot-upgrade.sh
+  "https://api.github.com/repos/ebasht/barn/contents/scripts/barn-upgrade.sh?ref=main" \
+  -o /tmp/barn-upgrade.sh
 
-sudo bash /tmp/dock-pilot-upgrade.sh v0.1.7
+sudo bash /tmp/barn-upgrade.sh v0.1.7
 ```
 
 или последний релиз:
 
 ```bash
-sudo bash /tmp/dock-pilot-upgrade.sh latest
+sudo bash /tmp/barn-upgrade.sh latest
 ```
+
+**Legacy (dock-pilot):** скрипт `dock-pilot-upgrade.sh` работает как wrapper к `barn-upgrade.sh`.
 
 **Добавить домен и SSL для панели** (если ставили без `--domain`):
 
 ```bash
-sudo bash /tmp/dock-pilot-upgrade.sh latest \
+sudo bash /tmp/barn-upgrade.sh latest \
   --domain panel.example.com \
   --email you@example.com
 ```
 
-Скрипт: скачивает release → `docker load` → миграции → пересоздаёт `postgres`, `api`, `frontend` → при `--domain` настраивает nginx и Let's Encrypt. Токен и данные БД сохраняются.
+Скрипт: скачивает release (barn-*.tar.gz или dock-pilot-*.tar.gz) → `docker load` → миграции → пересоздаёт `postgres`, `api`, `frontend` → при `--domain` настраивает nginx и Let's Encrypt. Токен и данные БД сохраняются.
 
 Проверка: версия в шапке панели (например `v0.1.19`).
 
-Релизы: [github.com/ebasht/dock-pilot/releases](https://github.com/ebasht/dock-pilot/releases)
+Релизы: [github.com/ebasht/barn/releases](https://github.com/ebasht/barn/releases) (dual: barn-*.tar.gz + dock-pilot-*.tar.gz)
 
 ---
 

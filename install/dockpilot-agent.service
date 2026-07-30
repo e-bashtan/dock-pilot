@@ -1,6 +1,6 @@
 [Unit]
-Description=DockPilot Fleet Agent
-Documentation=https://github.com/ebash/dock-pilot
+Description=DockPilot Fleet Agent (LEGACY - use barn-agent.service)
+Documentation=https://github.com/ebasht/barn
 After=network-online.target
 Wants=network-online.target
 

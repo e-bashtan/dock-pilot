@@ -8,15 +8,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
-	"github.com/ebash/dock-pilot/backend/internal/billing"
-	"github.com/ebash/dock-pilot/backend/internal/fleet"
-	notifpkg "github.com/ebash/dock-pilot/backend/internal/notifications"
-	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
-	"github.com/ebash/dock-pilot/backend/internal/pgdb"
-	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
-	syspkg "github.com/ebash/dock-pilot/backend/internal/system"
+	deploysvc "github.com/ebash/barn/backend/internal/deployments"
+	"github.com/ebash/barn/backend/internal/billing"
+	"github.com/ebash/barn/backend/internal/fleet"
+	notifpkg "github.com/ebash/barn/backend/internal/notifications"
+	"github.com/ebash/barn/backend/internal/panelbackup"
+	"github.com/ebash/barn/backend/internal/pgdb"
+	secretpkg "github.com/ebash/barn/backend/internal/secrets"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
+	syspkg "github.com/ebash/barn/backend/internal/system"
 )
 
 type Handlers struct {
@@ -97,6 +97,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 					r.Put("/settings", h.Fleet.UpdateSettings)
 					r.Get("/overview", h.Fleet.Overview)
 					r.Get("/nodes", h.Fleet.ListNodes)
+					r.Post("/nodes/barn", h.Fleet.PairBarn)
 					r.Post("/nodes/dockpilot", h.Fleet.PairDockpilot)
 					r.Get("/nodes/{id}", h.Fleet.GetNode)
 					r.Patch("/nodes/{id}", h.Fleet.UpdateNode)

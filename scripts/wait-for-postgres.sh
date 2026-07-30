@@ -6,10 +6,17 @@ cd "$ROOT"
 
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"
 SLEEP_SEC="${SLEEP_SEC:-2}"
+PG_USER="${POSTGRES_USER:-barn}"
+PG_DB="${POSTGRES_DB:-barn}"
 
 echo "Waiting for PostgreSQL to be ready..."
 
 for i in $(seq 1 "$MAX_ATTEMPTS"); do
+  if docker compose exec -T postgres pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+    echo "PostgreSQL is ready."
+    exit 0
+  fi
+  # Legacy defaults
   if docker compose exec -T postgres pg_isready -U dockpilot -d dockpilot >/dev/null 2>&1; then
     echo "PostgreSQL is ready."
     exit 0

@@ -20,11 +20,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/pgdb"
-	"github.com/ebash/dock-pilot/backend/internal/s3util"
-	"github.com/ebash/dock-pilot/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/pgdb"
+	"github.com/ebash/barn/backend/internal/s3util"
+	"github.com/ebash/barn/backend/internal/secrets"
 )
 
 const bundleVersion = "1"
@@ -52,7 +52,7 @@ func NewService(
 	}
 	container := strings.TrimSpace(os.Getenv("PANEL_POSTGRES_CONTAINER"))
 	if container == "" {
-		container = "dock-pilot-postgres"
+		container = "barn-postgres"
 	}
 	return &Service{
 		queries:                queries,
@@ -83,7 +83,7 @@ func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest)
 
 	prefix := strings.TrimSpace(req.S3Prefix)
 	if prefix == "" {
-		prefix = "dock-pilot/backups"
+		prefix = "barn/backups"
 	}
 	retention := req.RetentionCount
 	if retention <= 0 {
@@ -230,7 +230,8 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 		}
 		name := hdr.Name
 		switch {
-		case name == "panel/dockpilot.sql.gz" || strings.HasSuffix(name, "/panel/dockpilot.sql.gz"):
+		case name == "panel/barn.sql.gz" || strings.HasSuffix(name, "/panel/barn.sql.gz") ||
+			name == "panel/dockpilot.sql.gz" || strings.HasSuffix(name, "/panel/dockpilot.sql.gz"):
 			panelSQL, err = gunzipBytes(data)
 			if err != nil {
 				return err
@@ -304,7 +305,7 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 	}
 	managedNames, _ := s.pgdb.ListManagedDatabaseNames(ctx)
 	u, _ := url.Parse(s.databaseURL)
-	panelDB := "dockpilot"
+	panelDB := "barn"
 	if u != nil && strings.Trim(u.Path, "/") != "" {
 		panelDB = strings.Trim(u.Path, "/")
 	}
@@ -333,7 +334,7 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 	if err != nil {
 		return FullBackupInfo{}, err
 	}
-	if err := writeTarFile(tw, "panel/dockpilot.sql.gz", panelGz); err != nil {
+	if err := writeTarFile(tw, "panel/barn.sql.gz", panelGz); err != nil {
 		return FullBackupInfo{}, err
 	}
 
@@ -359,7 +360,7 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 	}
 
 	now := time.Now().UTC()
-	key := path.Join(strings.Trim(prefix, "/"), "full", fmt.Sprintf("dock-pilot-%s.tar.gz", now.Format("20060102-150405")))
+	key := path.Join(strings.Trim(prefix, "/"), "full", fmt.Sprintf("barn-%s.tar.gz", now.Format("20060102-150405")))
 	size, err := s3util.Upload(ctx, cfg, key, bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return FullBackupInfo{}, err
@@ -465,7 +466,7 @@ func (s *Service) s3Config(ctx context.Context) (s3util.Config, string, error) {
 	}
 	prefix := row.S3Prefix
 	if prefix == "" {
-		prefix = "dock-pilot/backups"
+		prefix = "barn/backups"
 	}
 	return s3util.Config{
 		Endpoint:       row.S3Endpoint,
@@ -590,7 +591,7 @@ func buildSecretsEnv() string {
 		"DATABASE_URL",
 	}
 	var b strings.Builder
-	b.WriteString("# DockPilot restore secrets — keep private\n")
+	b.WriteString("# Barn restore secrets — keep private\n")
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
 			fmt.Fprintf(&b, "%s=%s\n", k, v)

@@ -1,4 +1,4 @@
-# Nginx reverse proxy for DockPilot panel (IP access, no TLS).
+# Nginx reverse proxy for Barn panel (IP access, no TLS).
 # Installed by scripts/install.sh when PANEL_DOMAIN is empty.
 
 server {

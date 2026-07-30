@@ -8,8 +8,10 @@ import (
 
 const (
 	nginxConfHostPath   = "/etc/nginx/nginx.conf"
-	hashBeginMarker     = "# BEGIN dock-pilot nginx hash"
-	hashEndMarker       = "# END dock-pilot nginx hash"
+	hashBeginMarker     = "# BEGIN barn nginx hash"
+	hashEndMarker       = "# END barn nginx hash"
+	legacyHashBegin     = "# BEGIN dock-pilot nginx hash"
+	legacyHashEnd       = "# END dock-pilot nginx hash"
 	legacyConfDHashPath = "/etc/nginx/conf.d/00-dockpilot-global.conf"
 )
 
@@ -57,18 +59,21 @@ func applyNginxHashTuningScript(bucketSize, maxSize int) string {
 NGINX=%q
 BEGIN=%q
 END=%q
+LEGACY_BEGIN=%q
+LEGACY_END=%q
 BUCKET=%d
 MAX=%d
 
-rm -f %q /etc/nginx/conf.d/00-vpsdeploy-global.conf
+rm -f %q /etc/nginx/conf.d/00-barn-global.conf /etc/nginx/conf.d/00-vpsdeploy-global.conf
 
 for f in /etc/nginx/conf.d/*.conf; do
   [ -f "$f" ] || continue
   sed -i -E '/^[[:space:]]*#/! s/^[[:space:]]*(server_names_hash_(bucket_size|max_size)[^;]*;)/# \1/' "$f" 2>/dev/null || true
 done
 
-# Drop previous dock-pilot block, then comment any remaining active hash lines.
+# Drop previous barn/legacy dock-pilot blocks, then comment any remaining active hash lines.
 sed -i "/${BEGIN}/,/${END}/d" "$NGINX" 2>/dev/null || true
+sed -i "/${LEGACY_BEGIN}/,/${LEGACY_END}/d" "$NGINX" 2>/dev/null || true
 sed -i -E '/^[[:space:]]*#/! s/^[[:space:]]*(server_names_hash_(bucket_size|max_size)[^;]*;)/# \1/' "$NGINX" 2>/dev/null || true
 
 sed -i "/^[[:space:]]*http[[:space:]]*{/a\\
@@ -78,18 +83,20 @@ sed -i "/^[[:space:]]*http[[:space:]]*{/a\\
     ${END}" "$NGINX"
 
 grep -qF "$BEGIN" "$NGINX"
-`, nginxConfHostPath, hashBeginMarker, hashEndMarker, bucketSize, maxSize, legacyConfDHashPath)
+`, nginxConfHostPath, hashBeginMarker, hashEndMarker, legacyHashBegin, legacyHashEnd, bucketSize, maxSize, legacyConfDHashPath)
 }
 
 // pruneForeignHashScript removes legacy conf.d snippets and comments hash lines that are
-// NOT inside the dock-pilot BEGIN/END markers. It must never wipe the managed block.
+// NOT inside the barn BEGIN/END markers. It must never wipe the managed block.
 func pruneForeignHashScript() string {
 	return fmt.Sprintf(`set -e
 NGINX=%q
 BEGIN=%q
 END=%q
+LEGACY_BEGIN=%q
+LEGACY_END=%q
 
-rm -f %q /etc/nginx/conf.d/00-vpsdeploy-global.conf
+rm -f %q /etc/nginx/conf.d/00-barn-global.conf /etc/nginx/conf.d/00-vpsdeploy-global.conf
 
 for f in /etc/nginx/conf.d/*.conf; do
   [ -f "$f" ] || continue
@@ -97,6 +104,11 @@ for f in /etc/nginx/conf.d/*.conf; do
 done
 
 [ -f "$NGINX" ] || exit 0
+
+# Migrate legacy marker block name if present.
+if grep -qF "$LEGACY_BEGIN" "$NGINX" && ! grep -qF "$BEGIN" "$NGINX"; then
+  sed -i "s/${LEGACY_BEGIN}/${BEGIN}/g; s/${LEGACY_END}/${END}/g" "$NGINX" 2>/dev/null || true
+fi
 
 # If our block is missing, do not blank everything — TestConfig would then fail with bucket 32.
 if ! grep -qF "$BEGIN" "$NGINX"; then
@@ -116,8 +128,8 @@ awk -v b="$BEGIN" -v e="$END" '
     next
   }
   { print }
-' "$NGINX" > "${NGINX}.dp-tmp" && mv "${NGINX}.dp-tmp" "$NGINX"
-`, nginxConfHostPath, hashBeginMarker, hashEndMarker, legacyConfDHashPath)
+' "$NGINX" > "${NGINX}.barn-tmp" && mv "${NGINX}.barn-tmp" "$NGINX"
+`, nginxConfHostPath, hashBeginMarker, hashEndMarker, legacyHashBegin, legacyHashEnd, legacyConfDHashPath)
 }
 
 func (m *RealManager) ensureGlobalTuning(ctx context.Context, domains []string) error {

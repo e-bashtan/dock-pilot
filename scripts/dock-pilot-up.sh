@@ -1,43 +1,6 @@
 #!/usr/bin/env bash
-# VPS: start bundled PostgreSQL, migrate, then API + frontend.
+# LEGACY WRAPPER: Redirects to barn-up.sh
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
-COMPOSE_FILE="${DOCK_PILOT_COMPOSE:-}"
-if [[ -z "$COMPOSE_FILE" ]]; then
-  if [[ -f docker-compose.full.yml ]]; then
-    COMPOSE_FILE=docker-compose.full.yml
-  else
-    COMPOSE_FILE=docker-compose.dock-pilot.yml
-  fi
-fi
-
-if [[ ! -f .env ]]; then
-  echo "Create .env from .env.dock-pilot.example first." >&2
-  exit 1
-fi
-
-set -a
-# shellcheck disable=SC1091
-source .env
-set +a
-
-for var in POSTGRES_PASSWORD DATABASE_URL SECRETS_ENCRYPTION_KEY API_TOKEN CORS_ALLOWED_ORIGINS CERTBOT_EMAIL; do
-  if [[ -z "${!var:-}" ]]; then
-    echo "Missing required variable in .env: ${var}" >&2
-    exit 1
-  fi
-done
-
-echo "Starting PostgreSQL..."
-docker compose -f "$COMPOSE_FILE" up -d postgres
-
-echo "Applying migrations..."
-docker compose -f "$COMPOSE_FILE" run --rm -T migrate
-
-echo "Starting API and frontend..."
-docker compose -f "$COMPOSE_FILE" up -d api frontend
-
-echo ""
-docker compose -f "$COMPOSE_FILE" ps -a
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/barn-up.sh" "$@"

@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/metrics"
 )
 
 var allowedEventTypes = map[string]string{

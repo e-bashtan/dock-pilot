@@ -1,13 +1,15 @@
-# DockPilot Fleet
+# Barn Fleet (Флот)
 
-One DockPilot instance can run as **standalone** (default), **master**, or **managed_node**.
+One Barn instance can run as **standalone** (default), **master**, or **managed_node**.
+
+> **Ребрендинг:** DockPilot → Barn. Agent binaries теперь `barn-agent`, но `dockpilot-agent` остаётся как compat alias.
 
 ## Modes
 
 | Mode | Home | Fleet UI | Notes |
 |------|------|----------|-------|
 | `standalone` | `/sites` | hidden | Existing installs unchanged after migration |
-| `master` | `/fleet` | yes | Local apps + remote DockPilots + agents |
+| `master` | `/fleet` | yes | Local apps + remote Barn panels + agents |
 | `managed_node` | `/sites` | hidden | Paired to one Master; optional centralized Telegram |
 
 ## Enable Master
@@ -17,15 +19,15 @@ One DockPilot instance can run as **standalone** (default), **master**, or **man
 2. Public URL is used for pairing and agent registration.
 3. `/` redirects to `/fleet`. Local server appears with badge **MASTER**.
 
-## Pair remote DockPilot
+## Pair remote Barn instance
 
 1. On the remote panel: generate pairing code (`POST /api/fleet/pairing-code`, 10 min, one-time, hash stored).
-2. On Master: **Add server → Connect DockPilot** with name, URL, code.
+2. On Master: **Add server → Connect Barn** (или legacy "Connect DockPilot") with name, URL, code.
 3. Master receives a scoped read token (encrypted at rest). Node receives a heartbeat/events token (encrypted on node). Global `API_TOKEN` is never shared.
 
 ## Install monitoring agent
 
-From Master: **Add server → Install agent**. SSH password stays in memory only (TTL ~10 min), never in PostgreSQL or logs. Host key fingerprint must be confirmed before install. API image embeds `dockpilot-agent-linux-amd64` and `arm64` under `/app/agents`.
+From Master: **Add server → Install agent**. SSH password stays in memory only (TTL ~10 min), never in PostgreSQL or logs. Host key fingerprint must be confirmed before install. API image embeds `barn-agent-linux-amd64` (и `dockpilot-agent` для compat) and `arm64` under `/app/agents`.
 
 See also [fleet-agent.md](./fleet-agent.md).
 
@@ -47,7 +49,8 @@ Fleet `notification_mode`:
 ## Build agent binaries
 
 ```bash
-make agent-binaries VERSION=v0.3.0
+make barn-agent-binaries VERSION=v0.3.0
+# Legacy alias: make agent-binaries
 # or via API image build (includes agents)
 make docker-build-api
 ```

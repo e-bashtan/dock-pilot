@@ -1,3 +1,4 @@
+# LEGACY: Use docker-compose.barn.yml for new installs.
 # VPS stack: bundled PostgreSQL + API + frontend (nginx/certbot on host).
 services:
   postgres:

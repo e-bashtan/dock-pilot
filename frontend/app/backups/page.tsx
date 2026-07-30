@@ -49,7 +49,7 @@ export default function BackupsPage() {
   const [s3Endpoint, setS3Endpoint] = useState("https://storage.yandexcloud.net");
   const [s3Region, setS3Region] = useState("ru-central1");
   const [s3Bucket, setS3Bucket] = useState("");
-  const [s3Prefix, setS3Prefix] = useState("dock-pilot/backups");
+  const [s3Prefix, setS3Prefix] = useState("barn/backups");
   const [s3Access, setS3Access] = useState("");
   const [s3Secret, setS3Secret] = useState("");
   const [s3PathStyle, setS3PathStyle] = useState(false);
@@ -75,7 +75,7 @@ export default function BackupsPage() {
       setS3Endpoint(s.s3_endpoint || "https://storage.yandexcloud.net");
       setS3Region(s.s3_region || "ru-central1");
       setS3Bucket(s.s3_bucket);
-      setS3Prefix(s.s3_prefix || "dock-pilot/backups");
+      setS3Prefix(s.s3_prefix || "barn/backups");
       setS3PathStyle(s.s3_force_path_style);
       setRetention(s.retention_count || 7);
       setError(null);

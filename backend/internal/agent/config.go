@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	DefaultConfigPath = "/etc/dockpilot-agent/config.json"
-	ServiceUser       = "dockpilot-agent"
-	ServiceGroup      = "dockpilot-agent"
+	DefaultConfigPath = "/etc/barn-agent/config.json"
+	ServiceUser       = "barn-agent"
+	ServiceGroup      = "barn-agent"
 )
 
 // Config is the on-disk agent configuration (mode 0600).

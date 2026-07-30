@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/ebash/dock-pilot/backend/internal/system"
+	"github.com/ebash/barn/backend/internal/system"
 )
 
 type SystemHandler struct {

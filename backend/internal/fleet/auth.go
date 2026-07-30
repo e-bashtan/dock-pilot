@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 type ctxKey int
@@ -87,7 +87,7 @@ func (s *Service) storeNodeInboundToken(ctx context.Context, nodeToken string) e
 	}
 	local, err := s.q.GetFleetNodeByUID(ctx, settings.NodeUid)
 	if err != nil {
-		caps, _ := json.Marshal(DockpilotCapabilities())
+		caps, _ := json.Marshal(BarnCapabilities())
 		now := time.Now().UTC()
 		local, err = s.q.CreateFleetNode(ctx, db.CreateFleetNodeParams{
 			NodeUid:        settings.NodeUid,

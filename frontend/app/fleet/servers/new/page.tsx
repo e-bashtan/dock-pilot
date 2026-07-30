@@ -7,14 +7,14 @@ import { useI18n } from "@/lib/i18n/context";
 import type { FleetInstallation, FleetInstallationLog } from "@/lib/types";
 
 type WizardKind = "choose" | "form" | "pair" | "install";
-type InstallKind = "dockpilot" | "agent";
+type InstallKind = "barn" | "agent";
 
 const TERMINAL_INSTALL = new Set(["completed", "failed", "cancelled"]);
 
 export default function FleetNewServerPage() {
   const { t } = useI18n();
   const [step, setStep] = useState<WizardKind>("choose");
-  const [kind, setKind] = useState<InstallKind>("dockpilot");
+  const [kind, setKind] = useState<InstallKind>("barn");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -98,7 +98,7 @@ export default function FleetNewServerPage() {
       const portNum = parseInt(port, 10);
       if (Number.isFinite(portNum) && portNum > 0) body.port = portNum;
       if (username.trim()) body.username = username.trim();
-      if (kind === "dockpilot") {
+      if (kind === "barn") {
         body.panel_url = panelUrl.trim();
         if (email.trim()) body.email = email.trim();
       }
@@ -120,7 +120,7 @@ export default function FleetNewServerPage() {
     setBusy(true);
     setError(null);
     try {
-      await api.pairDockpilotNode({
+      await api.pairBarnNode({
         name: pairName.trim(),
         base_url: pairUrl.trim(),
         pairing_code: pairCode.trim(),
@@ -184,10 +184,10 @@ export default function FleetNewServerPage() {
           <button
             type="button"
             className="choice-option"
-            onClick={() => choose("dockpilot")}
+            onClick={() => choose("barn")}
           >
-            <span className="choice-option-title">{t("fleet.kindDockpilot")}</span>
-            <span className="choice-option-hint">{t("fleet.kindDockpilotHint")}</span>
+            <span className="choice-option-title">{t("fleet.kindBarn")}</span>
+            <span className="choice-option-hint">{t("fleet.kindBarnHint")}</span>
           </button>
           <button
             type="button"
@@ -270,10 +270,10 @@ export default function FleetNewServerPage() {
       {step === "form" && (
         <form className="card" onSubmit={submitInstall}>
           <h2 className="section-title">
-            {kind === "dockpilot" ? t("fleet.kindDockpilot") : t("fleet.kindAgent")}
+            {kind === "barn" ? t("fleet.kindBarn") : t("fleet.kindAgent")}
           </h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            {kind === "dockpilot" ? t("fleet.sshFormHintDockpilot") : t("fleet.sshFormHintAgent")}
+            {kind === "barn" ? t("fleet.sshFormHintBarn") : t("fleet.sshFormHintAgent")}
           </p>
 
           <div className="field">
@@ -344,7 +344,7 @@ export default function FleetNewServerPage() {
             </div>
           </div>
 
-          {kind === "dockpilot" && (
+          {kind === "barn" && (
             <>
               <div className="field">
                 <label className="label" htmlFor="slave-panel-url">

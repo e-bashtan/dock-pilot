@@ -12,8 +12,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
 )
 
 var identPattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
@@ -32,12 +32,26 @@ func quoteLiteral(s string) string {
 
 func (s *Service) containerName(inst db.PdbInstance) string {
 	_ = inst
-	return "dockpilot-postgres"
+	c, _ := s.resolvePGNames(context.Background())
+	return c
 }
 
 func (s *Service) volumeName(inst db.PdbInstance) string {
 	_ = inst
-	return "dockpilot-postgres-data"
+	_, v := s.resolvePGNames(context.Background())
+	return v
+}
+
+// resolvePGNames prefers an already-running legacy dockpilot-postgres container/volume.
+func (s *Service) resolvePGNames(ctx context.Context) (container, volume string) {
+	st, err := s.docker.InspectContainer(ctx, "dockpilot-postgres", "barn-postgres")
+	if err == nil && st.Found {
+		if st.Container == "dockpilot-postgres" {
+			return "dockpilot-postgres", "dockpilot-postgres-data"
+		}
+		return "barn-postgres", "barn-postgres-data"
+	}
+	return "barn-postgres", "barn-postgres-data"
 }
 
 func (s *Service) adminPassword(inst db.PdbInstance) (string, error) {

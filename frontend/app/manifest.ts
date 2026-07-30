@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "DockPilot",
-    short_name: "DockPilot",
+    name: "Barn",
+    short_name: "Barn",
     description: "Deploy and monitor Docker sites on your VPS",
     start_url: "/",
     scope: "/",

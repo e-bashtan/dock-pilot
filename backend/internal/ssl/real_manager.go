@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/ebash/dock-pilot/backend/internal/hostexec"
-	"github.com/ebash/dock-pilot/backend/internal/nginx"
+	"github.com/ebash/barn/backend/internal/hostexec"
+	"github.com/ebash/barn/backend/internal/nginx"
 )
 
 type RealManager struct {

@@ -13,12 +13,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/metrics"
 )
 
 const defaultHTTPTimeout = 15 * time.Second
 
-// Client talks to the DockPilot Master fleet ingest/register APIs.
+// Client talks to the Barn Master fleet ingest/register APIs.
 type Client struct {
 	MasterURL  string
 	NodeToken  string
@@ -44,7 +44,7 @@ func NewClient(masterURL, nodeToken string) *Client {
 				}
 			},
 		},
-		UserAgent: "dockpilot-agent",
+		UserAgent: "barn-agent",
 	}
 }
 

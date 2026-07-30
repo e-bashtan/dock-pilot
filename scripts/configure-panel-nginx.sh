@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Configure host nginx for the DockPilot panel (install, upgrade, repair).
+# Configure host nginx for the Barn panel (install, upgrade, repair).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-GITHUB_REPO="${DOCK_PILOT_GITHUB_REPO:-ebasht/dock-pilot}"
+GITHUB_REPO="${BARN_GITHUB_REPO:-${DOCK_PILOT_GITHUB_REPO:-ebasht/barn}}"
 SKIP_CERT=0
 DOMAIN=""
 EMAIL=""

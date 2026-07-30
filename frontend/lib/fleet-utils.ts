@@ -4,7 +4,7 @@ export type FleetServerFilter =
   | "all"
   | "problems"
   | "offline"
-  | "dockpilot"
+  | "barn"
   | "monitored"
   | "billing_due";
 
@@ -58,8 +58,8 @@ export function filterFleetNodes(
       return nodes.filter(hasProblems);
     case "offline":
       return nodes.filter((n) => n.status === "offline");
-    case "dockpilot":
-      return nodes.filter((n) => n.connection_type === "dockpilot");
+    case "barn":
+      return nodes.filter((n) => n.connection_type === "barn");
     case "monitored":
       return nodes.filter((n) => n.connection_type === "agent");
     case "billing_due":
@@ -71,11 +71,11 @@ export function filterFleetNodes(
 
 export function fleetNodeHref(node: FleetNode): string | null {
   if (node.connection_type === "local") return "/sites";
-  if (node.connection_type === "dockpilot" && node.base_url) return node.base_url;
+  if (node.connection_type === "barn" && node.base_url) return node.base_url;
   if (node.connection_type === "agent") return `/fleet/servers/${node.id}`;
   return null;
 }
 
 export function fleetNodeExternal(node: FleetNode): boolean {
-  return node.connection_type === "dockpilot" && !!node.base_url;
+  return node.connection_type === "barn" && !!node.base_url;
 }

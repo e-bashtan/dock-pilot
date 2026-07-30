@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/healthcheck"
 )
 
 // HealthResult is a live probe of a managed Postgres instance.

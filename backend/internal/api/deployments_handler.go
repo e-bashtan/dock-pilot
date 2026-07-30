@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	deploysvc "github.com/ebash/dock-pilot/backend/internal/deployments"
+	deploysvc "github.com/ebash/barn/backend/internal/deployments"
 )
 
 type DeploymentsHandler struct {

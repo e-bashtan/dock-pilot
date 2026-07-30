@@ -519,7 +519,7 @@ export interface UpdateBillingAccountRequest {
 export type FleetMode = "standalone" | "master" | "managed_node";
 export type FleetNotificationMode = "local" | "master" | "disabled";
 export type FleetNodeRole = "master" | "node" | "agent";
-export type FleetConnectionType = "local" | "dockpilot" | "agent";
+export type FleetConnectionType = "local" | "barn" | "agent";
 export type FleetNodeStatus = "online" | "warning" | "offline";
 
 export interface FleetSettings {
@@ -677,14 +677,14 @@ export interface FleetPairingCode {
   expires_at: string;
 }
 
-export interface PairDockpilotRequest {
+export interface PairBarnRequest {
   name: string;
   base_url: string;
   pairing_code: string;
 }
 
 export interface CreateAgentInstallRequest {
-  kind?: "agent" | "dockpilot";
+  kind?: "agent" | "barn";
   name: string;
   host: string;
   port?: number;

@@ -15,9 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/secrets"
 )
 
 type Service struct {
@@ -209,7 +209,7 @@ func (s *Service) DeployInstanceWithLog(ctx context.Context, id uuid.UUID, logFn
 	_, err = s.docker.Run(ctx, docker.RunOptions{
 		ImageTag:      inst.Image,
 		ContainerName: cname,
-		StopNames:     []string{cname},
+		StopNames:     []string{cname, "barn-postgres", "dockpilot-postgres"},
 		HostPort:      hostPort,
 		ContainerPort: int(inst.ContainerPort),
 		PublishPorts:  publish,
@@ -739,7 +739,7 @@ func toInstanceResponse(row db.PdbInstance) InstanceResponse {
 		AdminUser:         row.AdminUser,
 		Status:            row.Status,
 		Message:           row.Message,
-		ContainerName:     "dockpilot-postgres",
+		ContainerName:     "barn-postgres",
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,
 	}

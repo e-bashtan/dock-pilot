@@ -3,7 +3,7 @@ package fleet
 import (
 	"context"
 
-	sitesvc "github.com/ebash/dock-pilot/backend/internal/sites"
+	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
 // SitesAppCounter adapts sites.Service to SiteHealthProvider.

@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/healthcheck"
 )
 
 // DeploySecrets loads decrypted secrets for running a site container.

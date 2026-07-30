@@ -140,7 +140,7 @@ CREATE TABLE pdb_backup_schedules (
     s3_endpoint TEXT NOT NULL DEFAULT '',
     s3_region TEXT NOT NULL DEFAULT 'us-east-1',
     s3_bucket TEXT NOT NULL,
-    s3_prefix TEXT NOT NULL DEFAULT 'dock-pilot/pg-backups',
+    s3_prefix TEXT NOT NULL DEFAULT 'barn/pg-backups',
     encrypted_s3_access_key BYTEA NOT NULL,
     encrypted_s3_secret_key BYTEA NOT NULL,
     s3_force_path_style BOOLEAN NOT NULL DEFAULT false,
@@ -164,7 +164,7 @@ CREATE TABLE panel_backup_settings (
     s3_endpoint TEXT NOT NULL DEFAULT '',
     s3_region TEXT NOT NULL DEFAULT 'ru-central1',
     s3_bucket TEXT NOT NULL DEFAULT '',
-    s3_prefix TEXT NOT NULL DEFAULT 'dock-pilot/backups',
+    s3_prefix TEXT NOT NULL DEFAULT 'barn/backups',
     encrypted_s3_access_key BYTEA,
     encrypted_s3_secret_key BYTEA,
     s3_force_path_style BOOLEAN NOT NULL DEFAULT false,
@@ -222,7 +222,7 @@ CREATE TABLE fleet_nodes (
     role TEXT NOT NULL DEFAULT 'node'
         CHECK (role IN ('master', 'node', 'agent')),
     connection_type TEXT NOT NULL
-        CHECK (connection_type IN ('local', 'dockpilot', 'agent')),
+        CHECK (connection_type IN ('local', 'barn', 'agent')),
     base_url TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'online'
         CHECK (status IN ('online', 'warning', 'offline')),
@@ -365,7 +365,7 @@ CREATE TABLE fleet_installations (
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     install_kind TEXT NOT NULL DEFAULT 'agent'
-        CHECK (install_kind IN ('agent', 'dockpilot')),
+        CHECK (install_kind IN ('agent', 'barn')),
     panel_url TEXT NOT NULL DEFAULT '',
     cert_email TEXT NOT NULL DEFAULT '',
     display_name TEXT NOT NULL DEFAULT '',

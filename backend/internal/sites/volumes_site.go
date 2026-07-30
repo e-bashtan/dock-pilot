@@ -1,6 +1,6 @@
 package sites
 
-import "github.com/ebash/dock-pilot/backend/internal/db"
+import "github.com/ebash/barn/backend/internal/db"
 
 func VolumeLinesFromSite(site db.Site) []string {
 	return volumeLinesFromText(site.DockerVolumeMounts)

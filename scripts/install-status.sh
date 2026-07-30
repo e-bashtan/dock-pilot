@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Print DockPilot install status on VPS (run from /opt/dock-pilot).
+# Print Barn install status on VPS (run from /opt/barn).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-COMPOSE=docker-compose.full.yml
-[[ -f docker-compose.full.yml ]] || COMPOSE=docker-compose.dock-pilot.yml
+COMPOSE=docker-compose.barn.yml
+[[ -f docker-compose.barn.yml ]] || COMPOSE=docker-compose.barn-full.yml
+[[ -f "$COMPOSE" ]] || COMPOSE=docker-compose.full.yml
+[[ -f "$COMPOSE" ]] || COMPOSE=docker-compose.dock-pilot.yml
 
-echo "=== DockPilot status ==="
+echo "=== Barn status ==="
 echo "Directory: ${ROOT}"
 echo
 
@@ -40,8 +42,8 @@ curl -sS -o /dev/null -w "HTTP %{http_code}\n" "http://127.0.0.1:${FE}/" 2>&1 ||
 echo
 
 echo "--- nginx panel config ---"
-ls -la /etc/nginx/sites-enabled/dockpilot-panel*.conf 2>&1 || echo "not enabled"
-grep -E 'server_name|proxy_pass|listen' /etc/nginx/sites-available/dockpilot-panel*.conf 2>/dev/null || echo "no config file"
+ls -la /etc/nginx/sites-enabled/barn-panel*.conf /etc/nginx/sites-enabled/dockpilot-panel*.conf 2>&1 || echo "not enabled"
+grep -E 'server_name|proxy_pass|listen' /etc/nginx/sites-available/barn-panel*.conf /etc/nginx/sites-available/dockpilot-panel*.conf 2>/dev/null || echo "no config file"
 echo
 
 if [[ -n "${PANEL_DOMAIN:-}" ]]; then

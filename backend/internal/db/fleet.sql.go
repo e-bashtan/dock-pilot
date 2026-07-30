@@ -871,13 +871,13 @@ func (q *Queries) InsertMonitoredService(ctx context.Context, arg InsertMonitore
 	return i, err
 }
 
-const listDockpilotNodes = `-- name: ListDockpilotNodes :many
+const listBarnNodes = `-- name: ListBarnNodes :many
 SELECT id, node_uid, name, role, connection_type, base_url, status, capabilities, version, agent_version, last_seen_at, last_heartbeat_at, last_poll_at, paired_at, metadata, created_at, updated_at, deleted_at FROM fleet_nodes
-WHERE deleted_at IS NULL AND connection_type = 'dockpilot'
+WHERE deleted_at IS NULL AND connection_type = 'barn'
 `
 
-func (q *Queries) ListDockpilotNodes(ctx context.Context) ([]FleetNode, error) {
-	rows, err := q.db.Query(ctx, listDockpilotNodes)
+func (q *Queries) ListBarnNodes(ctx context.Context) ([]FleetNode, error) {
+	rows, err := q.db.Query(ctx, listBarnNodes)
 	if err != nil {
 		return nil, err
 	}

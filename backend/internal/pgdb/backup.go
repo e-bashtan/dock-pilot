@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 func (s *Service) ListSchedules(ctx context.Context, instanceID uuid.UUID) ([]ScheduleResponse, error) {
@@ -79,7 +79,7 @@ func (s *Service) CreateSchedule(ctx context.Context, instanceID uuid.UUID, req 
 	}
 	prefix := strings.TrimSpace(req.S3Prefix)
 	if prefix == "" {
-		prefix = "dock-pilot/pg-backups"
+		prefix = "barn/pg-backups"
 	}
 	region := strings.TrimSpace(req.S3Region)
 	if region == "" {
@@ -184,7 +184,7 @@ func (s *Service) UpdateSchedule(ctx context.Context, instanceID, scheduleID uui
 	if req.S3Prefix != nil {
 		prefix := strings.Trim(strings.TrimSpace(*req.S3Prefix), "/")
 		if prefix == "" {
-			prefix = "dock-pilot/pg-backups"
+			prefix = "barn/pg-backups"
 		}
 		params.S3Prefix = pgtype.Text{String: prefix, Valid: true}
 	}
@@ -297,7 +297,7 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 		SecretKey:      strings.TrimSpace(req.S3SecretKey),
 		ForcePathStyle: req.S3ForcePathStyle,
 	}
-	prefix := defaultStr(req.S3Prefix, "dock-pilot/pg-backups")
+	prefix := defaultStr(req.S3Prefix, "barn/pg-backups")
 	var scheduleID *uuid.UUID
 	var retention int
 

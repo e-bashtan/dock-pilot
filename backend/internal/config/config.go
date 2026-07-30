@@ -34,14 +34,14 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		DatabaseURL:          envOr("DATABASE_URL", "postgres://dockpilot:dockpilot@localhost:5432/dockpilot?sslmode=disable"),
+		DatabaseURL:          envOr("DATABASE_URL", "postgres://barn:barn@localhost:5432/barn?sslmode=disable"),
 		HTTPAddr:             envOr("HTTP_ADDR", ":8080"),
 		SecretsEncryptionKey: os.Getenv("SECRETS_ENCRYPTION_KEY"),
 		APIToken:             os.Getenv("API_TOKEN"),
 		CORSAllowedOrigins:   parseCORSOrigins(os.Getenv("CORS_ALLOWED_ORIGINS")),
 		Deploy: DeployConfig{
 			Mode:                deployMode,
-			WorkDir:             envOr("DEPLOY_WORK_DIR", "/var/lib/dock-pilot"),
+			WorkDir:             envOr("DEPLOY_WORK_DIR", "/var/lib/barn"),
 			DockerHost:          os.Getenv("DOCKER_HOST"),
 			NginxSitesAvailable: envOr("NGINX_SITES_AVAILABLE", "/etc/nginx/sites-available"),
 			NginxSitesEnabled:   envOr("NGINX_SITES_ENABLED", "/etc/nginx/sites-enabled"),

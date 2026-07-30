@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ebash/dock-pilot/backend/internal/billing"
+	"github.com/ebash/barn/backend/internal/billing"
 )
 
 type BillingHandler struct {

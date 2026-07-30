@@ -108,7 +108,7 @@ func (r *Runner) WithChrootDNS(ctx context.Context, fn func(context.Context) err
 	}
 
 	resolvPath := filepath.Join(r.HostRoot, "etc/resolv.conf")
-	backupPath := resolvPath + ".dock-pilot.bak"
+	backupPath := resolvPath + ".barn.bak"
 
 	orig, hadOrig := os.ReadFile(resolvPath)
 	if hadOrig == nil {

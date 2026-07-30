@@ -1,6 +1,6 @@
 .PHONY: up down reset migrate logs backend frontend dev dev-run setup \
 	docker-build docker-export docker-build-api docker-build-frontend \
-	release install pushandrelease agent-binaries
+	release install pushandrelease barn-agent-binaries agent-binaries
 
 # --- Docker (PostgreSQL) ---
 
@@ -12,7 +12,7 @@ down:
 	@./scripts/local-down.sh
 
 reset: down
-	docker volume rm dock-pilot_postgres_data 2>/dev/null || docker volume rm $$(docker volume ls -q | grep postgres_data) 2>/dev/null || true
+	docker volume rm barn_postgres_data dock-pilot_postgres_data 2>/dev/null || docker volume rm $$(docker volume ls -q | grep postgres_data) 2>/dev/null || true
 	@$(MAKE) up
 
 migrate:
@@ -61,8 +61,11 @@ docker-export:
 	@chmod +x scripts/*.sh 2>/dev/null || true
 	@./scripts/docker-export.sh
 
-dock-pilot-migrate:
-	@./scripts/dock-pilot-migrate.sh
+barn-migrate:
+	@./scripts/barn-migrate.sh
+
+# Legacy alias
+dock-pilot-migrate: barn-migrate
 
 release:
 	@chmod +x scripts/*.sh 2>/dev/null || true
@@ -80,10 +83,15 @@ install:
 	@chmod +x scripts/*.sh 2>/dev/null || true
 	@./scripts/install.sh $(ARGS)
 
-# Cross-compile dockpilot-agent for embedding / manual install
-agent-binaries:
+# Cross-compile barn-agent (and dockpilot-agent for backward compat) for embedding / manual install
+barn-agent-binaries:
 	@mkdir -p dist/agents
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/dockpilot-agent-linux-amd64 ./cmd/agent
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/dockpilot-agent-linux-arm64 ./cmd/agent
-	cd dist/agents && sha256sum dockpilot-agent-linux-amd64 dockpilot-agent-linux-arm64 > SHA256SUMS
-	@echo "Built dist/agents/"
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/barn-agent-linux-amd64 ./cmd/agent
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w -X main.version=$${VERSION:-dev}" -o ../dist/agents/barn-agent-linux-arm64 ./cmd/agent
+	@cp dist/agents/barn-agent-linux-amd64 dist/agents/dockpilot-agent-linux-amd64
+	@cp dist/agents/barn-agent-linux-arm64 dist/agents/dockpilot-agent-linux-arm64
+	cd dist/agents && sha256sum barn-agent-linux-* dockpilot-agent-linux-* > SHA256SUMS
+	@echo "Built barn-agent and dockpilot-agent (compat) in dist/agents/"
+
+# Legacy alias
+agent-binaries: barn-agent-binaries

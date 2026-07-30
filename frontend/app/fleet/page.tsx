@@ -19,7 +19,7 @@ const FILTERS: FleetServerFilter[] = [
   "all",
   "problems",
   "offline",
-  "dockpilot",
+  "barn",
   "monitored",
   "billing_due",
 ];
@@ -367,7 +367,7 @@ function FleetNodeRow({
         ) : (
           <span className="fleet-metric fleet-metric-muted">
             <IconMoney />
-            {node.connection_type === "dockpilot" && node.base_url ? (
+            {node.connection_type === "barn" && node.base_url ? (
               <a
                 href={`${node.base_url.replace(/\/$/, "")}/payments`}
                 className="fleet-inline-link"

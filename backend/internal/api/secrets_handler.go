@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
+	secretpkg "github.com/ebash/barn/backend/internal/secrets"
 )
 
 type SecretsHandler struct {

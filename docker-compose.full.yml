@@ -1,3 +1,4 @@
+# LEGACY: Use docker-compose.barn-full.yml for new installs.
 # Same as docker-compose.dock-pilot.yml (alias for install scripts).
 # Bundled PostgreSQL + migrate + API + frontend.
 

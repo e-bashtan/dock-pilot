@@ -21,7 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 var unitNameRe = regexp.MustCompile(`^[a-zA-Z0-9@._:-]+\.service$`)
@@ -45,7 +45,8 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	if kind == "" {
 		kind = "agent"
 	}
-	if kind != "agent" && kind != "dockpilot" {
+	kind = NormalizeInstallKind(kind)
+	if kind != "agent" && kind != "barn" {
 		return InstallationResponse{}, ErrInvalidInput
 	}
 	host := strings.TrimSpace(req.Host)
@@ -65,7 +66,7 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	if host == "" || pass == "" || name == "" {
 		return InstallationResponse{}, ErrInvalidInput
 	}
-	if kind == "dockpilot" {
+	if kind == "barn" {
 		if panelURL == "" {
 			return InstallationResponse{}, fmt.Errorf("%w: panel_url is required", ErrInvalidInput)
 		}
@@ -79,12 +80,12 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 			}
 		}
 		if email == "" || !strings.Contains(email, "@") {
-			return InstallationResponse{}, fmt.Errorf("%w: email is required for DockPilot install", ErrInvalidInput)
+			return InstallationResponse{}, fmt.Errorf("%w: email is required for Barn install", ErrInvalidInput)
 		}
 	}
 	nodeUID := uuid.New()
 	ttl := 10 * time.Minute
-	if kind == "dockpilot" {
+	if kind == "barn" {
 		ttl = 45 * time.Minute
 	}
 	inst, err := s.q.CreateFleetInstallation(ctx, db.CreateFleetInstallationParams{
@@ -155,7 +156,7 @@ func probeSSHFingerprint(ctx context.Context, host string, port int) (string, er
 
 	var key ssh.PublicKey
 	config := &ssh.ClientConfig{
-		User: "dockpilot-probe",
+		User: "barn-probe",
 		Auth: []ssh.AuthMethod{
 			ssh.Password("__probe__"),
 		},
@@ -238,8 +239,8 @@ func (s *Service) runInstall(parent context.Context, id uuid.UUID) {
 	}
 	defer client.Close()
 
-	if inst.InstallKind == "dockpilot" {
-		s.runDockpilotInstall(ctx, client, id, inst, set)
+	if NormalizeInstallKind(inst.InstallKind) == "barn" {
+		s.runBarnInstall(ctx, client, id, inst, set)
 		return
 	}
 	s.runAgentInstall(ctx, client, id, inst, set)
@@ -278,7 +279,7 @@ func (s *Service) runAgentInstall(ctx context.Context, client *ssh.Client, id uu
 		return
 	}
 	sum := sha256Hex(bin)
-	remoteTmp := "/tmp/dockpilot-agent." + hex.EncodeToString([]byte(sum)[:6])
+	remoteTmp := "/tmp/barn-agent." + hex.EncodeToString([]byte(sum)[:6])
 	if err := sshUpload(client, remoteTmp, bin); err != nil {
 		s.failInstall(ctx, id, "upload_failed", "не удалось загрузить agent")
 		return
@@ -325,7 +326,7 @@ func (s *Service) runAgentInstall(ctx context.Context, client *ssh.Client, id uu
 	s.failInstall(ctx, id, "registration_timeout", "агент не зарегистрировался вовремя")
 }
 
-func (s *Service) runDockpilotInstall(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.FleetInstallation, set func(status, step string)) {
+func (s *Service) runBarnInstall(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.FleetInstallation, set func(status, step string)) {
 	set("detecting_system", "Определение системы")
 	osRelease, _ := sshRun(client, "cat /etc/os-release")
 	if !strings.Contains(osRelease, "Ubuntu") && !strings.Contains(osRelease, "Debian") {
@@ -349,21 +350,21 @@ func (s *Service) runDockpilotInstall(ctx context.Context, client *ssh.Client, i
 	if email == "" {
 		email = "admin@" + domain
 	}
-	apiToken, err := GenerateToken("dp")
+	apiToken, err := GenerateToken("barn")
 	if err != nil {
 		s.failInstall(ctx, id, "token_failed", "не удалось создать API token")
 		return
 	}
 
-	set("installing_service", "Установка DockPilot")
+	set("installing_service", "Установка Barn")
 	repo := githubInstallRepo()
 	scriptURL := "https://raw.githubusercontent.com/" + repo + "/main/scripts/install.sh"
-	script := buildDockpilotInstallScript(scriptURL, domain, email, apiToken)
+	script := buildBarnInstallScript(scriptURL, domain, email, apiToken)
 	out, err := sshRun(client, script)
 	if err != nil {
 		_ = s.appendInstallLog(ctx, id, "error", truncateLog(out, 500))
 		clearString(&apiToken)
-		s.failInstall(ctx, id, "install_failed", "ошибка установки DockPilot")
+		s.failInstall(ctx, id, "install_failed", "ошибка установки Barn")
 		return
 	}
 	_ = s.appendInstallLog(ctx, id, "info", "Установщик завершился")
@@ -399,7 +400,7 @@ func (s *Service) runDockpilotInstall(ctx context.Context, client *ssh.Client, i
 	if name == "" {
 		name = domain
 	}
-	node, err := s.PairRemoteDockpilot(ctx, PairDockpilotRequest{
+	node, err := s.PairRemoteBarn(ctx, PairBarnRequest{
 		Name:        name,
 		BaseURL:     panelURL,
 		PairingCode: code,
@@ -419,19 +420,23 @@ func (s *Service) runDockpilotInstall(ctx context.Context, client *ssh.Client, i
 }
 
 func githubInstallRepo() string {
+	if r := strings.TrimSpace(os.Getenv("BARN_GITHUB_REPO")); r != "" {
+		return r
+	}
+	// Legacy env alias.
 	if r := strings.TrimSpace(os.Getenv("DOCK_PILOT_GITHUB_REPO")); r != "" {
 		return r
 	}
-	return "ebasht/dock-pilot"
+	return "ebasht/barn"
 }
 
-func buildDockpilotInstallScript(scriptURL, domain, email, apiToken string) string {
+func buildBarnInstallScript(scriptURL, domain, email, apiToken string) string {
 	return fmt.Sprintf(`set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-curl -fsSL %s -o /tmp/dock-pilot-install.sh
-chmod 700 /tmp/dock-pilot-install.sh
-bash /tmp/dock-pilot-install.sh --domain %s --email %s --token %s
-rm -f /tmp/dock-pilot-install.sh
+curl -fsSL %s -o /tmp/barn-install.sh
+chmod 700 /tmp/barn-install.sh
+bash /tmp/barn-install.sh --domain %s --email %s --token %s
+rm -f /tmp/barn-install.sh
 `, strconv.Quote(scriptURL), strconv.Quote(domain), strconv.Quote(email), strconv.Quote(apiToken))
 }
 
@@ -664,7 +669,7 @@ func (s *Service) ListInstallationLogs(ctx context.Context, id uuid.UUID) ([]Ins
 }
 
 func (s *Service) agentBinaryPath(goArch string) string {
-	name := "dockpilot-agent-linux-" + goArch
+	name := "barn-agent-linux-" + goArch
 	if s.agentDir != "" {
 		return filepath.Join(s.agentDir, name)
 	}
@@ -747,53 +752,53 @@ func sshUpload(client *ssh.Client, remote string, data []byte) error {
 
 func buildInstallScript(tmpPath, checksum, masterURL, regToken, nodeUID string) string {
 	// Fixed script; values are shell-quoted.
-	// Register must not leave config owned by root: service runs as dockpilot-agent.
+	// Register must not leave config owned by root: service runs as barn-agent.
 	return fmt.Sprintf(`set -euo pipefail
-id dockpilot-agent >/dev/null 2>&1 || useradd --system --home /var/lib/dockpilot-agent --shell /usr/sbin/nologin dockpilot-agent
-mkdir -p /opt/dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
+id barn-agent >/dev/null 2>&1 || useradd --system --home /var/lib/barn-agent --shell /usr/sbin/nologin barn-agent
+mkdir -p /opt/barn-agent /etc/barn-agent /var/lib/barn-agent
 SUM=$(sha256sum %s | awk '{print $1}')
 test "$SUM" = %s
-install -o root -g root -m 0755 %s /opt/dockpilot-agent/dockpilot-agent
-cat > /etc/dockpilot-agent/config.json <<EOF
+install -o root -g root -m 0755 %s /opt/barn-agent/barn-agent
+cat > /etc/barn-agent/config.json <<EOF
 {"master_url":%q,"node_uid":%q,"node_token":"","heartbeat_interval_seconds":30}
 EOF
-chmod 0755 /etc/dockpilot-agent
-chmod 0600 /etc/dockpilot-agent/config.json
-chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
-cat > /etc/systemd/system/dockpilot-agent.service <<'UNIT'
+chmod 0755 /etc/barn-agent
+chmod 0600 /etc/barn-agent/config.json
+chown -R barn-agent:barn-agent /etc/barn-agent /var/lib/barn-agent
+cat > /etc/systemd/system/barn-agent.service <<'UNIT'
 [Unit]
-Description=DockPilot Agent
+Description=Barn Agent
 After=network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-User=dockpilot-agent
-Group=dockpilot-agent
-ExecStartPre=+/bin/chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
-ExecStartPre=+/bin/chmod 0755 /etc/dockpilot-agent
-ExecStartPre=+/bin/chmod 0600 /etc/dockpilot-agent/config.json
-ExecStart=/opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json
+User=barn-agent
+Group=barn-agent
+ExecStartPre=+/bin/chown -R barn-agent:barn-agent /etc/barn-agent /var/lib/barn-agent
+ExecStartPre=+/bin/chmod 0755 /etc/barn-agent
+ExecStartPre=+/bin/chmod 0600 /etc/barn-agent/config.json
+ExecStart=/opt/barn-agent/barn-agent -config /etc/barn-agent/config.json
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/dockpilot-agent /etc/dockpilot-agent
+ReadWritePaths=/var/lib/barn-agent /etc/barn-agent
 [Install]
 WantedBy=multi-user.target
 UNIT
 # Register as the service user so config.json is never left root:0600.
 if command -v runuser >/dev/null 2>&1; then
-  runuser -u dockpilot-agent -- /opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json -register -master-url %s -registration-token %s -node-uid %s
+  runuser -u barn-agent -- /opt/barn-agent/barn-agent -config /etc/barn-agent/config.json -register -master-url %s -registration-token %s -node-uid %s
 else
-  su -s /bin/sh dockpilot-agent -c "/opt/dockpilot-agent/dockpilot-agent -config /etc/dockpilot-agent/config.json -register -master-url %s -registration-token %s -node-uid %s"
+  su -s /bin/sh barn-agent -c "/opt/barn-agent/barn-agent -config /etc/barn-agent/config.json -register -master-url %s -registration-token %s -node-uid %s"
 fi
-chown -R dockpilot-agent:dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
-chmod 0755 /etc/dockpilot-agent
-chmod 0600 /etc/dockpilot-agent/config.json
+chown -R barn-agent:barn-agent /etc/barn-agent /var/lib/barn-agent
+chmod 0755 /etc/barn-agent
+chmod 0600 /etc/barn-agent/config.json
 systemctl daemon-reload
-systemctl enable --now dockpilot-agent.service
+systemctl enable --now barn-agent.service
 rm -f %s
 `, strconv.Quote(tmpPath), strconv.Quote(checksum), strconv.Quote(tmpPath),
 		masterURL, nodeUID,

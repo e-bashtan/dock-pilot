@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ebash/dock-pilot/backend/internal/panelbackup"
+	"github.com/ebash/barn/backend/internal/panelbackup"
 )
 
 type BackupsHandler struct {

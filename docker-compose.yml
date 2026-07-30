@@ -1,18 +1,19 @@
+# Local development with barn naming (can detect legacy dock-pilot volumes).
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: dock-pilot-postgres
+    container_name: barn-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: dockpilot
-      POSTGRES_PASSWORD: dockpilot
-      POSTGRES_DB: dockpilot
+      POSTGRES_USER: ${POSTGRES_USER:-barn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-barn}
+      POSTGRES_DB: ${POSTGRES_DB:-barn}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dockpilot -d dockpilot"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-barn} -d ${POSTGRES_DB:-barn}"]
       interval: 3s
       timeout: 5s
       retries: 10
@@ -22,10 +23,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.migrate
-    container_name: dock-pilot-migrate
+    container_name: barn-migrate
     environment:
       GOOSE_DRIVER: postgres
-      GOOSE_DBSTRING: postgres://dockpilot:dockpilot@postgres:5432/dockpilot?sslmode=disable
+      GOOSE_DBSTRING: postgres://${POSTGRES_USER:-barn}:${POSTGRES_PASSWORD:-barn}@postgres:5432/${POSTGRES_DB:-barn}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy

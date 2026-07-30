@@ -12,13 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
-	"github.com/ebash/dock-pilot/backend/internal/git"
-	"github.com/ebash/dock-pilot/backend/internal/nginx"
-	secretpkg "github.com/ebash/dock-pilot/backend/internal/secrets"
-	"github.com/ebash/dock-pilot/backend/internal/sites"
-	"github.com/ebash/dock-pilot/backend/internal/ssl"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/git"
+	"github.com/ebash/barn/backend/internal/nginx"
+	secretpkg "github.com/ebash/barn/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/sites"
+	"github.com/ebash/barn/backend/internal/ssl"
 )
 
 type Worker struct {

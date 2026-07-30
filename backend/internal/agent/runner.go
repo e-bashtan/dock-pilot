@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ebash/dock-pilot/backend/internal/metrics"
+	"github.com/ebash/barn/backend/internal/metrics"
 )
 
 // Runner is the agent main loop: metrics, systemd checks, heartbeat, outbox flush.

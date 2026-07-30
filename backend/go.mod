@@ -1,4 +1,4 @@
-module github.com/ebash/dock-pilot/backend
+module github.com/ebash/barn/backend
 
 go 1.25.0
 

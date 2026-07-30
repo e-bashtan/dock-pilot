@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ebash/dock-pilot/backend/internal/auth"
+	"github.com/ebash/barn/backend/internal/auth"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 

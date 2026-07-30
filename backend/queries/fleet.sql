@@ -84,9 +84,9 @@ RETURNING *;
 -- name: UpdateFleetNodeStatus :exec
 UPDATE fleet_nodes SET status = $2, updated_at = now() WHERE id = $1;
 
--- name: ListDockpilotNodes :many
+-- name: ListBarnNodes :many
 SELECT * FROM fleet_nodes
-WHERE deleted_at IS NULL AND connection_type = 'dockpilot';
+WHERE deleted_at IS NULL AND connection_type = 'barn';
 
 -- name: CreateFleetCredential :one
 INSERT INTO fleet_node_credentials (

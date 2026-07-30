@@ -17,7 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 )
 
 func (s *Service) CreatePairingCode(ctx context.Context) (PairingCodeResponse, error) {
@@ -43,7 +43,7 @@ func (s *Service) CreatePairingCode(ctx context.Context) (PairingCodeResponse, e
 	return PairingCodeResponse{Code: code, ExpiresAt: exp}, nil
 }
 
-func (s *Service) PairRemoteDockpilot(ctx context.Context, req PairDockpilotRequest) (NodeResponse, error) {
+func (s *Service) PairRemoteBarn(ctx context.Context, req PairBarnRequest) (NodeResponse, error) {
 	settings, err := s.ensureSettings(ctx)
 	if err != nil {
 		return NodeResponse{}, err
@@ -106,13 +106,13 @@ func (s *Service) PairRemoteDockpilot(ctx context.Context, req PairDockpilotRequ
 	if err != nil {
 		return NodeResponse{}, err
 	}
-	caps, _ := json.Marshal(DockpilotCapabilities())
+	caps, _ := json.Marshal(BarnCapabilities())
 	now := time.Now().UTC()
 	node, err := s.q.CreateFleetNode(ctx, db.CreateFleetNodeParams{
 		NodeUid:        nodeUID,
 		Name:           name,
 		Role:           RoleNode,
-		ConnectionType: ConnDockpilot,
+		ConnectionType: ConnBarn,
 		BaseUrl:        baseURL,
 		Status:         StatusOnline,
 		Capabilities:   caps,
@@ -151,7 +151,7 @@ func (s *Service) PairRemoteDockpilot(ctx context.Context, req PairDockpilotRequ
 	return s.toNodeResponse(ctx, node, accounts, claimed, localIP), nil
 }
 
-// AcceptPair is called on the node being paired (remote DockPilot).
+// AcceptPair is called on the node being paired (remote Barn).
 func (s *Service) AcceptPair(ctx context.Context, req PairNodeRequest) (PairNodeResponse, error) {
 	settings, err := s.ensureSettings(ctx)
 	if err != nil {

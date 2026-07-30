@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # One-command VPS install: Docker stack + nginx (+ Let's Encrypt when --domain is set).
+# Barn (Амбар) - Docker deployment panel
 #
-#   sudo bash /tmp/dock-pilot-install.sh --domain deploy.example.com --email you@example.com
-#   sudo bash /tmp/dock-pilot-install.sh --version latest
+#   sudo bash /tmp/barn-install.sh --domain deploy.example.com --email you@example.com
+#   sudo bash /tmp/barn-install.sh --version latest
 #
 set -euo pipefail
 
-INSTALL_DIR="${DOCK_PILOT_INSTALL_DIR:-/opt/dock-pilot}"
-GITHUB_REPO="${DOCK_PILOT_GITHUB_REPO:-ebasht/dock-pilot}"
-VERSION="${DOCK_PILOT_VERSION:-latest}"
+INSTALL_DIR="${BARN_INSTALL_DIR:-${DOCK_PILOT_INSTALL_DIR:-/opt/barn}}"
+GITHUB_REPO="${BARN_GITHUB_REPO:-${DOCK_PILOT_GITHUB_REPO:-ebasht/barn}}"
+VERSION="${BARN_VERSION:-${DOCK_PILOT_VERSION:-latest}}"
 DOMAIN=""
 EMAIL=""
 API_TOKEN=""
@@ -29,8 +30,8 @@ Panel access:
 
 Options:
   --token TOKEN       API token (generated if omitted)
-  --install-dir DIR   Install path (default: /opt/dock-pilot)
-  --repo OWNER/REPO   GitHub repo (default: ebasht/dock-pilot)
+  --install-dir DIR   Install path (default: /opt/barn, or /opt/dock-pilot if detected)
+  --repo OWNER/REPO   GitHub repo (default: ebasht/barn)
   --version TAG       Release tag v0.1.0 or latest
   --from-dir DIR      Use an unpacked release directory
   --skip-cert         With --domain: HTTP only, no Let's Encrypt for the panel
@@ -131,8 +132,8 @@ load_docker_images() {
 }
 
 # curl | bash: docker compose run reads stdin and consumes the rest of this script.
-if [[ -p /dev/stdin && -z "${DOCK_PILOT_INSTALL_REEXECED:-}" ]]; then
-  export DOCK_PILOT_INSTALL_REEXECED=1
+if [[ -p /dev/stdin && -z "${BARN_INSTALL_REEXECED:-${DOCK_PILOT_INSTALL_REEXECED:-}}" ]]; then
+  export BARN_INSTALL_REEXECED=1
   _install_copy="$(mktemp)"
   cat >"$_install_copy"
   chmod 700 "$_install_copy"
@@ -140,12 +141,13 @@ if [[ -p /dev/stdin && -z "${DOCK_PILOT_INSTALL_REEXECED:-}" ]]; then
 fi
 
 # --- Bootstrap: download release when not yet on disk (curl | bash) ---
-if [[ -z "$FROM_DIR" && ! -f "${INSTALL_DIR}/docker-compose.full.yml" ]]; then
+# Check for barn-full or dock-pilot-full compose file
+if [[ -z "$FROM_DIR" && ! -f "${INSTALL_DIR}/docker-compose.barn-full.yml" && ! -f "${INSTALL_DIR}/docker-compose.full.yml" ]]; then
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "[dock-pilot] ERROR: Run as root: sudo bash -s -- ..." >&2
+    echo "[barn] ERROR: Run as root: sudo bash -s -- ..." >&2
     exit 1
   fi
-  [[ -n "$DOMAIN" && -z "$EMAIL" ]] && { usage; echo "[dock-pilot] ERROR: --email is required with --domain" >&2; exit 1; }
+  [[ -n "$DOMAIN" && -z "$EMAIL" ]] && { usage; echo "[barn] ERROR: --email is required with --domain" >&2; exit 1; }
 
   if [[ "$VERSION" == "latest" ]]; then
     VERSION="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
@@ -153,21 +155,27 @@ if [[ -z "$FROM_DIR" && ! -f "${INSTALL_DIR}/docker-compose.full.yml" ]]; then
     [[ -n "$VERSION" ]] || { echo "No GitHub release found for ${GITHUB_REPO}" >&2; exit 1; }
   fi
   FILE_TAG="${VERSION#v}"
-  URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/dock-pilot-${FILE_TAG}.tar.gz"
-  echo "[dock-pilot] Downloading ${URL} ..."
+  # Try barn artifact first, fall back to dock-pilot for older releases
+  URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/barn-${FILE_TAG}.tar.gz"
+  echo "[barn] Downloading ${URL} ..."
   mkdir -p "$INSTALL_DIR"
-  download_with_progress "$URL" "${INSTALL_DIR}/.dock-pilot-release.tar.gz"
-  tar -xzf "${INSTALL_DIR}/.dock-pilot-release.tar.gz" -C "$INSTALL_DIR" --strip-components=1
-  rm -f "${INSTALL_DIR}/.dock-pilot-release.tar.gz"
+  if ! download_with_progress "$URL" "${INSTALL_DIR}/.barn-release.tar.gz" 2>/dev/null; then
+    URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/dock-pilot-${FILE_TAG}.tar.gz"
+    echo "[barn] Trying legacy artifact ${URL} ..."
+    download_with_progress "$URL" "${INSTALL_DIR}/.barn-release.tar.gz"
+  fi
+  tar -xzf "${INSTALL_DIR}/.barn-release.tar.gz" -C "$INSTALL_DIR" --strip-components=1
+  rm -f "${INSTALL_DIR}/.barn-release.tar.gz"
   FROM_DIR="$INSTALL_DIR"
 fi
 
 SCRIPT_ROOT="${FROM_DIR:-$INSTALL_DIR}"
-[[ -f "${SCRIPT_ROOT}/docker-compose.full.yml" ]] || {
-  echo "[dock-pilot] ERROR: docker-compose.full.yml not found in ${SCRIPT_ROOT}" >&2
+# Check for barn or legacy compose files
+if [[ ! -f "${SCRIPT_ROOT}/docker-compose.barn-full.yml" && ! -f "${SCRIPT_ROOT}/docker-compose.full.yml" ]]; then
+  echo "[barn] ERROR: docker-compose.barn-full.yml or docker-compose.full.yml not found in ${SCRIPT_ROOT}" >&2
   echo "Publish a GitHub release first, or use --from-dir with a local bundle." >&2
   exit 1
-}
+fi
 
 # Release tarballs ship frozen scripts; pull latest installer helpers from main when online.
 source_install_lib() {
@@ -219,7 +227,11 @@ refresh_install_files() {
   local cache="?$(date +%s)"
   local tmp
   tmp="$(mktemp)"
-  if curl -fsSL "${base}/docker-compose.full.yml${cache}" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+  # Try barn-full first, then fall back to full
+  if curl -fsSL "${base}/docker-compose.barn-full.yml${cache}" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    cp "$tmp" "${INSTALL_DIR}/docker-compose.barn-full.yml"
+    log "Updated docker-compose.barn-full.yml from ${GITHUB_REPO}@main"
+  elif curl -fsSL "${base}/docker-compose.full.yml${cache}" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
     cp "$tmp" "${INSTALL_DIR}/docker-compose.full.yml"
     log "Updated docker-compose.full.yml from ${GITHUB_REPO}@main"
   fi
@@ -263,16 +275,23 @@ cd "$INSTALL_DIR"
 refresh_install_files
 
 IMAGES=""
-for f in dock-pilot-images.tar.gz dist/dock-pilot-images.tar.gz; do
+# Try barn images first, then fall back to dock-pilot
+for f in barn-images.tar.gz dist/barn-images.tar.gz dock-pilot-images.tar.gz dist/dock-pilot-images.tar.gz; do
   [[ -f "$f" ]] && IMAGES="$f" && break
 done
-[[ -n "$IMAGES" ]] || die "dock-pilot-images.tar.gz not found"
+[[ -n "$IMAGES" ]] || die "barn-images.tar.gz or dock-pilot-images.tar.gz not found"
 
-if docker image inspect dock-pilot-api:latest >/dev/null 2>&1 \
+# Check for barn or legacy images
+if docker image inspect barn-api:latest >/dev/null 2>&1 \
+  && docker image inspect barn-frontend:latest >/dev/null 2>&1 \
+  && docker image inspect barn-migrate:latest >/dev/null 2>&1 \
+  && docker image inspect barn-postgres:latest >/dev/null 2>&1; then
+  log "Barn Docker images already loaded — skipping docker load"
+elif docker image inspect dock-pilot-api:latest >/dev/null 2>&1 \
   && docker image inspect dock-pilot-frontend:latest >/dev/null 2>&1 \
   && docker image inspect dock-pilot-migrate:latest >/dev/null 2>&1 \
   && docker image inspect dock-pilot-postgres:latest >/dev/null 2>&1; then
-  log "Docker images already loaded — skipping docker load"
+  log "Legacy Docker images already loaded — skipping docker load"
 else
   load_docker_images "$IMAGES"
 fi
@@ -289,8 +308,9 @@ fi
 
 if [[ "$RESET_DB" -eq 1 ]]; then
   log "Resetting Postgres volume (--reset-db) ..."
-  docker compose -f docker-compose.full.yml down 2>/dev/null || true
-  for vol in dock-pilot_dock_pilot_pg dock_pilot_pg; do
+  # Try both barn and legacy compose files
+  docker compose -f docker-compose.barn-full.yml down 2>/dev/null || docker compose -f docker-compose.full.yml down 2>/dev/null || true
+  for vol in barn_pg barn_barn_pg dock-pilot_dock_pilot_pg dock_pilot_pg; do
     docker volume rm "$vol" 2>/dev/null || true
   done
   unset POSTGRES_PASSWORD DATABASE_URL
@@ -304,6 +324,27 @@ log "Generating secrets and writing .env ..."
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(rand_postgres_password 24)}"
 SECRETS_KEY="${SECRETS_ENCRYPTION_KEY:-$(rand_secret 32)}"
 API_TOKEN="${API_TOKEN:-$(rand_secret 32)}"
+
+# Use barn naming for new installs, detect legacy for upgrades
+POSTGRES_USER="barn"
+POSTGRES_DB="barn"
+POSTGRES_IMAGE="barn-postgres:latest"
+API_IMAGE="barn-api:latest"
+FRONTEND_IMAGE="barn-frontend:latest"
+MIGRATE_IMAGE="barn-migrate:latest"
+DEPLOY_WORK_DIR="/var/lib/barn"
+
+# Detect legacy install - if dock-pilot images exist, keep using them
+if docker volume inspect dock-pilot_dock_pilot_pg >/dev/null 2>&1 || docker volume inspect dock_pilot_pg >/dev/null 2>&1; then
+  log "Detected legacy dock-pilot installation - preserving naming"
+  POSTGRES_USER="dockpilot"
+  POSTGRES_DB="dockpilot"
+  POSTGRES_IMAGE="dock-pilot-postgres:latest"
+  API_IMAGE="dock-pilot-api:latest"
+  FRONTEND_IMAGE="dock-pilot-frontend:latest"
+  MIGRATE_IMAGE="dock-pilot-migrate:latest"
+  DEPLOY_WORK_DIR="/var/lib/dock-pilot"
+fi
 
 # Pick free localhost ports (8080/3000 are often taken on busy VPS hosts).
 if port_in_use "${API_PORT:-8080}"; then
@@ -333,11 +374,11 @@ fi
 
 cat > .env <<EOF
 # Generated by install.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)
-POSTGRES_USER=dockpilot
+POSTGRES_USER=${POSTGRES_USER}
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=dockpilot
-POSTGRES_IMAGE=dock-pilot-postgres:latest
-DATABASE_URL=postgres://dockpilot:${POSTGRES_PASSWORD}@postgres:5432/dockpilot?sslmode=disable
+POSTGRES_DB=${POSTGRES_DB}
+POSTGRES_IMAGE=${POSTGRES_IMAGE}
+DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
 POSTGRES_HOST_PORT=5433
 
 HTTP_ADDR=:8080
@@ -349,7 +390,7 @@ PANEL_HTTP_PORT=${PANEL_HTTP_PORT}
 CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}
 
 DEPLOY_MODE=real
-DEPLOY_WORK_DIR=/var/lib/dock-pilot
+DEPLOY_WORK_DIR=${DEPLOY_WORK_DIR}
 HOST_ROOT=/host
 NGINX_SITES_AVAILABLE=/host/etc/nginx/sites-available
 NGINX_SITES_ENABLED=/host/etc/nginx/sites-enabled
@@ -358,9 +399,9 @@ CERTBOT_EMAIL=${EMAIL}
 API_PORT=${API_PORT}
 FRONTEND_PORT=${FRONTEND_PORT}
 
-API_IMAGE=dock-pilot-api:latest
-FRONTEND_IMAGE=dock-pilot-frontend:latest
-MIGRATE_IMAGE=dock-pilot-migrate:latest
+API_IMAGE=${API_IMAGE}
+FRONTEND_IMAGE=${FRONTEND_IMAGE}
+MIGRATE_IMAGE=${MIGRATE_IMAGE}
 EOF
 chmod 600 .env
 log "Wrote ${INSTALL_DIR}/.env (api=${API_PORT}, ui=${FRONTEND_PORT})"
@@ -368,8 +409,10 @@ write_credentials_file "$INSTALL_DIR" "$PANEL_URL" "$API_TOKEN"
 
 run_migrate() {
   log "Applying migrations..."
+  local compose_file="docker-compose.barn-full.yml"
+  [[ -f "$compose_file" ]] || compose_file="docker-compose.full.yml"
   set +e
-  docker compose -f docker-compose.full.yml run --rm -T migrate
+  docker compose -f "$compose_file" run --rm -T migrate
   local rc=$?
   set -e
   if [[ $rc -eq 0 ]]; then
@@ -382,11 +425,12 @@ run_migrate() {
 }
 
 start_api_frontend() {
-  local compose_file="docker-compose.full.yml"
+  local compose_file="docker-compose.barn-full.yml"
+  [[ -f "$compose_file" ]] || compose_file="docker-compose.full.yml"
   local attempt
   for attempt in 1 2 3 4 5; do
     log "Starting API and frontend (attempt ${attempt}, api=${API_PORT}, ui=${FRONTEND_PORT}) ..."
-    docker rm -f dock-pilot-api dock-pilot-frontend 2>/dev/null || true
+    docker rm -f barn-api barn-frontend dock-pilot-api dock-pilot-frontend 2>/dev/null || true
     if docker compose -f "$compose_file" up -d api frontend --no-deps 2>&1; then
       return 0
     fi
@@ -409,14 +453,17 @@ start_api_frontend() {
   die "Could not start API/frontend after 5 attempts (check: docker compose logs api)"
 }
 
+COMPOSE_FILE="docker-compose.barn-full.yml"
+[[ -f "$COMPOSE_FILE" ]] || COMPOSE_FILE="docker-compose.full.yml"
+
 log "Starting stack (postgres → migrate → api → frontend)..."
-docker compose -f docker-compose.full.yml up -d postgres
+docker compose -f "$COMPOSE_FILE" up -d postgres
 log "Waiting for PostgreSQL..."
 if wait_for_postgres; then
   log "PostgreSQL is ready"
 else
-  docker compose -f docker-compose.full.yml ps -a 2>&1 || true
-  docker compose -f docker-compose.full.yml logs postgres --tail 30 2>&1 || true
+  docker compose -f "$COMPOSE_FILE" ps -a 2>&1 || true
+  docker compose -f "$COMPOSE_FILE" logs postgres --tail 30 2>&1 || true
   die "PostgreSQL did not become ready"
 fi
 run_migrate
@@ -433,7 +480,7 @@ if [[ -n "$DOMAIN" ]]; then
   configure_panel_nginx "$INSTALL_DIR" "$DOMAIN" "$EMAIL" "$API_PORT" "$FRONTEND_PORT" "$SKIP_CERT"
   PANEL_URL="$(panel_url_for_env "$DOMAIN" "$PANEL_HTTP_PORT" "$SKIP_CERT")"
   sed -i "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=${PANEL_URL}|" .env
-  docker compose -f docker-compose.full.yml up -d api
+  docker compose -f "$COMPOSE_FILE" up -d api
 
   if [[ "$SKIP_CERT" -eq 0 ]]; then
     if verify_panel_https "$DOMAIN"; then
@@ -447,7 +494,7 @@ else
   PANEL_URL="$(panel_url_for_env "" "$PANEL_HTTP_PORT" 1)"
   CORS_ORIGINS="$(panel_cors_origins_ip "$PANEL_HTTP_PORT")"
   sed -i "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}|" .env
-  docker compose -f docker-compose.full.yml up -d api
+  docker compose -f "$COMPOSE_FILE" up -d api
   log "Panel URL: ${PANEL_URL} (open port ${PANEL_HTTP_PORT} in firewall if needed)"
 fi
 
@@ -457,7 +504,7 @@ write_credentials_file "$INSTALL_DIR" "$PANEL_URL" "$API_TOKEN"
 cat <<EOF
 
 ================================================================================
-  DockPilot is ready.
+  Barn (Амбар) is ready.
 
   Panel:     ${PANEL_URL}
   API token: ${API_TOKEN}
@@ -470,11 +517,11 @@ cat <<EOF
 $(if [[ -z "$DOMAIN" ]]; then
   echo ""
   echo "  To add HTTPS for the panel later:"
-  echo "    sudo bash ${INSTALL_DIR}/scripts/dock-pilot-upgrade.sh latest \\"
+  echo "    sudo bash ${INSTALL_DIR}/scripts/barn-upgrade.sh latest \\"
   echo "      --domain panel.example.com --email you@example.com"
 fi)
 
-  cd ${INSTALL_DIR} && docker compose -f docker-compose.full.yml ps
+  cd ${INSTALL_DIR} && docker compose -f ${COMPOSE_FILE} ps
 ================================================================================
 
 EOF

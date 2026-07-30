@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	defaultInstallDir = "/opt/dock-pilot"
-	defaultGitHubRepo = "ebasht/dock-pilot"
+	defaultInstallDir = "/opt/barn"
+	defaultGitHubRepo = "ebasht/barn"
 	upgradeStateDir   = ".upgrade"
 )
 
@@ -53,13 +53,24 @@ type UpgradeJobStatus struct {
 }
 
 func (s *Service) installDir() string {
+	if v := strings.TrimSpace(os.Getenv("BARN_INSTALL_DIR")); v != "" {
+		return v
+	}
 	if v := strings.TrimSpace(os.Getenv("DOCK_PILOT_INSTALL_DIR")); v != "" {
 		return v
+	}
+	// Prefer existing legacy install path when present.
+	legacy := "/opt/dock-pilot"
+	if st, err := os.Stat(s.host.ChrootPath(legacy)); err == nil && st.IsDir() {
+		return legacy
 	}
 	return defaultInstallDir
 }
 
 func (s *Service) githubRepo() string {
+	if v := strings.TrimSpace(os.Getenv("BARN_GITHUB_REPO")); v != "" {
+		return v
+	}
 	if v := strings.TrimSpace(os.Getenv("DOCK_PILOT_GITHUB_REPO")); v != "" {
 		return v
 	}
@@ -111,8 +122,8 @@ func (s *Service) canUpdate() (bool, string) {
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
 		return false, "install dir not found (dev or non-standard install)"
 	}
-	script := s.hostPath(filepath.Join(s.installDir(), "scripts", "dock-pilot-upgrade.sh"))
-	if st, err := os.Stat(script); err != nil || st.IsDir() {
+	script := s.findUpgradeScript()
+	if script == "" {
 		return false, "upgrade script missing"
 	}
 	if !s.host.UsesChroot() {
@@ -123,8 +134,19 @@ func (s *Service) canUpdate() (bool, string) {
 	return true, ""
 }
 
+func (s *Service) findUpgradeScript() string {
+	dir := s.installDir()
+	for _, name := range []string{"barn-upgrade.sh", "dock-pilot-upgrade.sh"} {
+		script := s.hostPath(filepath.Join(dir, "scripts", name))
+		if st, err := os.Stat(script); err == nil && !st.IsDir() {
+			return script
+		}
+	}
+	return ""
+}
+
 func (s *Service) readCurrentVersion(ctx context.Context) string {
-	// Prefer the running frontend image — /opt/dock-pilot/VERSION can lag after CLI upgrades.
+	// Prefer the running frontend image — /opt/barn/VERSION can lag after CLI upgrades.
 	if v := s.readFrontendImageVersion(ctx); v != "" {
 		return v
 	}
@@ -141,25 +163,27 @@ func (s *Service) readCurrentVersion(ctx context.Context) string {
 }
 
 func (s *Service) readFrontendImageVersion(ctx context.Context) string {
-	// Label (set on runner image) — preferred.
-	if out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
-		"--format", `{{index .Config.Labels "org.opencontainers.image.version"}}`,
-		"dock-pilot-frontend"); err == nil {
-		if v := normalizeVersion(out); v != "" {
-			return v
+	for _, name := range []string{"barn-frontend", "dock-pilot-frontend"} {
+		// Label (set on runner image) — preferred.
+		if out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
+			"--format", `{{index .Config.Labels "org.opencontainers.image.version"}}`,
+			name); err == nil {
+			if v := normalizeVersion(out); v != "" {
+				return v
+			}
 		}
-	}
-	// Runtime env (runner stage) or leftover builder env.
-	out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
-		"--format", `{{range .Config.Env}}{{println .}}{{end}}`,
-		"dock-pilot-frontend")
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "NEXT_PUBLIC_APP_VERSION=") {
-			return normalizeVersion(strings.TrimPrefix(line, "NEXT_PUBLIC_APP_VERSION="))
+		// Runtime env (runner stage) or leftover builder env.
+		out, err := s.host.RunHostCombined(ctx, "docker", "inspect",
+			"--format", `{{range .Config.Env}}{{println .}}{{end}}`,
+			name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(out, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "NEXT_PUBLIC_APP_VERSION=") {
+				return normalizeVersion(strings.TrimPrefix(line, "NEXT_PUBLIC_APP_VERSION="))
+			}
 		}
 	}
 	return ""
@@ -173,7 +197,7 @@ func (s *Service) fetchLatestRelease(ctx context.Context) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "dock-pilot-panel")
+	req.Header.Set("User-Agent", "barn-panel")
 
 	client := &http.Client{Timeout: 12 * time.Second}
 	res, err := client.Do(req)
@@ -224,7 +248,17 @@ func (s *Service) StartUpgrade(ctx context.Context, target string) (UpgradeStart
 
 	installDir := s.installDir()
 	stateDir := filepath.Join(installDir, upgradeStateDir)
-	scriptPath := filepath.Join(installDir, "scripts", "dock-pilot-upgrade.sh")
+	scriptPath := ""
+	for _, name := range []string{"barn-upgrade.sh", "dock-pilot-upgrade.sh"} {
+		p := filepath.Join(installDir, "scripts", name)
+		if st, err := os.Stat(s.hostPath(p)); err == nil && !st.IsDir() {
+			scriptPath = p
+			break
+		}
+	}
+	if scriptPath == "" {
+		return UpgradeStartResult{}, fmt.Errorf("%w: upgrade script missing", ErrUpgradeStartFail)
+	}
 	launchPath := filepath.Join(stateDir, "launch.sh")
 
 	launchBody := fmt.Sprintf(`#!/bin/bash
@@ -237,7 +271,9 @@ mkdir -p "$STATE"
 echo "$TARGET" > "$STATE/target"
 : > "$STATE/log"
 echo running > "$STATE/status"
+export BARN_FORCE_PROGRESS=1
 export DOCK_PILOT_FORCE_PROGRESS=1
+export BARN_INSTALL_DIR="$INSTALL"
 export DOCK_PILOT_INSTALL_DIR="$INSTALL"
 set +e
 bash "$SCRIPT" "$TARGET" >>"$STATE/log" 2>&1

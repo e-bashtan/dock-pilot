@@ -51,7 +51,7 @@ import type {
   FleetEvent,
   FleetIncident,
   FleetPairingCode,
-  PairDockpilotRequest,
+  PairBarnRequest,
   CreateAgentInstallRequest,
   UpdateFleetNodeRequest,
   UpdateFleetNodeBillingRequest,
@@ -585,8 +585,8 @@ export const api = {
   deleteFleetNode: (id: string) =>
     request<void>(`/api/fleet/nodes/${id}`, { method: "DELETE" }),
 
-  pairDockpilotNode: (body: PairDockpilotRequest) =>
-    request<FleetNode>("/api/fleet/nodes/dockpilot", {
+  pairBarnNode: (body: PairBarnRequest) =>
+    request<FleetNode>("/api/fleet/nodes/barn", {
       method: "POST",
       body: JSON.stringify(body),
     }),

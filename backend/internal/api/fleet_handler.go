@@ -7,7 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/fleet"
+	"github.com/ebash/barn/backend/internal/fleet"
 )
 
 type FleetHandler struct {
@@ -124,18 +124,22 @@ func (h *FleetHandler) UpdateNodeBilling(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (h *FleetHandler) PairDockpilot(w http.ResponseWriter, r *http.Request) {
-	var req fleet.PairDockpilotRequest
+func (h *FleetHandler) PairBarn(w http.ResponseWriter, r *http.Request) {
+	var req fleet.PairBarnRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		writeError(w, fleet.ErrInvalidInput)
 		return
 	}
-	out, err := h.svc.PairRemoteDockpilot(r.Context(), req)
+	out, err := h.svc.PairRemoteBarn(r.Context(), req)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, out)
+}
+
+func (h *FleetHandler) PairDockpilot(w http.ResponseWriter, r *http.Request) {
+	h.PairBarn(w, r)
 }
 
 func (h *FleetHandler) CreatePairingCode(w http.ResponseWriter, r *http.Request) {

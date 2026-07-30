@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/ebash/dock-pilot/backend/internal/healthcheck"
+	"github.com/ebash/barn/backend/internal/healthcheck"
 )
 
 func (s *Service) Health(ctx context.Context, id uuid.UUID) (healthcheck.Result, error) {

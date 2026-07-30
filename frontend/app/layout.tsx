@@ -2,17 +2,17 @@ import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { AppShell } from "@/components/AppShell";
 import { LocaleProvider } from "@/lib/i18n/context";
-import { LOCALE_COOKIE, parseLocale } from "@/lib/i18n/locale";
+import { readLocaleCookie } from "@/lib/i18n/locale";
 import { en } from "@/lib/i18n/messages/en";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: en.meta.title,
   description: en.meta.description,
-  applicationName: "DockPilot",
+  applicationName: "Barn",
   appleWebApp: {
     capable: true,
-    title: "DockPilot",
+    title: "Barn",
     statusBarStyle: "black-translucent",
   },
   formatDetection: {
@@ -37,7 +37,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
-  const locale = parseLocale(cookieStore.get(LOCALE_COOKIE)?.value);
+  const locale = readLocaleCookie((name) => cookieStore.get(name)?.value);
 
   return (
     <html lang={locale}>

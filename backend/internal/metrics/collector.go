@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Snapshot is a normalized host metrics payload used by DockPilot and the agent.
+// Snapshot is a normalized host metrics payload used by Barn and the agent.
 type Snapshot struct {
 	Hostname       string      `json:"hostname"`
 	OSName         string      `json:"os_name"`

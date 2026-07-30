@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DefaultOutboxDir     = "/var/lib/dockpilot-agent/outbox"
+	DefaultOutboxDir     = "/var/lib/barn-agent/outbox"
 	DefaultOutboxMaxBytes = 8 << 20 // 8 MiB
 	DefaultOutboxMaxItems = 5000
 )

@@ -29,7 +29,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/barn-*.tar.gz
             dist/dock-pilot-*.tar.gz
-            dist/dock-pilot-images.tar.gz
+            dist/barn-images.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

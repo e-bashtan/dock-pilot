@@ -99,7 +99,7 @@ func isGitHubHTTPS(raw string) bool {
 func writeGitAskpass(token string) (string, error) {
 	script := "#!/bin/sh\ncase \"$1\" in\n*Username*) printf '%s' 'x-access-token';;\n*Password*) printf '%s' '" +
 		strings.ReplaceAll(token, "'", "'\\''") + "';;\nesac\n"
-	f, err := os.CreateTemp("", "dockpilot-git-askpass-*")
+	f, err := os.CreateTemp("", "barn-git-askpass-*")
 	if err != nil {
 		return "", fmt.Errorf("temp askpass: %w", err)
 	}
@@ -154,7 +154,7 @@ func injectHTTPToken(rawURL, token string) (string, error) {
 }
 
 func writeTempSSHKey(pem string) (string, error) {
-	f, err := os.CreateTemp("", "dockpilot-git-key-*")
+	f, err := os.CreateTemp("", "barn-git-key-*")
 	if err != nil {
 		return "", fmt.Errorf("temp ssh key: %w", err)
 	}

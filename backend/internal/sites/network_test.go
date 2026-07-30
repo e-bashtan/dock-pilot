@@ -3,7 +3,7 @@ package sites
 import (
 	"testing"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/db"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

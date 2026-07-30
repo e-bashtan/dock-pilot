@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/ebash/dock-pilot/backend/internal/hostexec"
+	"github.com/ebash/barn/backend/internal/hostexec"
 )
 
 type RealManager struct {
@@ -70,8 +70,8 @@ func (m *RealManager) WriteConfig(ctx context.Context, siteKey string, cfg SiteC
 	}
 
 	safeName := safeFilename(siteKey)
-	availablePath := filepath.Join(m.available, "dockpilot-"+safeName+".conf")
-	enabledPath := filepath.Join(m.enabled, "dockpilot-"+safeName+".conf")
+	availablePath := filepath.Join(m.available, "barn-"+safeName+".conf")
+	enabledPath := filepath.Join(m.enabled, "barn-"+safeName+".conf")
 
 	if err := m.host.MkdirAll(m.available, 0o755); err != nil {
 		return fmt.Errorf("mkdir sites-available: %w", err)
@@ -105,7 +105,7 @@ func (m *RealManager) WriteConfig(ctx context.Context, siteKey string, cfg SiteC
 	return nil
 }
 
-// cleanupConflictingConfigs removes other vhosts (manual or legacy dockpilot) for the same domain.
+// cleanupConflictingConfigs removes other vhosts (manual or legacy barn/dockpilot) for the same domain.
 func (m *RealManager) cleanupConflictingConfigs(primaryDomain, keepAvailablePath string) error {
 	primaryDomain = strings.TrimSpace(primaryDomain)
 	if primaryDomain == "" {

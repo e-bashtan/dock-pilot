@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/ebash/dock-pilot/backend/internal/db"
-	"github.com/ebash/dock-pilot/backend/internal/docker"
+	"github.com/ebash/barn/backend/internal/db"
+	"github.com/ebash/barn/backend/internal/docker"
 )
 
 const (
@@ -291,7 +291,7 @@ func (c *Checker) doHTTP(ctx context.Context, url, host string) *HTTPInfo {
 		info.Error = err.Error()
 		return info
 	}
-	req.Header.Set("User-Agent", "DockPilot-HealthCheck/1.0")
+	req.Header.Set("User-Agent", "Barn-HealthCheck/1.0")
 	if host != "" {
 		req.Host = host
 		req.Header.Set("Host", host)

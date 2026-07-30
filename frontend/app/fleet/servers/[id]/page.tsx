@@ -187,7 +187,7 @@ export default function FleetServerDetailPage() {
           <Link href="/fleet" className="btn btn-secondary">
             {t("common.back")}
           </Link>
-          {node.connection_type === "dockpilot" && node.base_url && (
+          {node.connection_type === "barn" && node.base_url && (
             <a
               href={node.base_url}
               className="btn btn-secondary"

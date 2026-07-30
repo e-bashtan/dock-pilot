@@ -14,7 +14,7 @@ func ImageTagForSlug(slug string) string {
 	if name == "" {
 		name = "site"
 	}
-	return fmt.Sprintf("dockpilot/%s:latest", name)
+	return fmt.Sprintf("barn/%s:latest", name)
 }
 
 func sanitizeImageName(s string) string {
@@ -109,7 +109,7 @@ func consumeBuildOutput(r io.Reader, onOutput func(string)) (log string, err err
 func normalizeImageRef(tag string) string {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
-		return "dockpilot/site:latest"
+		return "barn/site:latest"
 	}
 	name, vers, ok := strings.Cut(tag, ":")
 	if !ok {

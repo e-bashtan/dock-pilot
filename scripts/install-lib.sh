@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Shared helpers for install.sh
+# Shared helpers for install.sh (Barn)
 set -euo pipefail
 
-log() { echo "[dock-pilot] $*"; }
-die() { echo "[dock-pilot] ERROR: $*" >&2; exit 1; }
+log() { echo "[barn] $*"; }
+die() { echo "[barn] ERROR: $*" >&2; exit 1; }
 
 write_credentials_file() {
   local install_dir="$1" panel_url="$2" api_token="$3"
   local cred="${install_dir}/credentials.txt"
   cat >"$cred" <<EOF
-DockPilot — $(date -u +%Y-%m-%dT%H:%M:%SZ)
+Barn (Амбар) — $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 Panel URL:  ${panel_url}
 API token:  ${api_token}
@@ -61,7 +61,7 @@ detect_os() {
   fi
 }
 
-# True when the host can run DockPilot without apt (docker compose + nginx + certbot).
+# True when the host can run Barn without apt (docker compose + nginx + certbot).
 host_prereqs_met() {
   command -v docker >/dev/null 2>&1 \
     && docker compose version >/dev/null 2>&1 \
@@ -240,7 +240,7 @@ download_with_progress() {
     size_human="$(numfmt --to=iec-i --suffix=B "$cl" 2>/dev/null || echo "${cl} B")"
   fi
 
-  if [[ -t 1 || -t 2 || -n "${DOCK_PILOT_FORCE_PROGRESS:-}" ]]; then
+  if [[ -t 1 || -t 2 || -n "${BARN_FORCE_PROGRESS:-${DOCK_PILOT_FORCE_PROGRESS:-}}" ]]; then
     show_progress=1
   fi
 
@@ -259,7 +259,7 @@ download_with_progress() {
     return 0
   fi
 
-  log "No TTY — showing progress every 5s (set DOCK_PILOT_FORCE_PROGRESS=1 to force bar)..."
+  log "No TTY — showing progress every 5s (set BARN_FORCE_PROGRESS=1 to force bar)..."
   curl -fsSL "$url" -o "$dest.part" &
   local pid=$!
   while kill -0 "$pid" 2>/dev/null; do
@@ -287,14 +287,14 @@ download_with_progress() {
   log "Download complete: ${name}"
 }
 
-# Load dock-pilot-images.tar.gz; show byte progress via pv when available.
+# Load barn-images.tar.gz or dock-pilot-images.tar.gz; show byte progress via pv when available.
 load_docker_images() {
   local images="$1"
   log "Loading Docker images from $(basename "$images")..."
-  if [[ -t 1 || -t 2 || -n "${DOCK_PILOT_FORCE_PROGRESS:-}" ]] && command -v pv >/dev/null 2>&1; then
+  if [[ -t 1 || -t 2 || -n "${BARN_FORCE_PROGRESS:-${DOCK_PILOT_FORCE_PROGRESS:-}}" ]] && command -v pv >/dev/null 2>&1; then
     pv -f -pte "$images" | gunzip -c | docker load
   else
-    if [[ -t 1 || -t 2 || -n "${DOCK_PILOT_FORCE_PROGRESS:-}" ]] && ! command -v pv >/dev/null 2>&1; then
+    if [[ -t 1 || -t 2 || -n "${BARN_FORCE_PROGRESS:-${DOCK_PILOT_FORCE_PROGRESS:-}}" ]] && ! command -v pv >/dev/null 2>&1; then
       log "Tip: apt install pv for load progress (percent bar)"
     fi
     gunzip -c "$images" | docker load
@@ -314,20 +314,28 @@ download_release() {
     version="$(github_latest_tag "$repo")"
     [[ -n "$version" ]] || die "Could not resolve latest release for ${repo}"
   fi
-  url="https://github.com/${repo}/releases/download/${version}/dock-pilot-${version#v}.tar.gz"
-  download_with_progress "$url" "$dest"
+  # Try barn artifact first, fall back to dock-pilot for older releases
+  url="https://github.com/${repo}/releases/download/${version}/barn-${version#v}.tar.gz"
+  if ! download_with_progress "$url" "$dest" 2>/dev/null; then
+    url="https://github.com/${repo}/releases/download/${version}/dock-pilot-${version#v}.tar.gz"
+    download_with_progress "$url" "$dest"
+  fi
 }
 
 NGINX_CONF="/etc/nginx/nginx.conf"
-NGINX_HASH_BEGIN="# BEGIN dock-pilot nginx hash"
-NGINX_HASH_END="# END dock-pilot nginx hash"
+NGINX_HASH_BEGIN="# BEGIN barn nginx hash"
+NGINX_HASH_END="# END barn nginx hash"
+# Legacy markers for backward compat
+NGINX_HASH_BEGIN_LEGACY="# BEGIN dock-pilot nginx hash"
+NGINX_HASH_END_LEGACY="# END dock-pilot nginx hash"
 
 remove_conf_d_hash_snippets() {
-  rm -f /etc/nginx/conf.d/00-dockpilot-global.conf /etc/nginx/conf.d/00-vpsdeploy-global.conf 2>/dev/null || true
+  rm -f /etc/nginx/conf.d/00-barn-global.conf /etc/nginx/conf.d/00-dockpilot-global.conf /etc/nginx/conf.d/00-vpsdeploy-global.conf 2>/dev/null || true
 }
 
 remove_nginx_hash_markers() {
   sed -i "/${NGINX_HASH_BEGIN}/,/${NGINX_HASH_END}/d" "$NGINX_CONF" 2>/dev/null || true
+  sed -i "/${NGINX_HASH_BEGIN_LEGACY}/,/${NGINX_HASH_END_LEGACY}/d" "$NGINX_CONF" 2>/dev/null || true
 }
 
 remove_dockpilot_hash_snippets() {
@@ -343,16 +351,17 @@ comment_all_nginx_hash_directives() {
   done
 
   [[ -f "$NGINX_CONF" ]] || return 0
-  if grep -qF "$NGINX_HASH_BEGIN" "$NGINX_CONF" 2>/dev/null; then
-    awk -v b="$NGINX_HASH_BEGIN" -v e="$NGINX_HASH_END" '
-      index($0, b) { inb=1 }
-      inb { print; if (index($0, e)) inb=0; next }
+  # Check for barn or legacy dock-pilot markers
+  if grep -qF "$NGINX_HASH_BEGIN" "$NGINX_CONF" 2>/dev/null || grep -qF "$NGINX_HASH_BEGIN_LEGACY" "$NGINX_CONF" 2>/dev/null; then
+    awk -v b="$NGINX_HASH_BEGIN" -v e="$NGINX_HASH_END" -v bl="$NGINX_HASH_BEGIN_LEGACY" -v el="$NGINX_HASH_END_LEGACY" '
+      index($0, b) || index($0, bl) { inb=1 }
+      inb { print; if (index($0, e) || index($0, el)) inb=0; next }
       /^[ \t]*server_names_hash_(bucket_size|max_size)/ && $0 !~ /^[ \t]*#/ {
         match($0, /^[ \t]*/); print substr($0, 1, RSTART - 1) "# " substr($0, RSTART)
         next
       }
       { print }
-    ' "$NGINX_CONF" > "${NGINX_CONF}.dp-tmp" && mv "${NGINX_CONF}.dp-tmp" "$NGINX_CONF"
+    ' "$NGINX_CONF" > "${NGINX_CONF}.barn-tmp" && mv "${NGINX_CONF}.barn-tmp" "$NGINX_CONF"
   else
     sed -i -E '/^[[:space:]]*#/! s/^[[:space:]]*(server_names_hash_(bucket_size|max_size)[^;]*;)/# \1/' "$NGINX_CONF" 2>/dev/null || true
   fi
@@ -512,21 +521,35 @@ disable_panel_nginx_site() {
 }
 
 enable_panel_nginx() {
-  local available="$1" enabled="$2" domain="$3" name="dockpilot-panel.conf"
-  rm -f /etc/nginx/conf.d/00-vpsdeploy-global.conf 2>/dev/null || true
+  local available="$1" enabled="$2" domain="$3" name="barn-panel.conf"
+  rm -f /etc/nginx/conf.d/00-vpsdeploy-global.conf /etc/nginx/conf.d/00-dockpilot-global.conf 2>/dev/null || true
   rm -f "${enabled}/default" "${enabled}/default.conf" 2>/dev/null || true
+  disable_panel_nginx_site "$enabled" "barn-panel-ip.conf"
   disable_panel_nginx_site "$enabled" "dockpilot-panel-ip.conf"
+  disable_panel_nginx_site "$enabled" "dockpilot-panel.conf"
   fix_nginx_no_ipv6
-  ln -sf "$available/$name" "$enabled/$name"
+  # Try barn first, fall back to legacy
+  if [[ -f "$available/$name" ]]; then
+    ln -sf "$available/$name" "$enabled/$name"
+  elif [[ -f "$available/dockpilot-panel.conf" ]]; then
+    ln -sf "$available/dockpilot-panel.conf" "$enabled/dockpilot-panel.conf"
+  fi
   test_and_reload_nginx "$domain"
 }
 
 enable_panel_nginx_ip() {
-  local available="$1" enabled="$2" name="dockpilot-panel-ip.conf"
-  rm -f /etc/nginx/conf.d/00-vpsdeploy-global.conf 2>/dev/null || true
+  local available="$1" enabled="$2" name="barn-panel-ip.conf"
+  rm -f /etc/nginx/conf.d/00-vpsdeploy-global.conf /etc/nginx/conf.d/00-dockpilot-global.conf 2>/dev/null || true
+  disable_panel_nginx_site "$enabled" "barn-panel.conf"
   disable_panel_nginx_site "$enabled" "dockpilot-panel.conf"
+  disable_panel_nginx_site "$enabled" "dockpilot-panel-ip.conf"
   fix_nginx_no_ipv6
-  ln -sf "$available/$name" "$enabled/$name"
+  # Try barn first, fall back to legacy
+  if [[ -f "$available/$name" ]]; then
+    ln -sf "$available/$name" "$enabled/$name"
+  elif [[ -f "$available/dockpilot-panel-ip.conf" ]]; then
+    ln -sf "$available/dockpilot-panel-ip.conf" "$enabled/dockpilot-panel-ip.conf"
+  fi
   nginx -t
   systemctl reload nginx
 }
@@ -551,13 +574,21 @@ wait_for_api() {
 }
 
 postgres_container_health() {
-  docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' dock-pilot-postgres 2>/dev/null \
+  # Try barn container first, then legacy
+  docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' barn-postgres 2>/dev/null \
+    || docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' dock-pilot-postgres 2>/dev/null \
     || echo "missing"
 }
 
 wait_for_postgres() {
   local tries=45
-  local health
+  local health container_name="barn-postgres"
+  
+  # Detect which container we're using
+  if ! docker inspect barn-postgres >/dev/null 2>&1; then
+    container_name="dock-pilot-postgres"
+  fi
+  
   health="$(postgres_container_health)"
   if [[ "$health" == "healthy" ]]; then
     return 0
@@ -568,7 +599,7 @@ wait_for_postgres() {
     if [[ "$health" == "healthy" ]]; then
       return 0
     fi
-    if [[ "$health" == "none" ]] && docker inspect --format='{{.State.Running}}' dock-pilot-postgres 2>/dev/null | grep -q true; then
+    if [[ "$health" == "none" ]] && docker inspect --format='{{.State.Running}}' "$container_name" 2>/dev/null | grep -q true; then
       return 0
     fi
     if (( tries % 10 == 9 )); then
@@ -597,11 +628,13 @@ pick_free_port() {
     fi
     ((p++))
   done
-  die "No free host port near ${preferred} (needed for DockPilot)"
+  die "No free host port near ${preferred} (needed for Barn)"
 }
 
 postgres_volume_exists() {
-  docker volume inspect dock-pilot_dock_pilot_pg >/dev/null 2>&1 \
+  # Check barn volumes first, then legacy dock-pilot
+  docker volume inspect barn_pg >/dev/null 2>&1 \
+    || docker volume inspect dock-pilot_dock_pilot_pg >/dev/null 2>&1 \
     || docker volume inspect dock_pilot_pg >/dev/null 2>&1
 }
 
@@ -618,8 +651,9 @@ configure_panel_nginx() {
   [[ -n "$email" ]] || die "CERTBOT_EMAIL is required when PANEL_DOMAIN is set"
 
   local template="${install_dir}/install/nginx-panel.conf.template"
-  local available="/etc/nginx/sites-available/dockpilot-panel.conf"
-
+  local available="/etc/nginx/sites-available/barn-panel.conf"
+  
+  # Fall back to legacy if barn template doesn't exist
   [[ -f "$template" ]] || die "Missing ${template}"
 
   log "Writing panel nginx config for ${domain} (api=${api_port}, ui=${frontend_port}) ..."
@@ -648,8 +682,9 @@ configure_panel_nginx() {
 configure_panel_nginx_ip() {
   local install_dir="$1" api_port="$2" frontend_port="$3" panel_port="$4"
   local template="${install_dir}/install/nginx-panel-ip.conf.template"
-  local available="/etc/nginx/sites-available/dockpilot-panel-ip.conf"
-
+  local available="/etc/nginx/sites-available/barn-panel-ip.conf"
+  
+  # Fall back to legacy if barn template doesn't exist
   [[ -f "$template" ]] || die "Missing ${template}"
 
   log "Writing panel nginx config for IP access on port ${panel_port} (api=${api_port}, ui=${frontend_port}) ..."

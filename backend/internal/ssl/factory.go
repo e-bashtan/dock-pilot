@@ -3,7 +3,7 @@ package ssl
 import (
 	"log/slog"
 
-	"github.com/ebash/dock-pilot/backend/internal/config"
+	"github.com/ebash/barn/backend/internal/config"
 )
 
 func NewFromConfig(cfg config.DeployConfig, logger *slog.Logger) (Manager, error) {

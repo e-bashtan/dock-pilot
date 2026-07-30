@@ -11,8 +11,8 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-API_IMAGE="${API_IMAGE:-dock-pilot-api:latest}"
-FRONTEND_IMAGE="${FRONTEND_IMAGE:-dock-pilot-frontend:latest}"
+API_IMAGE="${API_IMAGE:-barn-api:latest}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-barn-frontend:latest}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-linux/amd64}"
 
 export API_IMAGE FRONTEND_IMAGE DOCKER_PLATFORM

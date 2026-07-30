@@ -5,8 +5,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-COMPOSE_FILE="${DOCK_PILOT_COMPOSE:-docker-compose.full.yml}"
-[[ -f docker-compose.dock-pilot.yml ]] && [[ ! -f docker-compose.full.yml ]] && COMPOSE_FILE=docker-compose.dock-pilot.yml
+COMPOSE_FILE="${BARN_COMPOSE:-${DOCK_PILOT_COMPOSE:-}}"
+if [[ -z "$COMPOSE_FILE" ]]; then
+  for f in docker-compose.barn.yml docker-compose.barn-full.yml docker-compose.full.yml docker-compose.dock-pilot.yml; do
+    if [[ -f "$f" ]]; then
+      COMPOSE_FILE="$f"
+      break
+    fi
+  done
+fi
+[[ -n "$COMPOSE_FILE" && -f "$COMPOSE_FILE" ]] || {
+  echo "No compose file found in ${ROOT}" >&2
+  exit 1
+}
 
 if [[ ! -f .env ]]; then
   echo "Missing .env in ${ROOT}" >&2
@@ -22,7 +33,7 @@ PW="$(rand_postgres_password 24)"
 log "Stopping stack and removing Postgres volume..."
 docker compose -f "$COMPOSE_FILE" down
 
-for vol in dock-pilot_dock_pilot_pg dock_pilot_pg; do
+for vol in barn_barn_pg barn_pg dock-pilot_dock_pilot_pg dock_pilot_pg; do
   if docker volume inspect "$vol" >/dev/null 2>&1; then
     docker volume rm "$vol"
     log "Removed volume ${vol}"
@@ -39,11 +50,11 @@ SECRETS_KEY="${SECRETS_ENCRYPTION_KEY:-$(rand_secret 32)}"
 
 cat > .env <<EOF
 # Reset by reset-postgres-volume.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)
-POSTGRES_USER=dockpilot
+POSTGRES_USER=barn
 POSTGRES_PASSWORD=${PW}
-POSTGRES_DB=dockpilot
-POSTGRES_IMAGE=${POSTGRES_IMAGE:-dock-pilot-postgres:latest}
-DATABASE_URL=postgres://dockpilot:${PW}@postgres:5432/dockpilot?sslmode=disable
+POSTGRES_DB=barn
+POSTGRES_IMAGE=${POSTGRES_IMAGE:-barn-postgres:latest}
+DATABASE_URL=postgres://barn:${PW}@postgres:5432/barn?sslmode=disable
 
 HTTP_ADDR=${HTTP_ADDR:-:8080}
 SECRETS_ENCRYPTION_KEY=${SECRETS_KEY}
@@ -53,7 +64,7 @@ PANEL_DOMAIN=${PANEL_DOMAIN:-}
 CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
 
 DEPLOY_MODE=${DEPLOY_MODE:-real}
-DEPLOY_WORK_DIR=${DEPLOY_WORK_DIR:-/var/lib/dock-pilot}
+DEPLOY_WORK_DIR=${DEPLOY_WORK_DIR:-/var/lib/barn}
 HOST_ROOT=${HOST_ROOT:-/host}
 NGINX_SITES_AVAILABLE=${NGINX_SITES_AVAILABLE:-/host/etc/nginx/sites-available}
 NGINX_SITES_ENABLED=${NGINX_SITES_ENABLED:-/host/etc/nginx/sites-enabled}
@@ -62,9 +73,9 @@ CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
 API_PORT=${API_PORT:-8080}
 FRONTEND_PORT=${FRONTEND_PORT:-3000}
 
-API_IMAGE=${API_IMAGE:-dock-pilot-api:latest}
-FRONTEND_IMAGE=${FRONTEND_IMAGE:-dock-pilot-frontend:latest}
-MIGRATE_IMAGE=${MIGRATE_IMAGE:-dock-pilot-migrate:latest}
+API_IMAGE=${API_IMAGE:-barn-api:latest}
+FRONTEND_IMAGE=${FRONTEND_IMAGE:-barn-frontend:latest}
+MIGRATE_IMAGE=${MIGRATE_IMAGE:-barn-migrate:latest}
 EOF
 chmod 600 .env
 
