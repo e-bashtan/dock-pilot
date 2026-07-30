@@ -292,18 +292,58 @@ h3 {
 }
 
 .fleet-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-}
-
-.fleet-summary-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 0.85rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.9rem 1rem;
-  min-height: 0;
+  overflow: hidden;
+}
+
+.fleet-summary-card {
+  flex: 1 1 10rem;
+  min-width: 0;
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  border-right: 1px solid var(--border);
+  background: transparent;
+}
+
+.fleet-summary-card:last-child {
+  border-right: none;
+}
+
+.fleet-summary-card .server-status-label {
+  margin: 0;
+  font-size: 0.65rem;
+  order: 1;
+  width: 100%;
+}
+
+.fleet-summary-card .server-status-value {
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  order: 2;
+}
+
+.fleet-summary-card .server-status-meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  order: 3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fleet-filters {
@@ -485,10 +525,10 @@ h3 {
 }
 
 .fleet-legend {
-  margin: 0 0 0.75rem;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  max-width: 42rem;
+  margin: 0 0 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  max-width: none;
 }
 
 .fleet-inline-link {
@@ -624,7 +664,16 @@ h3 {
 
 @media (max-width: 720px) {
   .fleet-summary {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .fleet-summary-card {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .fleet-summary-card:last-child {
+    border-bottom: none;
   }
 
   .fleet-node-top {

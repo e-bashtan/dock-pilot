@@ -135,7 +135,7 @@ export default function FleetOverviewPage() {
                 <div className="server-status-meta">
                   {overview.next_due_date
                     ? t("fleet.summaryNextDue", {
-                        date: formatDateTime(overview.next_due_date),
+                        date: formatDueDate(overview.next_due_date),
                       })
                     : overview.monthly_cost_minor === 0
                       ? t("fleet.summaryBillingEmpty")

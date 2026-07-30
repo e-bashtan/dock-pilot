@@ -621,7 +621,7 @@ export const ru: Messages = {
     summaryAppsHint: "{unhealthy} unhealthy",
     summaryCost: "Стоимость в месяц",
     summaryIncidents: "{count} открытых инцидентов",
-    summaryNextDue: "След. оплата {date}",
+    summaryNextDue: "до {date}",
     summaryNoIncidents: "Нет открытых инцидентов",
     summaryBillingEmpty: "Нет данных об оплате — откройте сервер и укажите срок/стоимость",
     summaryBillingSet: "Оплата указана у {count} серверов",

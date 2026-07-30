@@ -620,7 +620,7 @@ export const en = {
     summaryAppsHint: "{unhealthy} unhealthy",
     summaryCost: "Monthly cost",
     summaryIncidents: "{count} open incidents",
-    summaryNextDue: "Next due {date}",
+    summaryNextDue: "due {date}",
     summaryNoIncidents: "No open incidents",
     summaryBillingEmpty: "No billing set — open a server and enter cost / due date",
     summaryBillingSet: "{count} servers with billing",
