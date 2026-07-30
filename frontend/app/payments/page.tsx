@@ -8,7 +8,6 @@ import type { BillingAccount } from "@/lib/types";
 
 const PROVIDER_DEFAULTS: Record<string, string> = {
   planetahost: "https://bill.planetahost.ru/billmgr",
-  skystark: "https://my.skystark.net/billmgr",
 };
 
 const DEFAULT_BILLMGR = PROVIDER_DEFAULTS.planetahost;
@@ -209,7 +208,6 @@ export default function PaymentsPage() {
                 required
               >
                 <option value="planetahost">{t("payments.providerPlanetahost")}</option>
-                <option value="skystark">{t("payments.providerSkystark")}</option>
               </select>
             </div>
 

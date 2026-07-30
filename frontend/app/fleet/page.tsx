@@ -197,6 +197,15 @@ function FleetNodeRow({
   const detailHref = `/fleet/servers/${node.id}`;
   const monthly =
     node.billing?.monthly_equiv_minor ?? node.billing?.cost_minor ?? 0;
+  const hasBilling =
+    !!node.billing &&
+    ((node.billing.monthly_equiv_minor ?? node.billing.cost_minor ?? 0) > 0 ||
+      !!node.billing.next_due_date);
+  const dueShort = node.billing?.next_due_date
+    ? formatShortDate(node.billing.next_due_date)
+    : "";
+  const provider =
+    node.billing?.provider_name || node.billing?.server_ip || "";
 
   return (
     <article className="fleet-node-card">
@@ -238,105 +247,214 @@ function FleetNodeRow({
       <div className="fleet-node-meta">
         <span>{node.hostname || node.base_url || node.node_uid}</span>
         {node.last_seen_at && (
-          <span>
-            {t("fleet.lastSeen")} {formatDateTime(node.last_seen_at)}
+          <span title={formatDateTime(node.last_seen_at)}>
+            {t("fleet.lastSeen")} {formatShortDateTime(node.last_seen_at, formatDateTime)}
           </span>
         )}
       </div>
 
-      <div className="fleet-node-sections">
-        <div className="fleet-node-section">
-          <div className="fleet-node-section-label">{t("fleet.monitoringSection")}</div>
-          {node.metrics ? (
-            <div className="fleet-node-stats">
-              {node.status === "offline" && (
-                <span className="fleet-node-incidents">{t("fleet.metricsStale")}</span>
-              )}
-              <span>CPU {formatPercent(node.metrics.cpu_percent)}</span>
+      <div className="fleet-node-metrics">
+        {node.metrics ? (
+          <>
+            {node.status === "offline" && (
+              <span className="fleet-metric fleet-metric-warn" title={t("fleet.metricsStale")}>
+                <IconAlert />
+                <span>{t("fleet.status.offline")}</span>
+              </span>
+            )}
+            <span className="fleet-metric" title="CPU">
+              <IconCpu />
+              <span>{formatPercent(node.metrics.cpu_percent)}</span>
+            </span>
+            <span
+              className="fleet-metric"
+              title={t("fleet.memory")}
+            >
+              <IconMemory />
               <span>
-                {t("fleet.memory")}{" "}
-                {formatBytes(node.metrics.memory_used_bytes)} /{" "}
+                {formatBytes(node.metrics.memory_used_bytes)}/
                 {formatBytes(node.metrics.memory_total_bytes)}
               </span>
-              <span>
-                {t("fleet.disk")} {formatPercent(node.metrics.disk_used_percent)}
+            </span>
+            <span className="fleet-metric" title={t("fleet.disk")}>
+              <IconDisk />
+              <span>{formatPercent(node.metrics.disk_used_percent)}</span>
+            </span>
+            {node.applications && (
+              <span
+                className={`fleet-metric${node.applications.unhealthy > 0 ? " fleet-metric-warn" : ""}`}
+                title={t("fleet.appsLine", {
+                  running: node.applications.running,
+                  total: node.applications.total,
+                  unhealthy: node.applications.unhealthy,
+                })}
+              >
+                <IconApps />
+                <span>
+                  {node.applications.running}/{node.applications.total}
+                  {node.applications.unhealthy > 0
+                    ? ` · ${node.applications.unhealthy}!`
+                    : ""}
+                </span>
               </span>
-              {node.applications && (
-                <span>
-                  {t("fleet.appsLine", {
-                    running: node.applications.running,
-                    total: node.applications.total,
-                    unhealthy: node.applications.unhealthy,
-                  })}
-                </span>
-              )}
-              {node.open_incidents > 0 && (
-                <span className="fleet-node-incidents">
-                  {t("fleet.openIncidents", { count: node.open_incidents })}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="fleet-node-stats muted">{t("fleet.monitoringWaiting")}</div>
-          )}
-        </div>
+            )}
+            {node.open_incidents > 0 && (
+              <span className="fleet-metric fleet-metric-warn">
+                <IconAlert />
+                <span>{node.open_incidents}</span>
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="fleet-metric fleet-metric-muted">
+            {t("fleet.monitoringWaiting")}
+          </span>
+        )}
 
-        <div className="fleet-node-section">
-          <div className="fleet-node-section-label">{t("fleet.billingSection")}</div>
-          {node.billing &&
-          ((node.billing.monthly_equiv_minor ?? node.billing.cost_minor ?? 0) >
-            0 ||
-            node.billing.next_due_date) ? (
-            <div className="fleet-node-stats">
-              {(node.billing.monthly_equiv_minor ??
-                node.billing.cost_minor ??
-                0) > 0 && (
+        <span className="fleet-metric-sep" aria-hidden />
+
+        {hasBilling ? (
+          <>
+            {monthly > 0 && (
+              <span className="fleet-metric" title={t("fleet.summaryCost")}>
+                <IconMoney />
                 <span>
-                  {formatMoneyMinor(monthly, node.billing.currency)}
-                  <span className="muted"> / {t("fleet.perMonth")}</span>
+                  {formatMoneyMinor(monthly, node.billing?.currency)}
+                  <span className="muted">/{t("fleet.perMonth")}</span>
                 </span>
-              )}
-              {node.billing.next_due_date && (
-                <span>
-                  {t("fleet.nextDue")}{" "}
-                  {formatDateTime(node.billing.next_due_date)}
-                </span>
-              )}
-              {typeof node.billing.days_left === "number" && (
-                <span>
-                  {t("fleet.daysLeft", { days: node.billing.days_left })}
-                </span>
-              )}
-              {(node.billing.provider_name || node.billing.server_ip) && (
-                <span>
-                  {node.billing.provider_name || node.billing.server_ip}
-                </span>
-              )}
-              <Link href="/payments" className="fleet-inline-link">
-                {t("fleet.openPayments")}
-              </Link>
-            </div>
-          ) : (
-            <div className="fleet-node-stats">
-              <span className="muted">{t("fleet.billingNotSet")}</span>
-              {node.connection_type === "dockpilot" && node.base_url ? (
-                <a
-                  href={`${node.base_url.replace(/\/$/, "")}/payments`}
-                  className="fleet-inline-link"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {t("fleet.openNodePayments")}
-                </a>
-              ) : (
-                <Link href="/payments" className="fleet-inline-link">
-                  {t("fleet.configurePayments")}
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
+              </span>
+            )}
+            {dueShort && (
+              <span
+                className="fleet-metric"
+                title={
+                  node.billing?.next_due_date
+                    ? formatDateTime(node.billing.next_due_date)
+                    : undefined
+                }
+              >
+                <IconCalendar />
+                <span>{dueShort}</span>
+              </span>
+            )}
+            {typeof node.billing?.days_left === "number" && (
+              <span
+                className={`fleet-metric${node.billing.days_left <= 7 ? " fleet-metric-warn" : ""}`}
+                title={t("fleet.daysLeft", { days: node.billing.days_left })}
+              >
+                <IconClock />
+                <span>{t("fleet.daysLeftShort", { days: node.billing.days_left })}</span>
+              </span>
+            )}
+            {provider && (
+              <span className="fleet-metric fleet-metric-muted" title={provider}>
+                <span className="fleet-metric-text">{provider}</span>
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="fleet-metric fleet-metric-muted">
+            <IconMoney />
+            <Link href={detailHref} className="fleet-inline-link">
+              {t("fleet.setBilling")}
+            </Link>
+          </span>
+        )}
       </div>
     </article>
+  );
+}
+
+function formatShortDate(value: string): string {
+  const raw = value.trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return raw;
+  return `${m[3]}.${m[2]}`;
+}
+
+function formatShortDateTime(
+  value: string,
+  formatDateTime: (value: string) => string,
+): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return formatDateTime(value);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}.${mm} ${hh}:${mi}`;
+}
+
+function IconCpu() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="7" y="7" width="10" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M9 3v2M12 3v2M15 3v2M9 19v2M12 19v2M15 19v2M3 9h2M3 12h2M3 15h2M19 9h2M19 12h2M19 15h2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconMemory() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="3" y="7" width="18" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M7 7v10M11 7v10M15 7v10M7 17v2M11 17v2M15 17v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconDisk() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function IconApps() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="4" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="13" y="4" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="4" y="13" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="13" y="13" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function IconMoney() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 7v10M9.5 9.5c.6-1 1.5-1.5 2.5-1.5 1.5 0 2.5.8 2.5 2s-1 2-2.5 2h-1c-1.5 0-2.5.8-2.5 2s1 2 2.5 2c1 0 1.9-.5 2.5-1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCalendar() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 3v4M16 3v4M4 10h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconClock() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 8v5l3 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconAlert() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 4 3.5 19h17L12 4Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M12 10v4M12 16.5v.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
   );
 }

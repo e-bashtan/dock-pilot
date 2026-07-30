@@ -177,7 +177,7 @@ CREATE TABLE panel_backup_settings (
 CREATE TABLE billing_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider TEXT NOT NULL DEFAULT 'planetahost'
-        CHECK (provider IN ('planetahost', 'skystark')),
+        CHECK (provider IN ('planetahost')),
     server_ip TEXT NOT NULL,
     login TEXT NOT NULL,
     encrypted_password BYTEA NOT NULL,

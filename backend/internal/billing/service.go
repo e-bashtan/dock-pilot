@@ -363,12 +363,8 @@ func escapeHTML(s string) string {
 }
 
 func defaultBillmgrURL(provider string) string {
-	switch provider {
-	case "skystark":
-		return "https://my.skystark.net/billmgr"
-	default:
-		return "https://bill.planetahost.ru/billmgr"
-	}
+	_ = provider
+	return "https://bill.planetahost.ru/billmgr"
 }
 
 func normalizeProvider(provider string) (string, error) {
@@ -377,7 +373,7 @@ func normalizeProvider(provider string) (string, error) {
 		provider = "planetahost"
 	}
 	switch provider {
-	case "planetahost", "skystark":
+	case "planetahost":
 		return provider, nil
 	default:
 		return "", wrapInvalid("unsupported provider")

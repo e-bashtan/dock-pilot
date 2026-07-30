@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FleetNodeBadges, FleetStatusBadge } from "@/components/FleetBadges";
 import { api, ApiError } from "@/lib/api";
-import { formatBytes, formatMoneyMinor, formatPercent } from "@/lib/format";
+import { formatBytes, formatPercent } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/context";
 import type { BillingAccount, FleetNode } from "@/lib/types";
 
@@ -32,9 +32,39 @@ export default function FleetServerDetailPage() {
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<BillingAccount[]>([]);
   const [billingAccountId, setBillingAccountId] = useState("");
+  const [billingCost, setBillingCost] = useState("");
+  const [billingCurrency, setBillingCurrency] = useState("RUB");
+  const [billingPeriod, setBillingPeriod] = useState("monthly");
+  const [billingDue, setBillingDue] = useState("");
+  const [billingProvider, setBillingProvider] = useState("");
+  const [billingProviderUrl, setBillingProviderUrl] = useState("");
+  const [billingAutoRenew, setBillingAutoRenew] = useState(false);
   const [billingMsg, setBillingMsg] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [nameMsg, setNameMsg] = useState<string | null>(null);
+
+  const applyBillingForm = (row: FleetNode) => {
+    setBillingAccountId(row.billing?.billing_account_id || "");
+    if (row.billing) {
+      setBillingCost(
+        row.billing.cost_minor ? String(row.billing.cost_minor / 100) : "",
+      );
+      setBillingCurrency(row.billing.currency || "RUB");
+      setBillingPeriod(row.billing.period || "monthly");
+      setBillingDue(row.billing.next_due_date?.slice(0, 10) || "");
+      setBillingProvider(row.billing.provider_name || "");
+      setBillingProviderUrl(row.billing.provider_url || "");
+      setBillingAutoRenew(!!row.billing.auto_renew);
+    } else {
+      setBillingCost("");
+      setBillingCurrency("RUB");
+      setBillingPeriod("monthly");
+      setBillingDue("");
+      setBillingProvider("");
+      setBillingProviderUrl("");
+      setBillingAutoRenew(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -46,7 +76,7 @@ export default function FleetServerDetailPage() {
       setNode(row);
       setEditName(row.name);
       setAccounts(list);
-      setBillingAccountId(row.billing?.billing_account_id || "");
+      applyBillingForm(row);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("fleet.nodeLoadFailed"));
@@ -100,11 +130,20 @@ export default function FleetServerDetailPage() {
     setBillingMsg(null);
     setError(null);
     try {
+      const major = parseFloat(billingCost.replace(",", "."));
+      const costMinor = Number.isFinite(major) ? Math.round(major * 100) : 0;
       const updated = await api.updateFleetNodeBilling(id, {
         billing_account_id: billingAccountId,
+        cost_minor: costMinor,
+        currency: billingCurrency.trim() || "RUB",
+        period: billingPeriod,
+        next_due_date: billingDue.trim() || undefined,
+        auto_renew: billingAutoRenew,
+        provider_name: billingProvider.trim() || undefined,
+        provider_url: billingProviderUrl.trim() || undefined,
       });
       setNode(updated);
-      setBillingAccountId(updated.billing?.billing_account_id || "");
+      applyBillingForm(updated);
       setBillingMsg(t("fleet.billingSaved"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("fleet.billingSaveFailed"));
@@ -112,6 +151,8 @@ export default function FleetServerDetailPage() {
       setBusy(false);
     }
   };
+
+  const linkedAccount = Boolean(billingAccountId);
 
   if (loading) {
     return <p className="muted">{t("common.loading")}</p>;
@@ -297,38 +338,9 @@ export default function FleetServerDetailPage() {
       <form className="card" onSubmit={saveBilling}>
         <h2 className="section-title">{t("fleet.billing")}</h2>
         <p className="muted" style={{ marginTop: 0 }}>
-          {t("fleet.billingFormHint")}{" "}
-          <Link href="/payments">{t("fleet.openPayments")}</Link>
+          {t("fleet.billingFormHint")}
         </p>
         {billingMsg && <div className="alert alert-success">{billingMsg}</div>}
-
-        {node.billing && (node.billing.cost_minor > 0 || node.billing.next_due_date) && (
-          <div className="fleet-node-stats" style={{ marginBottom: "1rem" }}>
-            {(node.billing.monthly_equiv_minor ?? node.billing.cost_minor) > 0 && (
-              <span>
-                {formatMoneyMinor(
-                  node.billing.monthly_equiv_minor ?? node.billing.cost_minor,
-                  node.billing.currency,
-                )}
-                <span className="muted"> / {t("fleet.perMonth")}</span>
-              </span>
-            )}
-            {node.billing.cost_raw && (
-              <span className="muted">{node.billing.cost_raw}</span>
-            )}
-            {node.billing.next_due_date && (
-              <span>
-                {t("fleet.nextDue")} {formatDateTime(node.billing.next_due_date)}
-              </span>
-            )}
-            {typeof node.billing.days_left === "number" && (
-              <span>
-                {t("fleet.daysLeft", { days: node.billing.days_left })}
-              </span>
-            )}
-            {node.billing.server_ip && <span>{node.billing.server_ip}</span>}
-          </div>
-        )}
 
         <div className="field">
           <label className="label" htmlFor="bill-account">
@@ -340,7 +352,7 @@ export default function FleetServerDetailPage() {
             value={billingAccountId}
             onChange={(e) => setBillingAccountId(e.target.value)}
           >
-            <option value="">{t("fleet.billingAccountAuto")}</option>
+            <option value="">{t("fleet.billingAccountManual")}</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.server_ip}
@@ -350,10 +362,104 @@ export default function FleetServerDetailPage() {
               </option>
             ))}
           </select>
+          <p className="muted" style={{ marginTop: "0.35rem", fontSize: "0.85rem" }}>
+            {t("fleet.billingAccountHint")}{" "}
+            <Link href="/payments">{t("fleet.openPayments")}</Link>
+          </p>
         </div>
-        {accounts.length === 0 && (
-          <p className="muted">{t("fleet.billingAccountsEmpty")}</p>
-        )}
+
+        <div className="form-grid">
+          <div className="field">
+            <label className="label" htmlFor="bill-cost">
+              {t("fleet.costMajor")}
+            </label>
+            <input
+              id="bill-cost"
+              className="input"
+              inputMode="decimal"
+              value={billingCost}
+              onChange={(e) => setBillingCost(e.target.value)}
+              placeholder="990"
+              disabled={linkedAccount}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-currency">
+              {t("fleet.currency")}
+            </label>
+            <input
+              id="bill-currency"
+              className="input"
+              value={billingCurrency}
+              onChange={(e) => setBillingCurrency(e.target.value)}
+              disabled={linkedAccount}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-period">
+              {t("fleet.billingPeriod")}
+            </label>
+            <select
+              id="bill-period"
+              className="input"
+              value={billingPeriod}
+              onChange={(e) => setBillingPeriod(e.target.value)}
+              disabled={linkedAccount}
+            >
+              <option value="monthly">{t("fleet.period.monthly")}</option>
+              <option value="quarterly">{t("fleet.period.quarterly")}</option>
+              <option value="yearly">{t("fleet.period.yearly")}</option>
+              <option value="custom">{t("fleet.period.custom")}</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-due">
+              {t("fleet.nextDueDate")}
+            </label>
+            <input
+              id="bill-due"
+              className="input"
+              type="date"
+              value={billingDue}
+              onChange={(e) => setBillingDue(e.target.value)}
+              disabled={linkedAccount}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-provider">
+              {t("fleet.providerName")}
+            </label>
+            <input
+              id="bill-provider"
+              className="input"
+              value={billingProvider}
+              onChange={(e) => setBillingProvider(e.target.value)}
+              disabled={linkedAccount}
+            />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="bill-provider-url">
+              {t("fleet.providerUrl")}
+            </label>
+            <input
+              id="bill-provider-url"
+              className="input"
+              value={billingProviderUrl}
+              onChange={(e) => setBillingProviderUrl(e.target.value)}
+              disabled={linkedAccount}
+            />
+          </div>
+        </div>
+        <label className="label checkbox-row" htmlFor="bill-auto-renew" style={{ marginTop: "0.75rem" }}>
+          <input
+            id="bill-auto-renew"
+            type="checkbox"
+            checked={billingAutoRenew}
+            onChange={(e) => setBillingAutoRenew(e.target.checked)}
+            disabled={linkedAccount}
+          />
+          {t("fleet.autoRenew")}
+        </label>
         <button type="submit" className="btn" disabled={busy} style={{ marginTop: "0.75rem" }}>
           {busy ? t("common.saving") : t("fleet.saveBilling")}
         </button>

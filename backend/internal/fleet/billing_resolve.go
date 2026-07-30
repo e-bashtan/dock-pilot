@@ -247,6 +247,11 @@ func (s *Service) resolveNodeBilling(
 		}
 	}
 
+	// Explicit manual entry wins over IP auto-match / remote snapshot.
+	if billErr == nil && bill.Mode == "manual" && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {
+		return billingDTOFromManual(bill)
+	}
+
 	hostname := ""
 	hostIP := ""
 	var remoteBilling []RemoteBillingAccount
