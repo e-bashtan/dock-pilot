@@ -6,7 +6,12 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
 import type { BillingAccount } from "@/lib/types";
 
-const DEFAULT_BILLMGR = "https://bill.planetahost.ru/billmgr";
+const PROVIDER_DEFAULTS: Record<string, string> = {
+  planetahost: "https://bill.planetahost.ru/billmgr",
+  skystark: "https://my.skystark.net/billmgr",
+};
+
+const DEFAULT_BILLMGR = PROVIDER_DEFAULTS.planetahost;
 
 type FormState = {
   provider: string;
@@ -190,10 +195,21 @@ export default function PaymentsPage() {
                 id="billing-provider"
                 className="input"
                 value={form.provider}
-                onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
+                onChange={(e) => {
+                  const provider = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    provider,
+                    billmgrUrl:
+                      PROVIDER_DEFAULTS[provider] ||
+                      f.billmgrUrl ||
+                      DEFAULT_BILLMGR,
+                  }));
+                }}
                 required
               >
                 <option value="planetahost">{t("payments.providerPlanetahost")}</option>
+                <option value="skystark">{t("payments.providerSkystark")}</option>
               </select>
             </div>
 

@@ -119,9 +119,11 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 }
 
 func (s *Service) runHostKeyProbe(ctx context.Context, id uuid.UUID, host string, port int, user string) {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	_ = s.appendInstallLog(ctx, id, "info", "Проверка SSH "+addr+" (пароль пока не используется)")
 	fp, err := probeSSHFingerprint(ctx, host, port)
 	if err != nil {
-		s.failInstall(ctx, id, "ssh_probe_failed", "не удалось получить SSH host key")
+		s.failInstall(ctx, id, "ssh_probe_failed", "не удалось получить SSH host key: "+err.Error())
 		return
 	}
 	known, err := s.q.GetKnownHost(ctx, db.GetKnownHostParams{Host: host, Port: int32(port)})
@@ -143,25 +145,35 @@ func (s *Service) runHostKeyProbe(ctx context.Context, id uuid.UUID, host string
 }
 
 func probeSSHFingerprint(ctx context.Context, host string, port int) (string, error) {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	d := net.Dialer{Timeout: 10 * time.Second}
+	tcp, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return "", fmt.Errorf("нет TCP до %s (%w)", addr, err)
+	}
+	_ = tcp.Close()
+
 	var key ssh.PublicKey
 	config := &ssh.ClientConfig{
-		User: "probe",
+		User: "dockpilot-probe",
+		Auth: []ssh.AuthMethod{
+			ssh.Password("__probe__"),
+		},
 		HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
 			key = k
 			return fmt.Errorf("stop")
 		},
 		Timeout: 10 * time.Second,
 	}
-	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	conn, err := ssh.Dial("tcp", addr, config)
 	if conn != nil {
 		_ = conn.Close()
 	}
 	if key == nil {
 		if err != nil && !strings.Contains(err.Error(), "stop") {
-			return "", err
+			return "", fmt.Errorf("SSH handshake %s: %w", addr, err)
 		}
-		return "", fmt.Errorf("no host key")
+		return "", fmt.Errorf("сервер не отдал host key на %s", addr)
 	}
 	return ssh.FingerprintSHA256(key), nil
 }
@@ -221,7 +233,7 @@ func (s *Service) runInstall(parent context.Context, id uuid.UUID) {
 	client, err := sshDial(inst.Host, int(inst.Port), inst.Username, password, inst.SshFingerprint)
 	clearString(&password)
 	if err != nil {
-		s.failInstall(ctx, id, "ssh_connect_failed", "не удалось подключиться по SSH")
+		s.failInstall(ctx, id, "ssh_connect_failed", "не удалось подключиться по SSH: "+err.Error())
 		return
 	}
 	defer client.Close()
@@ -491,7 +503,15 @@ func (s *Service) RegisterAgent(ctx context.Context, req AgentRegisterRequest) (
 	}
 	caps, _ := json.Marshal(AgentCapabilities())
 	now := time.Now().UTC()
-	name := req.Hostname
+	name := strings.TrimSpace(req.Hostname)
+	if row.InstallationID.Valid {
+		instID := uuid.UUID(row.InstallationID.Bytes)
+		if inst, err := s.q.GetFleetInstallation(ctx, instID); err == nil {
+			if dn := strings.TrimSpace(inst.DisplayName); dn != "" {
+				name = dn
+			}
+		}
+	}
 	if name == "" {
 		name = "agent-" + nodeUID.String()[:8]
 	}

@@ -53,6 +53,7 @@ import type {
   FleetPairingCode,
   PairDockpilotRequest,
   CreateAgentInstallRequest,
+  UpdateFleetNodeRequest,
   UpdateFleetNodeBillingRequest,
   FleetInstallation,
   FleetInstallationLog,
@@ -568,6 +569,12 @@ export const api = {
   listFleetNodes: () => request<FleetNode[]>("/api/fleet/nodes"),
 
   getFleetNode: (id: string) => request<FleetNode>(`/api/fleet/nodes/${id}`),
+
+  updateFleetNode: (id: string, body: UpdateFleetNodeRequest) =>
+    request<FleetNode>(`/api/fleet/nodes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   updateFleetNodeBilling: (id: string, body: UpdateFleetNodeBillingRequest) =>
     request<FleetNode>(`/api/fleet/nodes/${id}/billing`, {

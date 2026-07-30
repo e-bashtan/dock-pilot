@@ -575,6 +575,10 @@ export interface FleetBilling {
   days_left?: number;
 }
 
+export interface UpdateFleetNodeRequest {
+  name: string;
+}
+
 export interface UpdateFleetNodeBillingRequest {
   billing_account_id?: string;
   cost_minor?: number;

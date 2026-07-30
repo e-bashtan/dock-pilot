@@ -46,12 +46,9 @@ func (s *Service) List(ctx context.Context) ([]AccountResponse, error) {
 }
 
 func (s *Service) Create(ctx context.Context, req CreateAccountRequest) (AccountResponse, error) {
-	provider := strings.TrimSpace(req.Provider)
-	if provider == "" {
-		provider = "planetahost"
-	}
-	if provider != "planetahost" {
-		return AccountResponse{}, wrapInvalid("unsupported provider")
+	provider, err := normalizeProvider(req.Provider)
+	if err != nil {
+		return AccountResponse{}, err
 	}
 	ip := strings.TrimSpace(req.ServerIP)
 	if net.ParseIP(ip) == nil {
@@ -64,7 +61,7 @@ func (s *Service) Create(ctx context.Context, req CreateAccountRequest) (Account
 	}
 	billmgrURL := strings.TrimSpace(req.BillmgrURL)
 	if billmgrURL == "" {
-		billmgrURL = "https://bill.planetahost.ru/billmgr"
+		billmgrURL = defaultBillmgrURL(provider)
 	}
 	alertDays := req.AlertDays
 	if alertDays <= 0 {
@@ -105,13 +102,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateAccountReq
 	}
 	provider := row.Provider
 	if req.Provider != nil {
-		provider = strings.TrimSpace(*req.Provider)
-		if provider == "" {
-			provider = "planetahost"
+		p, err := normalizeProvider(*req.Provider)
+		if err != nil {
+			return AccountResponse{}, err
 		}
-		if provider != "planetahost" {
-			return AccountResponse{}, wrapInvalid("unsupported provider")
-		}
+		provider = p
 	}
 	ip := row.ServerIp
 	if req.ServerIP != nil {
@@ -131,7 +126,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateAccountReq
 	if req.BillmgrURL != nil {
 		billmgrURL = strings.TrimSpace(*req.BillmgrURL)
 		if billmgrURL == "" {
-			billmgrURL = "https://bill.planetahost.ru/billmgr"
+			billmgrURL = defaultBillmgrURL(provider)
 		}
 	}
 	alertDays := row.AlertDays
@@ -365,4 +360,26 @@ func mapDBErr(err error) error {
 func escapeHTML(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 	return r.Replace(s)
+}
+
+func defaultBillmgrURL(provider string) string {
+	switch provider {
+	case "skystark":
+		return "https://my.skystark.net/billmgr"
+	default:
+		return "https://bill.planetahost.ru/billmgr"
+	}
+}
+
+func normalizeProvider(provider string) (string, error) {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		provider = "planetahost"
+	}
+	switch provider {
+	case "planetahost", "skystark":
+		return provider, nil
+	default:
+		return "", wrapInvalid("unsupported provider")
+	}
 }

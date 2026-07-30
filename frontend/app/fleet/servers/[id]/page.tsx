@@ -33,6 +33,8 @@ export default function FleetServerDetailPage() {
   const [accounts, setAccounts] = useState<BillingAccount[]>([]);
   const [billingAccountId, setBillingAccountId] = useState("");
   const [billingMsg, setBillingMsg] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [nameMsg, setNameMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -42,6 +44,7 @@ export default function FleetServerDetailPage() {
         api.listBillingAccounts().catch(() => [] as BillingAccount[]),
       ]);
       setNode(row);
+      setEditName(row.name);
       setAccounts(list);
       setBillingAccountId(row.billing?.billing_account_id || "");
       setError(null);
@@ -67,6 +70,24 @@ export default function FleetServerDetailPage() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("fleet.nodeDeleteFailed"));
       setConfirmDelete(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setBusy(true);
+    setNameMsg(null);
+    setError(null);
+    try {
+      const updated = await api.updateFleetNode(id, { name: editName.trim() });
+      setNode(updated);
+      setEditName(updated.name);
+      setNameMsg(t("fleet.nameSaved"));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("fleet.nameSaveFailed"));
     } finally {
       setBusy(false);
     }
@@ -144,6 +165,36 @@ export default function FleetServerDetailPage() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      <form className="card" onSubmit={saveName}>
+        <h2 className="section-title">{t("fleet.renameServer")}</h2>
+        {nameMsg && <div className="alert alert-success">{nameMsg}</div>}
+        <div className="field">
+          <label className="label" htmlFor="node-name">
+            {t("common.name")}
+          </label>
+          <input
+            id="node-name"
+            className="input"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            required
+          />
+          {node.hostname && node.hostname !== node.name && (
+            <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+              {t("fleet.hostnameHint", { hostname: node.hostname })}
+            </p>
+          )}
+        </div>
+        <button
+          type="submit"
+          className="btn"
+          disabled={busy || editName.trim() === node.name}
+          style={{ marginTop: "0.75rem" }}
+        >
+          {busy ? t("common.saving") : t("fleet.saveName")}
+        </button>
+      </form>
 
       <div className="grid-2">
         <div className="card">

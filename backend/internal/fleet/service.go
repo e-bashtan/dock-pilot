@@ -390,6 +390,34 @@ func (s *Service) GetNode(ctx context.Context, id uuid.UUID) (NodeResponse, erro
 	return s.toNodeResponse(ctx, row, accounts, claimed, localIP), nil
 }
 
+func (s *Service) UpdateNode(ctx context.Context, id uuid.UUID, req UpdateNodeRequest) (NodeResponse, error) {
+	settings, err := s.ensureSettings(ctx)
+	if err != nil {
+		return NodeResponse{}, err
+	}
+	if settings.Mode != ModeMaster {
+		return NodeResponse{}, ErrForbidden
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return NodeResponse{}, fmt.Errorf("%w: name required", ErrInvalidInput)
+	}
+	row, err := s.q.GetFleetNode(ctx, id)
+	if err != nil {
+		return NodeResponse{}, mapErr(err)
+	}
+	_, err = s.q.UpdateFleetNode(ctx, db.UpdateFleetNodeParams{
+		ID:       id,
+		Name:     name,
+		BaseUrl:  row.BaseUrl,
+		Metadata: row.Metadata,
+	})
+	if err != nil {
+		return NodeResponse{}, mapErr(err)
+	}
+	return s.GetNode(ctx, id)
+}
+
 func (s *Service) UpdateNodeBilling(ctx context.Context, id uuid.UUID, req UpdateNodeBillingRequest) (NodeResponse, error) {
 	settings, err := s.ensureSettings(ctx)
 	if err != nil {

@@ -76,6 +76,10 @@ type UpdateNodeBillingRequest struct {
 	Comment          string `json:"comment"`
 }
 
+type UpdateNodeRequest struct {
+	Name string `json:"name"`
+}
+
 type NodeResponse struct {
 	ID             uuid.UUID       `json:"id"`
 	NodeUID        string          `json:"node_uid"`
