@@ -661,11 +661,14 @@ export interface PairDockpilotRequest {
 }
 
 export interface CreateAgentInstallRequest {
+  kind?: "agent" | "dockpilot";
   name: string;
   host: string;
   port?: number;
   username?: string;
   password: string;
+  panel_url?: string;
+  email?: string;
   purpose?: string;
   tags?: string[];
   cost_minor?: number;
@@ -684,6 +687,8 @@ export interface FleetInstallation {
   host: string;
   port: number;
   username: string;
+  install_kind?: string;
+  panel_url?: string;
   error_code?: string;
   error_message?: string;
   node_id?: string;

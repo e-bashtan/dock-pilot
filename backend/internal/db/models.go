@@ -96,6 +96,10 @@ type FleetInstallation struct {
 	ExpectedNodeUid uuid.UUID          `json:"expected_node_uid"`
 	ErrorCode       string             `json:"error_code"`
 	ErrorMessage    string             `json:"error_message"`
+	InstallKind     string             `json:"install_kind"`
+	PanelUrl        string             `json:"panel_url"`
+	CertEmail       string             `json:"cert_email"`
+	DisplayName     string             `json:"display_name"`
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 	CompletedAt     pgtype.Timestamptz `json:"completed_at"`

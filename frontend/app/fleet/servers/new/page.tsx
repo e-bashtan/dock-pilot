@@ -6,38 +6,31 @@ import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
 import type { FleetInstallation, FleetInstallationLog } from "@/lib/types";
 
-type WizardKind = "choose" | "dockpilot" | "agent" | "install";
+type WizardKind = "choose" | "form" | "install";
+type InstallKind = "dockpilot" | "agent";
 
 const TERMINAL_INSTALL = new Set(["completed", "failed", "cancelled"]);
 
 export default function FleetNewServerPage() {
   const { t } = useI18n();
-  const [kind, setKind] = useState<WizardKind>("choose");
+  const [step, setStep] = useState<WizardKind>("choose");
+  const [kind, setKind] = useState<InstallKind>("dockpilot");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [dockName, setDockName] = useState("");
-  const [dockUrl, setDockUrl] = useState("");
-  const [dockCode, setDockCode] = useState("");
-
-  const [agentName, setAgentName] = useState("");
-  const [agentHost, setAgentHost] = useState("");
-  const [agentPort, setAgentPort] = useState("22");
-  const [agentUser, setAgentUser] = useState("root");
-  const [agentPassword, setAgentPassword] = useState("");
-  const [agentPurpose, setAgentPurpose] = useState("");
-  const [agentCost, setAgentCost] = useState("");
-  const [agentCurrency, setAgentCurrency] = useState("USD");
-  const [agentDue, setAgentDue] = useState("");
-  const [agentAutoRenew, setAgentAutoRenew] = useState(false);
-  const [agentProvider, setAgentProvider] = useState("");
-  const [agentProviderUrl, setAgentProviderUrl] = useState("");
+  const [name, setName] = useState("");
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("22");
+  const [username, setUsername] = useState("root");
+  const [password, setPassword] = useState("");
+  const [panelUrl, setPanelUrl] = useState("");
+  const [email, setEmail] = useState("");
 
   const [install, setInstall] = useState<FleetInstallation | null>(null);
   const [logs, setLogs] = useState<FleetInstallationLog[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const clearPassword = useCallback(() => setAgentPassword(""), []);
+  const clearPassword = useCallback(() => setPassword(""), []);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -80,52 +73,35 @@ export default function FleetNewServerPage() {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const submitDockpilot = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
+  const choose = (next: InstallKind) => {
+    setKind(next);
     setError(null);
-    try {
-      await api.pairDockpilotNode({
-        name: dockName.trim(),
-        base_url: dockUrl.trim(),
-        pairing_code: dockCode.trim(),
-      });
-      window.location.href = "/fleet";
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("fleet.pairFailed"));
-    } finally {
-      setBusy(false);
-    }
+    setStep("form");
   };
 
-  const submitAgent = async (e: React.FormEvent) => {
+  const submitInstall = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const password = agentPassword;
+    const pass = password;
     try {
       const body: Parameters<typeof api.startAgentInstall>[0] = {
-        name: agentName.trim(),
-        host: agentHost.trim(),
-        password,
+        kind,
+        name: name.trim(),
+        host: host.trim(),
+        password: pass,
       };
-      const port = parseInt(agentPort, 10);
-      if (Number.isFinite(port) && port > 0) body.port = port;
-      if (agentUser.trim()) body.username = agentUser.trim();
-      if (agentPurpose.trim()) body.purpose = agentPurpose.trim();
-      if (agentCost.trim()) {
-        const minor = Math.round(parseFloat(agentCost) * 100);
-        if (Number.isFinite(minor)) body.cost_minor = minor;
+      const portNum = parseInt(port, 10);
+      if (Number.isFinite(portNum) && portNum > 0) body.port = portNum;
+      if (username.trim()) body.username = username.trim();
+      if (kind === "dockpilot") {
+        body.panel_url = panelUrl.trim();
+        if (email.trim()) body.email = email.trim();
       }
-      if (agentCurrency.trim()) body.currency = agentCurrency.trim();
-      if (agentDue.trim()) body.next_due_date = agentDue.trim();
-      body.auto_renew = agentAutoRenew;
-      if (agentProvider.trim()) body.provider_name = agentProvider.trim();
-      if (agentProviderUrl.trim()) body.provider_url = agentProviderUrl.trim();
 
       const inst = await api.startAgentInstall(body);
       setInstall(inst);
-      setKind("install");
+      setStep("install");
       startPolling(inst.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("fleet.installStartFailed"));
@@ -157,7 +133,7 @@ export default function FleetNewServerPage() {
       await api.cancelAgentInstall(install.id);
       stopPolling();
       setInstall(null);
-      setKind("choose");
+      setStep("choose");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("fleet.installCancelFailed"));
     } finally {
@@ -181,13 +157,13 @@ export default function FleetNewServerPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      {kind === "choose" && (
+      {step === "choose" && (
         <div className="grid-2">
           <button
             type="button"
             className="card"
             style={{ textAlign: "left", cursor: "pointer" }}
-            onClick={() => setKind("dockpilot")}
+            onClick={() => choose("dockpilot")}
           >
             <h2 className="section-title">{t("fleet.kindDockpilot")}</h2>
             <p className="muted">{t("fleet.kindDockpilotHint")}</p>
@@ -196,7 +172,7 @@ export default function FleetNewServerPage() {
             type="button"
             className="card"
             style={{ textAlign: "left", cursor: "pointer" }}
-            onClick={() => setKind("agent")}
+            onClick={() => choose("agent")}
           >
             <h2 className="section-title">{t("fleet.kindAgent")}</h2>
             <p className="muted">{t("fleet.kindAgentHint")}</p>
@@ -204,206 +180,130 @@ export default function FleetNewServerPage() {
         </div>
       )}
 
-      {kind === "dockpilot" && (
-        <form className="card" onSubmit={submitDockpilot}>
-          <h2 className="section-title">{t("fleet.kindDockpilot")}</h2>
+      {step === "form" && (
+        <form className="card" onSubmit={submitInstall}>
+          <h2 className="section-title">
+            {kind === "dockpilot" ? t("fleet.kindDockpilot") : t("fleet.kindAgent")}
+          </h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t("fleet.sshFormHint")}
+          </p>
+
           <div className="field">
-            <label className="label" htmlFor="dock-name">
+            <label className="label" htmlFor="slave-name">
               {t("common.name")}
             </label>
             <input
-              id="dock-name"
+              id="slave-name"
               className="input"
-              value={dockName}
-              onChange={(e) => setDockName(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
-          <div className="field">
-            <label className="label" htmlFor="dock-url">
-              {t("fleet.baseUrl")}
-            </label>
-            <input
-              id="dock-url"
-              className="input"
-              type="url"
-              placeholder="https://pilot.example.com"
-              value={dockUrl}
-              onChange={(e) => setDockUrl(e.target.value)}
-              required
-            />
-          </div>
-          <div className="field">
-            <label className="label" htmlFor="dock-code">
-              {t("fleet.pairingCode")}
-            </label>
-            <input
-              id="dock-code"
-              className="input"
-              value={dockCode}
-              onChange={(e) => setDockCode(e.target.value)}
-              required
-            />
-          </div>
-          <div className="form-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => setKind("choose")}>
-              {t("common.back")}
-            </button>
-            <button type="submit" className="btn" disabled={busy}>
-              {busy ? t("common.loading") : t("fleet.pairServer")}
-            </button>
-          </div>
-        </form>
-      )}
 
-      {kind === "agent" && (
-        <form className="card" onSubmit={submitAgent}>
-          <h2 className="section-title">{t("fleet.kindAgent")}</h2>
           <div className="form-grid">
             <div className="field">
-              <label className="label" htmlFor="agent-name">
-                {t("common.name")}
+              <label className="label" htmlFor="slave-host">
+                {t("fleet.sshHost")}
               </label>
               <input
-                id="agent-name"
+                id="slave-host"
                 className="input"
-                value={agentName}
-                onChange={(e) => setAgentName(e.target.value)}
+                placeholder="203.0.113.10"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
                 required
+                autoComplete="off"
               />
             </div>
             <div className="field">
-              <label className="label" htmlFor="agent-host">
-                {t("fleet.host")}
-              </label>
-              <input
-                id="agent-host"
-                className="input"
-                value={agentHost}
-                onChange={(e) => setAgentHost(e.target.value)}
-                required
-              />
-            </div>
-            <div className="field">
-              <label className="label" htmlFor="agent-port">
+              <label className="label" htmlFor="slave-port">
                 {t("fleet.port")}
               </label>
               <input
-                id="agent-port"
+                id="slave-port"
                 className="input"
-                value={agentPort}
-                onChange={(e) => setAgentPort(e.target.value)}
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                inputMode="numeric"
               />
             </div>
             <div className="field">
-              <label className="label" htmlFor="agent-user">
+              <label className="label" htmlFor="slave-user">
                 {t("fleet.sshUser")}
               </label>
               <input
-                id="agent-user"
+                id="slave-user"
                 className="input"
-                value={agentUser}
-                onChange={(e) => setAgentUser(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
               />
             </div>
-          </div>
-          <div className="field">
-            <label className="label" htmlFor="agent-pass">
-              {t("fleet.sshPassword")}
-            </label>
-            <input
-              id="agent-pass"
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              value={agentPassword}
-              onChange={(e) => setAgentPassword(e.target.value)}
-              required
-            />
-          </div>
-          <details style={{ marginBottom: "1rem" }}>
-            <summary className="muted">{t("fleet.billingOptional")}</summary>
-            <div className="form-grid" style={{ marginTop: "1rem" }}>
-              <div className="field">
-                <label className="label" htmlFor="agent-purpose">
-                  {t("fleet.purpose")}
-                </label>
-                <input
-                  id="agent-purpose"
-                  className="input"
-                  value={agentPurpose}
-                  onChange={(e) => setAgentPurpose(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="agent-cost">
-                  {t("fleet.costMajor")}
-                </label>
-                <input
-                  id="agent-cost"
-                  className="input"
-                  inputMode="decimal"
-                  value={agentCost}
-                  onChange={(e) => setAgentCost(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="agent-currency">
-                  {t("fleet.currency")}
-                </label>
-                <input
-                  id="agent-currency"
-                  className="input"
-                  value={agentCurrency}
-                  onChange={(e) => setAgentCurrency(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="agent-due">
-                  {t("fleet.nextDueDate")}
-                </label>
-                <input
-                  id="agent-due"
-                  className="input"
-                  type="date"
-                  value={agentDue}
-                  onChange={(e) => setAgentDue(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="agent-provider">
-                  {t("fleet.providerName")}
-                </label>
-                <input
-                  id="agent-provider"
-                  className="input"
-                  value={agentProvider}
-                  onChange={(e) => setAgentProvider(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="agent-provider-url">
-                  {t("fleet.providerUrl")}
-                </label>
-                <input
-                  id="agent-provider-url"
-                  className="input"
-                  value={agentProviderUrl}
-                  onChange={(e) => setAgentProviderUrl(e.target.value)}
-                />
-              </div>
-            </div>
-            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <div className="field">
+              <label className="label" htmlFor="slave-pass">
+                {t("fleet.sshPassword")}
+              </label>
               <input
-                type="checkbox"
-                checked={agentAutoRenew}
-                onChange={(e) => setAgentAutoRenew(e.target.checked)}
+                id="slave-pass"
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
               />
-              {t("fleet.autoRenew")}
-            </label>
-          </details>
+            </div>
+          </div>
+
+          {kind === "dockpilot" && (
+            <>
+              <div className="field">
+                <label className="label" htmlFor="slave-panel-url">
+                  {t("fleet.panelUrl")}
+                </label>
+                <input
+                  id="slave-panel-url"
+                  className="input"
+                  type="url"
+                  placeholder="https://pilot.example.com"
+                  value={panelUrl}
+                  onChange={(e) => setPanelUrl(e.target.value)}
+                  required
+                />
+                <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+                  {t("fleet.panelUrlHint")}
+                </p>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="slave-email">
+                  {t("fleet.certEmail")}
+                </label>
+                <input
+                  id="slave-email"
+                  className="input"
+                  type="email"
+                  placeholder="admin@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.85rem" }}>
+                  {t("fleet.certEmailHint")}
+                </p>
+              </div>
+            </>
+          )}
+
           <div className="form-actions">
-            <button type="button" className="btn btn-secondary" onClick={() => setKind("choose")}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                clearPassword();
+                setStep("choose");
+              }}
+            >
               {t("common.back")}
             </button>
             <button type="submit" className="btn" disabled={busy}>
@@ -413,13 +313,21 @@ export default function FleetNewServerPage() {
         </form>
       )}
 
-      {kind === "install" && install && (
+      {step === "install" && install && (
         <div className="card">
           <h2 className="section-title">{t("fleet.installProgress")}</h2>
           <p>
             <strong>{install.host}</strong>
             {install.port ? `:${install.port}` : ""}
+            {install.install_kind ? (
+              <span className="muted"> · {install.install_kind}</span>
+            ) : null}
           </p>
+          {install.panel_url ? (
+            <p className="muted">
+              {t("fleet.panelUrl")}: {install.panel_url}
+            </p>
+          ) : null}
           <p className="muted">{install.current_step}</p>
           <p>
             {t("common.status")}: <code>{install.status}</code>
@@ -441,7 +349,12 @@ export default function FleetNewServerPage() {
                 <button type="button" className="btn" disabled={busy} onClick={confirmHostKey}>
                   {t("fleet.confirmHostKey")}
                 </button>
-                <button type="button" className="btn btn-secondary" disabled={busy} onClick={cancelInstall}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={busy}
+                  onClick={cancelInstall}
+                >
                   {t("common.cancel")}
                 </button>
               </div>

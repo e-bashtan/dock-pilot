@@ -193,31 +193,37 @@ type AgentRegisterResponse struct {
 }
 
 type CreateAgentInstallRequest struct {
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
-	Purpose     string `json:"purpose"`
-	CostMinor   int64  `json:"cost_minor"`
-	Currency    string `json:"currency"`
-	Period      string `json:"period"`
-	NextDueDate string `json:"next_due_date"`
-	AutoRenew   bool   `json:"auto_renew"`
-	ProviderURL string `json:"provider_url"`
-	Comment     string `json:"comment"`
+	Kind         string `json:"kind"` // agent | dockpilot
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	PanelURL     string `json:"panel_url"`
+	Email        string `json:"email"`
+	Purpose      string `json:"purpose"`
+	CostMinor    int64  `json:"cost_minor"`
+	Currency     string `json:"currency"`
+	Period       string `json:"period"`
+	NextDueDate  string `json:"next_due_date"`
+	AutoRenew    bool   `json:"auto_renew"`
+	ProviderName string `json:"provider_name"`
+	ProviderURL  string `json:"provider_url"`
+	Comment      string `json:"comment"`
 }
 
 type InstallationResponse struct {
-	ID             uuid.UUID `json:"id"`
-	Status         string    `json:"status"`
-	CurrentStep    string    `json:"current_step"`
-	SSHFingerprint string    `json:"ssh_fingerprint"`
-	Host           string    `json:"host"`
-	Port           int       `json:"port"`
-	Username       string    `json:"username"`
-	ErrorCode      string    `json:"error_code,omitempty"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
+	ID             uuid.UUID  `json:"id"`
+	Status         string     `json:"status"`
+	CurrentStep    string     `json:"current_step"`
+	SSHFingerprint string     `json:"ssh_fingerprint"`
+	Host           string     `json:"host"`
+	Port           int        `json:"port"`
+	Username       string     `json:"username"`
+	InstallKind    string     `json:"install_kind"`
+	PanelURL       string     `json:"panel_url,omitempty"`
+	ErrorCode      string     `json:"error_code,omitempty"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
 	NodeID         *uuid.UUID `json:"node_id,omitempty"`
 }
 

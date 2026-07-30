@@ -232,8 +232,9 @@ DELETE FROM fleet_outbox WHERE delivered_at IS NOT NULL AND delivered_at < $1;
 
 -- name: CreateFleetInstallation :one
 INSERT INTO fleet_installations (
-    node_id, host, port, username, status, current_step, expected_node_uid
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
+    node_id, host, port, username, status, current_step, expected_node_uid,
+    install_kind, panel_url, cert_email, display_name
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: GetFleetInstallation :one

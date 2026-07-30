@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,6 +38,13 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	if settings.Mode != ModeMaster {
 		return InstallationResponse{}, ErrForbidden
 	}
+	kind := strings.TrimSpace(req.Kind)
+	if kind == "" {
+		kind = "agent"
+	}
+	if kind != "agent" && kind != "dockpilot" {
+		return InstallationResponse{}, ErrInvalidInput
+	}
 	host := strings.TrimSpace(req.Host)
 	user := strings.TrimSpace(req.Username)
 	if user == "" {
@@ -46,10 +56,34 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	}
 	pass := req.Password
 	req.Password = ""
-	if host == "" || pass == "" || strings.TrimSpace(req.Name) == "" {
+	name := strings.TrimSpace(req.Name)
+	panelURL := strings.TrimRight(strings.TrimSpace(req.PanelURL), "/")
+	email := strings.TrimSpace(req.Email)
+	if host == "" || pass == "" || name == "" {
 		return InstallationResponse{}, ErrInvalidInput
 	}
+	if kind == "dockpilot" {
+		if panelURL == "" {
+			return InstallationResponse{}, fmt.Errorf("%w: panel_url is required", ErrInvalidInput)
+		}
+		if err := validatePublicURL(panelURL); err != nil {
+			return InstallationResponse{}, err
+		}
+		if email == "" {
+			u, _ := url.Parse(panelURL)
+			if u != nil && u.Hostname() != "" {
+				email = "admin@" + u.Hostname()
+			}
+		}
+		if email == "" || !strings.Contains(email, "@") {
+			return InstallationResponse{}, fmt.Errorf("%w: email is required for DockPilot install", ErrInvalidInput)
+		}
+	}
 	nodeUID := uuid.New()
+	ttl := 10 * time.Minute
+	if kind == "dockpilot" {
+		ttl = 45 * time.Minute
+	}
 	inst, err := s.q.CreateFleetInstallation(ctx, db.CreateFleetInstallationParams{
 		NodeID:          pgtype.UUID{},
 		Host:            host,
@@ -58,6 +92,10 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 		Status:          "checking_host_key",
 		CurrentStep:     "Проверка SSH-ключа",
 		ExpectedNodeUid: nodeUID,
+		InstallKind:     kind,
+		PanelUrl:        panelURL,
+		CertEmail:       email,
+		DisplayName:     name,
 	})
 	if err != nil {
 		return InstallationResponse{}, mapErr(err)
@@ -66,7 +104,7 @@ func (s *Service) StartAgentInstall(ctx context.Context, req CreateAgentInstallR
 	jobCtx, cancel := context.WithCancel(context.Background())
 	s.installs[inst.ID] = &installSecret{
 		password:  pass,
-		expiresAt: time.Now().Add(10 * time.Minute),
+		expiresAt: time.Now().Add(ttl),
 		ctx:       jobCtx,
 		cancel:    cancel,
 	}
@@ -185,6 +223,14 @@ func (s *Service) runInstall(parent context.Context, id uuid.UUID) {
 	}
 	defer client.Close()
 
+	if inst.InstallKind == "dockpilot" {
+		s.runDockpilotInstall(ctx, client, id, inst, set)
+		return
+	}
+	s.runAgentInstall(ctx, client, id, inst, set)
+}
+
+func (s *Service) runAgentInstall(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.FleetInstallation, set func(status, step string)) {
 	set("detecting_system", "Определение системы")
 	osRelease, _ := sshRun(client, "cat /etc/os-release")
 	unameM, _ := sshRun(client, "uname -m")
@@ -262,6 +308,165 @@ func (s *Service) runInstall(parent context.Context, id uuid.UUID) {
 		}
 	}
 	s.failInstall(ctx, id, "registration_timeout", "агент не зарегистрировался вовремя")
+}
+
+func (s *Service) runDockpilotInstall(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.FleetInstallation, set func(status, step string)) {
+	set("detecting_system", "Определение системы")
+	osRelease, _ := sshRun(client, "cat /etc/os-release")
+	if !strings.Contains(osRelease, "Ubuntu") && !strings.Contains(osRelease, "Debian") {
+		s.failInstall(ctx, id, "unsupported_os", "поддерживаются Ubuntu/Debian")
+		return
+	}
+	if _, err := sshRun(client, "command -v systemctl"); err != nil {
+		s.failInstall(ctx, id, "no_systemd", "systemd не найден")
+		return
+	}
+	_ = s.appendInstallLog(ctx, id, "info", "Определение "+detectPrettyOS(osRelease))
+
+	panelURL := strings.TrimRight(inst.PanelUrl, "/")
+	u, err := url.Parse(panelURL)
+	if err != nil || u.Hostname() == "" {
+		s.failInstall(ctx, id, "bad_panel_url", "некорректный URL панели")
+		return
+	}
+	domain := u.Hostname()
+	email := inst.CertEmail
+	if email == "" {
+		email = "admin@" + domain
+	}
+	apiToken, err := GenerateToken("dp")
+	if err != nil {
+		s.failInstall(ctx, id, "token_failed", "не удалось создать API token")
+		return
+	}
+
+	set("installing_service", "Установка DockPilot")
+	repo := githubInstallRepo()
+	scriptURL := "https://raw.githubusercontent.com/" + repo + "/main/scripts/install.sh"
+	script := buildDockpilotInstallScript(scriptURL, domain, email, apiToken)
+	out, err := sshRun(client, script)
+	if err != nil {
+		_ = s.appendInstallLog(ctx, id, "error", truncateLog(out, 500))
+		clearString(&apiToken)
+		s.failInstall(ctx, id, "install_failed", "ошибка установки DockPilot")
+		return
+	}
+	_ = s.appendInstallLog(ctx, id, "info", "Установщик завершился")
+
+	set("waiting_for_registration", "Ожидание запуска панели")
+	deadline := time.Now().Add(20 * time.Minute)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			clearString(&apiToken)
+			s.failInstall(context.Background(), id, "cancelled", "установка отменена")
+			return
+		case <-time.After(5 * time.Second):
+		}
+		if panelHealthy(ctx, panelURL) {
+			break
+		}
+	}
+	if !panelHealthy(ctx, panelURL) {
+		clearString(&apiToken)
+		s.failInstall(ctx, id, "panel_timeout", "панель не ответила вовремя")
+		return
+	}
+
+	set("starting_agent", "Сопряжение с Master")
+	code, err := fetchRemotePairingCode(ctx, panelURL, apiToken)
+	clearString(&apiToken)
+	if err != nil {
+		s.failInstall(ctx, id, "pairing_code_failed", "не удалось получить pairing code с новой панели")
+		return
+	}
+	name := inst.DisplayName
+	if name == "" {
+		name = domain
+	}
+	node, err := s.PairRemoteDockpilot(ctx, PairDockpilotRequest{
+		Name:        name,
+		BaseURL:     panelURL,
+		PairingCode: code,
+	})
+	if err != nil {
+		s.failInstall(ctx, id, "pair_failed", "не удалось сопрячь панель с Master")
+		return
+	}
+	_, _ = s.q.UpdateFleetInstallation(ctx, db.UpdateFleetInstallationParams{
+		ID: id, Status: "completed", CurrentStep: "Сервер подключён",
+		SshFingerprint: "", NodeID: pgUUID(node.ID),
+		ErrorCode: "", ErrorMessage: "",
+		CompletedAt: pgTimestamptz(time.Now().UTC()),
+	})
+	_ = s.appendInstallLog(ctx, id, "info", "Сервер подключён")
+	s.clearInstallSecret(id)
+}
+
+func githubInstallRepo() string {
+	if r := strings.TrimSpace(os.Getenv("DOCK_PILOT_GITHUB_REPO")); r != "" {
+		return r
+	}
+	return "ebasht/dock-pilot"
+}
+
+func buildDockpilotInstallScript(scriptURL, domain, email, apiToken string) string {
+	return fmt.Sprintf(`set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+curl -fsSL %s -o /tmp/dock-pilot-install.sh
+chmod 700 /tmp/dock-pilot-install.sh
+bash /tmp/dock-pilot-install.sh --domain %s --email %s --token %s
+rm -f /tmp/dock-pilot-install.sh
+`, strconv.Quote(scriptURL), strconv.Quote(domain), strconv.Quote(email), strconv.Quote(apiToken))
+}
+
+func panelHealthy(ctx context.Context, panelURL string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(panelURL, "/")+"/health", nil)
+	if err != nil {
+		return false
+	}
+	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: limitRedirects}
+	res, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
+	return res.StatusCode >= 200 && res.StatusCode < 500
+}
+
+func fetchRemotePairingCode(ctx context.Context, panelURL, apiToken string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(panelURL, "/")+"/api/fleet/pairing-code", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiToken)
+	client := &http.Client{Timeout: 20 * time.Second, CheckRedirect: limitRedirects}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if res.StatusCode >= 300 {
+		return "", fmt.Errorf("status %d", res.StatusCode)
+	}
+	var out PairingCodeResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(out.Code) == "" {
+		return "", fmt.Errorf("empty code")
+	}
+	return out.Code, nil
+}
+
+func truncateLog(s string, n int) string {
+	s = sanitizeInstallLog(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func (s *Service) RegisterAgent(ctx context.Context, req AgentRegisterRequest) (AgentRegisterResponse, error) {
@@ -392,6 +597,8 @@ func (s *Service) installationResponse(inst db.FleetInstallation) InstallationRe
 		Host:           inst.Host,
 		Port:           int(inst.Port),
 		Username:       inst.Username,
+		InstallKind:    inst.InstallKind,
+		PanelURL:       inst.PanelUrl,
 		ErrorCode:      inst.ErrorCode,
 		ErrorMessage:   inst.ErrorMessage,
 	}

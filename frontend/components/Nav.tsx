@@ -20,6 +20,11 @@ const STANDALONE_LINKS = [
     labelKey: "nav.notifications" as const,
     match: "notifications",
   },
+  {
+    href: "/fleet/settings",
+    labelKey: "nav.fleetSettings" as const,
+    match: "fleet-settings",
+  },
 ];
 
 const MASTER_LINKS = [
@@ -30,6 +35,11 @@ const MASTER_LINKS = [
     href: "/notifications",
     labelKey: "nav.notifications" as const,
     match: "notifications",
+  },
+  {
+    href: "/fleet/settings",
+    labelKey: "nav.fleetSettings" as const,
+    match: "fleet-settings",
   },
   { href: "/sites", labelKey: "nav.fleetThisServer" as const, match: "sites" },
 ];
@@ -53,6 +63,11 @@ function isPrimaryActive(pathname: string, match: string): boolean {
   }
   if (match === "fleet-events") {
     return pathname === "/fleet/events" || pathname.startsWith("/fleet/events/");
+  }
+  if (match === "fleet-settings") {
+    return (
+      pathname === "/fleet/settings" || pathname.startsWith("/fleet/settings/")
+    );
   }
   return pathname === `/${match}` || pathname.startsWith(`/${match}/`);
 }

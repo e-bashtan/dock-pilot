@@ -145,9 +145,10 @@ func (q *Queries) CreateFleetIncident(ctx context.Context, arg CreateFleetIncide
 
 const createFleetInstallation = `-- name: CreateFleetInstallation :one
 INSERT INTO fleet_installations (
-    node_id, host, port, username, status, current_step, expected_node_uid
-) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, created_at, updated_at, completed_at
+    node_id, host, port, username, status, current_step, expected_node_uid,
+    install_kind, panel_url, cert_email, display_name
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, install_kind, panel_url, cert_email, display_name, created_at, updated_at, completed_at
 `
 
 type CreateFleetInstallationParams struct {
@@ -158,6 +159,10 @@ type CreateFleetInstallationParams struct {
 	Status          string      `json:"status"`
 	CurrentStep     string      `json:"current_step"`
 	ExpectedNodeUid uuid.UUID   `json:"expected_node_uid"`
+	InstallKind     string      `json:"install_kind"`
+	PanelUrl        string      `json:"panel_url"`
+	CertEmail       string      `json:"cert_email"`
+	DisplayName     string      `json:"display_name"`
 }
 
 func (q *Queries) CreateFleetInstallation(ctx context.Context, arg CreateFleetInstallationParams) (FleetInstallation, error) {
@@ -169,6 +174,10 @@ func (q *Queries) CreateFleetInstallation(ctx context.Context, arg CreateFleetIn
 		arg.Status,
 		arg.CurrentStep,
 		arg.ExpectedNodeUid,
+		arg.InstallKind,
+		arg.PanelUrl,
+		arg.CertEmail,
+		arg.DisplayName,
 	)
 	var i FleetInstallation
 	err := row.Scan(
@@ -183,6 +192,10 @@ func (q *Queries) CreateFleetInstallation(ctx context.Context, arg CreateFleetIn
 		&i.ExpectedNodeUid,
 		&i.ErrorCode,
 		&i.ErrorMessage,
+		&i.InstallKind,
+		&i.PanelUrl,
+		&i.CertEmail,
+		&i.DisplayName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
@@ -338,7 +351,7 @@ func (q *Queries) EnsureFleetSettings(ctx context.Context) error {
 }
 
 const getFleetInstallation = `-- name: GetFleetInstallation :one
-SELECT id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, created_at, updated_at, completed_at FROM fleet_installations WHERE id = $1
+SELECT id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, install_kind, panel_url, cert_email, display_name, created_at, updated_at, completed_at FROM fleet_installations WHERE id = $1
 `
 
 func (q *Queries) GetFleetInstallation(ctx context.Context, id uuid.UUID) (FleetInstallation, error) {
@@ -356,6 +369,10 @@ func (q *Queries) GetFleetInstallation(ctx context.Context, id uuid.UUID) (Fleet
 		&i.ExpectedNodeUid,
 		&i.ErrorCode,
 		&i.ErrorMessage,
+		&i.InstallKind,
+		&i.PanelUrl,
+		&i.CertEmail,
+		&i.DisplayName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
@@ -1403,7 +1420,7 @@ UPDATE fleet_installations SET
     completed_at = $8,
     updated_at = now()
 WHERE id = $1
-RETURNING id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, created_at, updated_at, completed_at
+RETURNING id, node_id, host, port, username, status, current_step, ssh_fingerprint, expected_node_uid, error_code, error_message, install_kind, panel_url, cert_email, display_name, created_at, updated_at, completed_at
 `
 
 type UpdateFleetInstallationParams struct {
@@ -1441,6 +1458,10 @@ func (q *Queries) UpdateFleetInstallation(ctx context.Context, arg UpdateFleetIn
 		&i.ExpectedNodeUid,
 		&i.ErrorCode,
 		&i.ErrorMessage,
+		&i.InstallKind,
+		&i.PanelUrl,
+		&i.CertEmail,
+		&i.DisplayName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,

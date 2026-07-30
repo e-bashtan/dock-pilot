@@ -364,6 +364,11 @@ CREATE TABLE fleet_installations (
     expected_node_uid UUID NOT NULL,
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
+    install_kind TEXT NOT NULL DEFAULT 'agent'
+        CHECK (install_kind IN ('agent', 'dockpilot')),
+    panel_url TEXT NOT NULL DEFAULT '',
+    cert_email TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ
