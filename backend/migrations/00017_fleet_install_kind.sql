@@ -4,6 +4,7 @@ ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS panel_url TEXT NOT NULL
 ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS cert_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE fleet_installations ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT '';
 
+-- +goose StatementBegin
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -14,6 +15,7 @@ BEGIN
       CHECK (install_kind IN ('agent', 'dockpilot'));
   END IF;
 END $$;
+-- +goose StatementEnd
 
 -- +goose Down
 ALTER TABLE fleet_installations DROP CONSTRAINT IF EXISTS fleet_installations_install_kind_check;
