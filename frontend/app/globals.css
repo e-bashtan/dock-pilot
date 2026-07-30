@@ -819,7 +819,8 @@ h3 {
 .brand-logo {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .brand-logo-small,
@@ -829,21 +830,27 @@ h3 {
   object-fit: contain;
 }
 
+/* Square barn mark — both breakpoints use the same asset sizing */
 .brand-logo-img.brand-logo-small {
   display: none;
-  height: 36px;
-  max-width: 52px;
+  height: 40px;
+  width: 40px;
+  max-width: none;
+  background: transparent;
 }
 
 .brand-logo-img.brand-logo-full {
   display: block;
   height: 44px;
-  max-width: min(260px, 50vw);
+  width: 44px;
+  max-width: none;
+  background: transparent;
 }
 
 .brand-logo-auth .brand-logo-img.brand-logo-full {
-  height: 56px;
-  max-width: min(320px, 85vw);
+  height: 88px;
+  width: 88px;
+  max-width: none;
 }
 
 .auth-brand {
@@ -1594,8 +1601,9 @@ h3 {
 
   .brand-logo-img.brand-logo-small {
     display: block;
-    height: 48px;
-    max-width: 72px;
+    height: 40px;
+    width: 40px;
+    max-width: none;
   }
 
   .brand-logo-img.brand-logo-full {
@@ -1603,7 +1611,8 @@ h3 {
   }
 
   .brand-logo-auth .brand-logo-img.brand-logo-full {
-    height: 64px;
+    height: 96px;
+    width: 96px;
   }
 
   .brand-logo .app-version,

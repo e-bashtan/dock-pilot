@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { AppVersion } from "@/components/AppVersion";
 import { ServerIPBadge } from "@/components/ServerIPBadge";
 
@@ -9,6 +8,7 @@ type Props = {
   size?: "nav" | "auth";
 };
 
+/** Plain <img> — preserves PNG alpha; avoids Next Image optimizer cache of old assets. */
 export function BrandLogo({
   showVersion = false,
   showServerIP = false,
@@ -20,31 +20,34 @@ export function BrandLogo({
     <span className={`brand-logo brand-logo-${size}`}>
       {isNav ? (
         <>
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/logo-small.png"
             alt="Barn"
-            width={1024}
-            height={682}
-            priority
+            width={512}
+            height={512}
             className="brand-logo-img brand-logo-small"
+            decoding="async"
           />
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/logo-full.png"
             alt="Barn"
-            width={1024}
-            height={682}
-            priority
+            width={512}
+            height={512}
             className="brand-logo-img brand-logo-full"
+            decoding="async"
           />
         </>
       ) : (
-        <Image
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
           src="/logo-full.png"
           alt="Barn"
-          width={1024}
-          height={682}
-          priority
+          width={512}
+          height={512}
           className="brand-logo-img brand-logo-full"
+          decoding="async"
         />
       )}
       {showVersion && <AppVersion />}
