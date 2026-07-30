@@ -16,6 +16,7 @@
 
 Скачайте скрипт в файл (не `curl | bash` — иначе может оборваться на миграциях):
 
+
 ```bash
 curl -fsSL -H "Accept: application/vnd.github.raw+json" \
   "https://api.github.com/repos/ebasht/dock-pilot/contents/scripts/install.sh?ref=main" \
