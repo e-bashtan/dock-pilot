@@ -31,14 +31,15 @@ func TestPickRemoteBilling(t *testing.T) {
 		{
 			ServerIP:   "62.173.140.62",
 			Provider:   "planetahost",
-			Name:       "bashtan.e.a · MASTER SAS 40 #221728",
+			Name:       "MASTER SAS 40 #221728 (62.173.140.62, bashtan1.e.a.unassigned.planetahost.ru)",
 			Cost:       "288.75 ₽ / Месяц",
 			ExpireDate: &expire,
 			DaysLeft:   &days,
+			AlertDays:  30,
 			Enabled:    true,
 		},
 	}
-	dto := pickRemoteBilling(accounts, "62.173.140.62")
+	dto := pickRemoteBilling(accounts, "62.173.140.62", "")
 	if dto == nil {
 		t.Fatal("expected remote billing")
 	}
@@ -50,5 +51,32 @@ func TestPickRemoteBilling(t *testing.T) {
 	}
 	if dto.Mode != "remote" {
 		t.Fatalf("mode=%s", dto.Mode)
+	}
+	if dto.AlertDays != 30 {
+		t.Fatalf("alert_days=%d", dto.AlertDays)
+	}
+	if dto.DaysLeft == nil || *dto.DaysLeft != 16 {
+		t.Fatalf("days_left=%v", dto.DaysLeft)
+	}
+
+	byHost := pickRemoteBilling(accounts, "", "bashtan1.e.a.unassigned.planetahost.ru")
+	if byHost == nil || byHost.NextDueDate == nil {
+		t.Fatal("expected match by hostname in account name")
+	}
+}
+
+func TestBillingDTOUseful(t *testing.T) {
+	if billingDTOUseful(nil) {
+		t.Fatal("nil")
+	}
+	if billingDTOUseful(&BillingDTO{}) {
+		t.Fatal("empty")
+	}
+	due := "2026-08-15"
+	if !billingDTOUseful(&BillingDTO{NextDueDate: &due}) {
+		t.Fatal("due only")
+	}
+	if !billingDTOUseful(&BillingDTO{CostMinor: 100}) {
+		t.Fatal("cost only")
 	}
 }

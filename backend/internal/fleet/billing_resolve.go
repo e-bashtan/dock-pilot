@@ -112,11 +112,8 @@ func accountByID(accounts []db.BillingAccount, id uuid.UUID) (db.BillingAccount,
 	return db.BillingAccount{}, false
 }
 
-func nodeMatchHaystack(row db.FleetNode, hostname, localIP string) string {
-	parts := []string{row.BaseUrl, row.Name, hostname}
-	if row.ConnectionType == ConnLocal && localIP != "" {
-		parts = append(parts, localIP)
-	}
+func nodeMatchHaystack(row db.FleetNode, hostname, hostIP string) string {
+	parts := []string{row.BaseUrl, row.Name, hostname, hostIP}
 	return strings.ToLower(strings.Join(parts, " "))
 }
 
@@ -165,6 +162,10 @@ func snapshotHostname(payload []byte) string {
 		}
 	}
 	return ""
+}
+
+func billingDTOUseful(dto *BillingDTO) bool {
+	return dto != nil && (dto.CostMinor > 0 || dto.NextDueDate != nil)
 }
 
 func billingDTOFromRemote(acc RemoteBillingAccount) *BillingDTO {
@@ -228,18 +229,26 @@ func snapshotRemoteBilling(payload []byte) []RemoteBillingAccount {
 	return root.Billing
 }
 
-func pickRemoteBilling(accounts []RemoteBillingAccount, hostIP string) *BillingDTO {
+func pickRemoteBilling(accounts []RemoteBillingAccount, hostIP, hostname string) *BillingDTO {
 	hostIP = strings.TrimSpace(hostIP)
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
 	var fallback *RemoteBillingAccount
 	for i := range accounts {
 		acc := &accounts[i]
 		if !acc.Enabled && acc.Cost == "" && acc.ExpireDate == nil {
 			continue
 		}
+		if !billingDTOUseful(billingDTOFromRemote(*acc)) {
+			continue
+		}
 		if hostIP != "" && strings.EqualFold(strings.TrimSpace(acc.ServerIP), hostIP) {
 			return billingDTOFromRemote(*acc)
 		}
-		if fallback == nil && (acc.Cost != "" || acc.ExpireDate != nil) {
+		name := strings.ToLower(acc.Name)
+		if hostname != "" && (strings.Contains(name, hostname) || strings.Contains(strings.ToLower(acc.ServerIP), hostname)) {
+			return billingDTOFromRemote(*acc)
+		}
+		if fallback == nil {
 			fallback = acc
 		}
 	}
@@ -261,12 +270,15 @@ func (s *Service) resolveNodeBilling(
 	if billErr == nil && bill.BillingAccountID.Valid {
 		id := uuid.UUID(bill.BillingAccountID.Bytes)
 		if acc, ok := accountByID(accounts, id); ok {
-			claimed[id] = true
-			return billingDTOFromAccount(acc)
+			dto := billingDTOFromAccount(acc)
+			if billingDTOUseful(dto) {
+				claimed[id] = true
+				return dto
+			}
 		}
 	}
 
-	// Explicit manual entry wins over IP auto-match / remote snapshot.
+	// Explicit manual entry on Master wins.
 	if billErr == nil && bill.Mode == "manual" && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {
 		return billingDTOFromManual(bill)
 	}
@@ -284,13 +296,28 @@ func (s *Service) resolveNodeBilling(
 	if row.ConnectionType != ConnLocal {
 		matchIP = hostIP
 	}
-	if acc, ok := matchBillingAccount(accounts, claimed, nodeMatchHaystack(row, hostname, matchIP)); ok {
-		claimed[acc.ID] = true
-		return billingDTOFromAccount(acc)
+
+	// Managed DockPilot / agent: prefer payment data from the node itself
+	// (slave alert_days + expire), not Master's empty auto-match.
+	remoteFirst := row.ConnectionType == ConnDockpilot || row.ConnectionType == ConnAgent
+	if remoteFirst {
+		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
+			return dto
+		}
 	}
 
-	if dto := pickRemoteBilling(remoteBilling, hostIP); dto != nil {
-		return dto
+	if acc, ok := matchBillingAccount(accounts, claimed, nodeMatchHaystack(row, hostname, matchIP)); ok {
+		dto := billingDTOFromAccount(acc)
+		if billingDTOUseful(dto) {
+			claimed[acc.ID] = true
+			return dto
+		}
+	}
+
+	if !remoteFirst {
+		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
+			return dto
+		}
 	}
 
 	if billErr == nil && (bill.CostMinor > 0 || bill.NextDueDate.Valid) {
