@@ -25,7 +25,10 @@ export default function FleetSettingsPage() {
 
   useEffect(() => {
     setNodeName(settings.node_name);
-    setPublicUrl(settings.public_url);
+    setPublicUrl(
+      settings.public_url ||
+        (typeof window !== "undefined" ? window.location.origin : ""),
+    );
     setMasterUrl(settings.master_url);
     setNotificationMode(settings.notification_mode);
   }, [settings]);
@@ -57,8 +60,19 @@ export default function FleetSettingsPage() {
     });
   };
 
-  const enableMaster = async () => {
-    await save({ enable_master: true });
+  const enableMaster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = publicUrl.trim() || (typeof window !== "undefined" ? window.location.origin : "");
+    if (!url) {
+      setError(t("fleet.publicUrlRequired"));
+      return;
+    }
+    setPublicUrl(url);
+    await save({
+      enable_master: true,
+      node_name: nodeName.trim() || "Master",
+      public_url: url,
+    });
   };
 
   const disableMaster = async () => {
@@ -133,13 +147,42 @@ export default function FleetSettingsPage() {
 
       {settings.mode === "standalone" && (
         <>
-          <div className="card" style={{ marginBottom: "1rem" }}>
+          <form className="card" style={{ marginBottom: "1rem" }} onSubmit={enableMaster}>
             <h2 className="section-title">{t("fleet.enableMasterTitle")}</h2>
             <p className="muted">{t("fleet.enableMasterHint")}</p>
-            <button type="button" className="btn" disabled={busy} onClick={enableMaster}>
-              {t("fleet.enableMaster")}
+            <div className="field">
+              <label className="label" htmlFor="enable-master-name">
+                {t("fleet.masterName")}
+              </label>
+              <input
+                id="enable-master-name"
+                className="input"
+                value={nodeName}
+                onChange={(e) => setNodeName(e.target.value)}
+                placeholder="Master"
+              />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor="enable-master-url">
+                {t("fleet.publicUrl")}
+              </label>
+              <input
+                id="enable-master-url"
+                className="input"
+                type="url"
+                placeholder="https://pilot.example.com"
+                value={publicUrl}
+                onChange={(e) => setPublicUrl(e.target.value)}
+                required
+              />
+              <p className="muted" style={{ fontSize: "0.8rem", marginTop: "0.35rem" }}>
+                {t("fleet.publicUrlHint")}
+              </p>
+            </div>
+            <button type="submit" className="btn" disabled={busy}>
+              {busy ? t("common.saving") : t("fleet.enableMaster")}
             </button>
-          </div>
+          </form>
 
           <div className="card">
             <h2 className="section-title">{t("fleet.joinAsSlaveTitle")}</h2>

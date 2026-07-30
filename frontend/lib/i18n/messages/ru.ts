@@ -751,6 +751,7 @@ export const ru: Messages = {
     masterName: "Имя master",
     publicUrl: "Публичный URL",
     publicUrlHint: "URL, по которому узлы и агенты обращаются к этому master.",
+    publicUrlRequired: "Укажите публичный URL этой панели (например https://pilot.example.com).",
     notificationMode: "Уведомления",
     notification: {
       local: "Локально (эта панель)",

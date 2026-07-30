@@ -749,6 +749,7 @@ export const en = {
     masterName: "Master name",
     publicUrl: "Public URL",
     publicUrlHint: "URL other nodes and agents use to reach this master.",
+    publicUrlRequired: "Enter the public URL of this panel (e.g. https://pilot.example.com).",
     notificationMode: "Notifications",
     notification: {
       local: "Local (this panel)",
