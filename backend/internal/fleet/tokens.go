@@ -129,6 +129,11 @@ func NormalizeConnectionType(connType string) string {
 	return connType
 }
 
+// IsBarnPanel reports whether the node is a full Barn panel (incl. legacy dockpilot rows).
+func IsBarnPanel(connType string) bool {
+	return NormalizeConnectionType(connType) == ConnBarn
+}
+
 // NormalizeInstallKind maps legacy "dockpilot" to "barn"
 func NormalizeInstallKind(kind string) string {
 	if kind == "dockpilot" {

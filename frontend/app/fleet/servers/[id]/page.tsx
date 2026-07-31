@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { FleetNodeBadges, FleetStatusBadge } from "@/components/FleetBadges";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatPercent } from "@/lib/format";
+import { isBarnPanel } from "@/lib/fleet-utils";
 import { useI18n } from "@/lib/i18n/context";
 import type { BillingAccount, FleetNode } from "@/lib/types";
 
@@ -187,7 +188,7 @@ export default function FleetServerDetailPage() {
           <Link href="/fleet" className="btn btn-secondary">
             {t("common.back")}
           </Link>
-          {node.connection_type === "barn" && node.base_url && (
+          {isBarnPanel(node) && node.base_url && (
             <a
               href={node.base_url}
               className="btn btn-secondary"

@@ -8,6 +8,11 @@ export type FleetServerFilter =
   | "monitored"
   | "billing_due";
 
+/** Full panel node (Barn), including legacy API value "dockpilot". */
+export function isBarnPanel(node: Pick<FleetNode, "connection_type">): boolean {
+  return node.connection_type === "barn" || node.connection_type === "dockpilot";
+}
+
 function nodePriority(node: FleetNode): number {
   if (node.status === "offline" || node.open_incidents > 0) return 0;
   if (node.status === "warning") return 1;
@@ -59,7 +64,7 @@ export function filterFleetNodes(
     case "offline":
       return nodes.filter((n) => n.status === "offline");
     case "barn":
-      return nodes.filter((n) => n.connection_type === "barn");
+      return nodes.filter(isBarnPanel);
     case "monitored":
       return nodes.filter((n) => n.connection_type === "agent");
     case "billing_due":
@@ -71,11 +76,11 @@ export function filterFleetNodes(
 
 export function fleetNodeHref(node: FleetNode): string | null {
   if (node.connection_type === "local") return "/sites";
-  if (node.connection_type === "barn" && node.base_url) return node.base_url;
+  if (isBarnPanel(node) && node.base_url) return node.base_url;
   if (node.connection_type === "agent") return `/fleet/servers/${node.id}`;
   return null;
 }
 
 export function fleetNodeExternal(node: FleetNode): boolean {
-  return node.connection_type === "barn" && !!node.base_url;
+  return isBarnPanel(node) && !!node.base_url;
 }

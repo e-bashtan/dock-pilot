@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -119,6 +120,21 @@ func accountByID(accounts []db.BillingAccount, id uuid.UUID) (db.BillingAccount,
 func nodeMatchHaystack(row db.FleetNode, hostname, hostIP string) string {
 	parts := []string{row.BaseUrl, row.Name, hostname, hostIP}
 	return strings.ToLower(strings.Join(parts, " "))
+}
+
+func hostnameFromBaseURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(u.Hostname()))
 }
 
 func matchBillingAccount(accounts []db.BillingAccount, claimed map[uuid.UUID]bool, haystack string) (db.BillingAccount, bool) {
@@ -325,9 +341,14 @@ func (s *Service) resolveNodeBilling(
 		matchIP = hostIP
 	}
 
-	// Barn slaves: payment lives on the node — prefer remote over Master manual leftovers.
-	if row.ConnectionType == ConnBarn {
+	// Barn slaves (incl. legacy connection_type=dockpilot): payment lives on the node —
+	// prefer remote snapshot over Master manual leftovers.
+	if IsBarnPanel(row.ConnectionType) {
 		if dto := pickRemoteBilling(remoteBilling, hostIP, hostname); billingDTOUseful(dto) {
+			return dto
+		}
+		// Hostname from panel URL often matches Planetahost VPS name better than snapshot hostname.
+		if dto := pickRemoteBilling(remoteBilling, hostIP, hostnameFromBaseURL(row.BaseUrl)); billingDTOUseful(dto) {
 			return dto
 		}
 	}

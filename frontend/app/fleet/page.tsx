@@ -8,6 +8,7 @@ import {
   filterFleetNodes,
   fleetNodeExternal,
   fleetNodeHref,
+  isBarnPanel,
   sortFleetNodes,
   type FleetServerFilter,
 } from "@/lib/fleet-utils";
@@ -367,7 +368,7 @@ function FleetNodeRow({
         ) : (
           <span className="fleet-metric fleet-metric-muted">
             <IconMoney />
-            {node.connection_type === "barn" && node.base_url ? (
+            {isBarnPanel(node) && node.base_url ? (
               <a
                 href={`${node.base_url.replace(/\/$/, "")}/payments`}
                 className="fleet-inline-link"

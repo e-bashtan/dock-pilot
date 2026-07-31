@@ -63,6 +63,20 @@ func TestPickRemoteBilling(t *testing.T) {
 	if byHost == nil || byHost.NextDueDate == nil {
 		t.Fatal("expected match by hostname in account name")
 	}
+
+	byBase := pickRemoteBilling(accounts, "", hostnameFromBaseURL("https://bashtan1.e.a.unassigned.planetahost.ru"))
+	if byBase == nil || byBase.NextDueDate == nil {
+		t.Fatal("expected match via panel base URL hostname")
+	}
+}
+
+func TestIsBarnPanelLegacy(t *testing.T) {
+	if !IsBarnPanel("barn") || !IsBarnPanel("dockpilot") {
+		t.Fatal("barn/dockpilot should be panel")
+	}
+	if IsBarnPanel("agent") || IsBarnPanel("local") {
+		t.Fatal("agent/local should not be panel")
+	}
 }
 
 func TestMergeKeepsPreviousBilling(t *testing.T) {

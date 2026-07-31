@@ -31,7 +31,7 @@ export function FleetNodeBadges({
   if (role === "master" || connectionType === "local") {
     badges.push(t("fleet.badgeMaster"));
   }
-  if (connectionType === "barn") {
+  if (connectionType === "barn" || connectionType === "dockpilot") {
     badges.push(t("fleet.badgeBarn"));
   }
   if (connectionType === "agent") {

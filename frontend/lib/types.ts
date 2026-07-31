@@ -519,7 +519,7 @@ export interface UpdateBillingAccountRequest {
 export type FleetMode = "standalone" | "master" | "managed_node";
 export type FleetNotificationMode = "local" | "master" | "disabled";
 export type FleetNodeRole = "master" | "node" | "agent";
-export type FleetConnectionType = "local" | "barn" | "agent";
+export type FleetConnectionType = "local" | "barn" | "dockpilot" | "agent";
 export type FleetNodeStatus = "online" | "warning" | "offline";
 
 export interface FleetSettings {

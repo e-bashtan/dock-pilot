@@ -577,7 +577,7 @@ func (s *Service) toNodeResponse(
 		NodeUID:        row.NodeUid.String(),
 		Name:           row.Name,
 		Role:           row.Role,
-		ConnectionType: row.ConnectionType,
+		ConnectionType: NormalizeConnectionType(row.ConnectionType),
 		BaseURL:        row.BaseUrl,
 		Status:         row.Status,
 		Version:        row.Version,
