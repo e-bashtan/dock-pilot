@@ -13,7 +13,8 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Barn",
-    statusBarStyle: "black-translucent",
+    // Opaque status bar — avoids logo/IP colliding with the clock on iOS PWA.
+    statusBarStyle: "black",
   },
   formatDetection: {
     telephone: false,

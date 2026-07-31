@@ -794,8 +794,14 @@ h3 {
   flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 40;
 }
 
 .nav-brand {
@@ -1599,11 +1605,33 @@ h3 {
     font-size: 1.35rem;
   }
 
+  .nav {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: calc(0.55rem + env(safe-area-inset-top, 0px));
+    padding-bottom: 0.55rem;
+  }
+
+  .nav-brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 0.4rem;
+    flex-wrap: nowrap;
+  }
+
+  .brand-logo {
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+    max-width: 100%;
+  }
+
   .brand-logo-img.brand-logo-small {
     display: block;
-    height: 40px;
-    width: 40px;
+    height: 36px;
+    width: 36px;
     max-width: none;
+    background: transparent;
   }
 
   .brand-logo-img.brand-logo-full {
@@ -1615,18 +1643,29 @@ h3 {
     width: 96px;
   }
 
-  .brand-logo .app-version,
+  /* Keep header readable under the status bar: logo + IP only */
+  .brand-logo .app-version {
+    display: none;
+  }
+
   .brand-logo .app-server-ip {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: min(42vw, 10.5rem);
   }
 
   .nav-toggle {
     display: inline-flex;
+    flex-shrink: 0;
+    margin-left: auto;
   }
 
   .nav-links {
     display: none;
     width: 100%;
+    flex-basis: 100%;
     flex-direction: column;
     align-items: stretch;
     gap: 0.75rem;
