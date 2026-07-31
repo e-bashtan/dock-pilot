@@ -94,17 +94,23 @@ export function Nav() {
   const moreMenuId = useId();
 
   useEffect(() => {
+    setMenuOpen(false);
+    setMoreOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
     if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMenuOpen(false);
     };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
   }, [menuOpen]);
-
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -129,29 +135,54 @@ export function Nav() {
 
   const brandHref = isMaster ? "/fleet" : "/sites";
   const primaryLinks = isMaster ? MASTER_PRIMARY : STANDALONE_LINKS;
+  const mobileLinks = isMaster ? [...MASTER_PRIMARY, ...MASTER_MORE] : STANDALONE_LINKS;
   const moreActive =
     isMaster && MASTER_MORE.some((item) => isPrimaryActive(pathname, item.match));
 
   return (
     <>
-      <nav className="nav">
-        <Link href={brandHref} className="nav-brand" onClick={closeMenu}>
-          <BrandLogo showVersion showServerIP />
-        </Link>
-        <button
-          type="button"
-          className="nav-toggle btn btn-secondary"
-          aria-expanded={menuOpen}
-          aria-controls="nav-menu"
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          {menuOpen ? t("nav.closeMenu") : t("nav.menu")}
-        </button>
+      <nav className={`nav${menuOpen ? " nav-menu-open" : ""}`}>
+        <div className="nav-bar">
+          <Link href={brandHref} className="nav-brand" onClick={closeMenu}>
+            <BrandLogo showVersion showServerIP />
+          </Link>
+          <button
+            type="button"
+            className="nav-toggle btn btn-secondary"
+            aria-expanded={menuOpen}
+            aria-controls="nav-menu"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {t("nav.menu")}
+          </button>
+        </div>
+
+        {menuOpen && (
+          <button
+            type="button"
+            className="nav-backdrop"
+            aria-label={t("nav.closeMenu")}
+            onClick={closeMenu}
+          />
+        )}
+
         <div
           id="nav-menu"
           className={`nav-links${menuOpen ? " nav-links-open" : ""}`}
         >
-          <div className="nav-primary">
+          <div className="nav-drawer-head">
+            <span className="nav-drawer-title">{t("nav.menu")}</span>
+            <button
+              type="button"
+              className="btn btn-secondary nav-drawer-close"
+              onClick={closeMenu}
+            >
+              {t("nav.closeMenu")}
+            </button>
+          </div>
+
+          {/* Desktop: primary + More dropdown */}
+          <div className="nav-primary nav-primary-desktop">
             {primaryLinks.map((item) => {
               const active = isPrimaryActive(pathname, item.match);
               return (
@@ -202,6 +233,25 @@ export function Nav() {
               </div>
             )}
           </div>
+
+          {/* Mobile drawer: flat list, no nested More */}
+          <div className="nav-primary nav-primary-mobile">
+            {mobileLinks.map((item) => {
+              const active = isPrimaryActive(pathname, item.match);
+              return (
+                <Link
+                  key={`m-${item.href}-${item.match}`}
+                  href={item.href}
+                  className={`nav-link${active ? " nav-link-active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                  onClick={closeMenu}
+                >
+                  {t(item.labelKey)}
+                </Link>
+              );
+            })}
+          </div>
+
           <div className="nav-actions">
             {!isMaster && (
               <Link
