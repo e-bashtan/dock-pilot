@@ -588,16 +588,30 @@ func (s *Service) GrantRole(ctx context.Context, instanceID, roleID uuid.UUID, r
 		if err := s.execSQL(ctx, inst, "postgres", fmt.Sprintf("ALTER DATABASE %s OWNER TO %s", dbIdent, roleIdent)); err != nil {
 			return GrantResponse{}, err
 		}
+		adminIdent, err := quoteIdent(inst.AdminUser)
+		if err != nil {
+			return GrantResponse{}, err
+		}
+		// Hand over existing objects in this DB so the role is a real owner, not only DB owner.
+		if err := s.execSQL(ctx, inst, database.Name, fmt.Sprintf("REASSIGN OWNED BY %s TO %s", adminIdent, roleIdent)); err != nil {
+			return GrantResponse{}, err
+		}
+		if err := s.execSQL(ctx, inst, database.Name, fmt.Sprintf("ALTER SCHEMA public OWNER TO %s", roleIdent)); err != nil {
+			return GrantResponse{}, err
+		}
 	} else {
-		if err := s.execSQL(ctx, inst, "postgres", fmt.Sprintf("GRANT CONNECT ON DATABASE %s TO %s", dbIdent, roleIdent)); err != nil {
+		if err := s.execSQL(ctx, inst, "postgres", fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", dbIdent, roleIdent)); err != nil {
 			return GrantResponse{}, err
 		}
 		grants := []string{
-			fmt.Sprintf("GRANT USAGE, CREATE ON SCHEMA public TO %s", roleIdent),
+			fmt.Sprintf("GRANT ALL ON SCHEMA public TO %s", roleIdent),
 			fmt.Sprintf("GRANT ALL ON ALL TABLES IN SCHEMA public TO %s", roleIdent),
 			fmt.Sprintf("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO %s", roleIdent),
+			fmt.Sprintf("GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO %s", roleIdent),
 			fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %s", roleIdent),
 			fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %s", roleIdent),
+			fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO %s", roleIdent),
+			fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TYPES TO %s", roleIdent),
 		}
 		for _, sql := range grants {
 			if err := s.execSQL(ctx, inst, database.Name, sql); err != nil {
