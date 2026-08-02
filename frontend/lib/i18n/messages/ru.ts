@@ -490,14 +490,14 @@ export const ru: Messages = {
   },
   databases: {
     title: "Базы данных",
-    subtitle: "Один Postgres на хосте: базы, пользователи и бэкапы в S3.",
+    subtitle: "Один Postgres на хосте: базы и бэкапы в S3.",
     backupsMoved: "Расписания и restore перенесены в",
     loadFailed: "Не удалось загрузить базы данных",
     migrationNeeded:
       "Таблицы БД ещё не созданы. Выполните миграции панели (make migrate / upgrade) и обновите страницу.",
     empty: "Postgres ещё не настроен.",
     emptyHint:
-      "Создайте единственный контейнер Postgres на этом хосте, задеплойте его, затем добавьте базы и пользователей.",
+      "Создайте единственный контейнер Postgres на этом хосте, задеплойте его, затем добавьте базы.",
     create: "Настроить Postgres",
     createTitle: "Настройка Postgres",
     cancelCreate: "Отмена",

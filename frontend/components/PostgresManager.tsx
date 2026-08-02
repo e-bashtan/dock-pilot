@@ -15,11 +15,10 @@ import type {
   PgHealth,
   PgInstance,
   PgQueryResult,
-  PgRole,
   PgTableInfo,
 } from "@/lib/types";
 
-type Tab = "databases" | "roles" | "deployments";
+type Tab = "databases" | "deployments";
 
 export function PostgresManager({
   instanceId,
@@ -35,25 +34,15 @@ export function PostgresManager({
   const [instance, setInstance] = useState<PgInstance | null>(null);
   const [health, setHealth] = useState<PgHealth | null>(null);
   const [databases, setDatabases] = useState<PgDatabase[]>([]);
-  const [roles, setRoles] = useState<PgRole[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deploySession, setDeploySession] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [connRole, setConnRole] = useState<PgRole | null>(null);
-  const [connDbId, setConnDbId] = useState("");
-  const [connInfo, setConnInfo] = useState<PgConnectionInfo | null>(null);
   const [adminInfo, setAdminInfo] = useState<PgConnectionInfo | null>(null);
-  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
   const [dbName, setDbName] = useState("");
-  const [roleName, setRoleName] = useState("");
-  const [rolePassword, setRolePassword] = useState("");
-  const [grantRoleId, setGrantRoleId] = useState("");
-  const [grantDbId, setGrantDbId] = useState("");
-  const [grantOwner, setGrantOwner] = useState(false);
 
   const [expandedDbId, setExpandedDbId] = useState<string | null>(null);
   const [tablesByDb, setTablesByDb] = useState<Record<string, PgTableInfo[]>>({});
@@ -68,15 +57,13 @@ export function PostgresManager({
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [inst, dbs, roleRows, h] = await Promise.all([
+      const [inst, dbs, h] = await Promise.all([
         api.getPgInstance(id),
         api.listPgDatabases(id),
-        api.listPgRoles(id),
         api.getPgHealth(id).catch(() => null),
       ]);
       setInstance(inst);
       setDatabases(dbs);
-      setRoles(roleRows);
       setHealth(h);
       setError(null);
     } catch (e) {
@@ -112,24 +99,6 @@ export function PostgresManager({
       setTimeout(() => setCopied(null), 1500);
     } catch {
       /* ignore */
-    }
-  };
-
-  const loadRoleConnection = async (role: PgRole, databaseId: string) => {
-    if (!databaseId) {
-      setConnInfo(null);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const info = await api.getPgConnection(id, databaseId, role.id);
-      setConnInfo(info);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t("databases.loadFailed"));
-      setConnInfo(null);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -278,26 +247,8 @@ export function PostgresManager({
         <PostgresHealthPanel instanceId={id} />
       </div>
 
-      {createdPassword && (
-        <div className="alert alert-success">
-          <strong>{t("databases.createdPassword")}:</strong>{" "}
-          <code>{createdPassword}</code>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ marginLeft: "0.75rem" }}
-            onClick={() => void copyText("created", createdPassword)}
-          >
-            {copied === "created" ? t("databases.copied") : t("databases.copy")}
-          </button>
-          <p className="muted" style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
-            {t("databases.passwordOnce")}
-          </p>
-        </div>
-      )}
-
       <nav className="site-tabs" aria-label={t("databases.title")}>
-        {(["databases", "roles", "deployments"] as Tab[]).map((key) => (
+        {(["databases", "deployments"] as Tab[]).map((key) => (
           <button
             key={key}
             type="button"
@@ -508,192 +459,6 @@ export function PostgresManager({
         </>
       )}
 
-      {tab === "roles" && (
-        <>
-          <div className="card">
-            <h2 className="section-title">{t("databases.roles")}</h2>
-            {roles.length === 0 ? (
-              <p className="muted" style={{ margin: 0 }}>
-                {t("databases.noRoles")}
-              </p>
-            ) : (
-              <div className="stack-list">
-                {roles.map((role) => (
-                  <div key={role.id} className="stack-item">
-                    <div className="stack-item-main">
-                      <code>{role.name}</code>
-                      <div className="stack-item-meta">
-                        {role.grants?.length
-                          ? role.grants
-                              .map(
-                                (g) =>
-                                  `${g.database_name}${g.is_owner ? " (owner)" : ""}`,
-                              )
-                              .join(", ")
-                          : `${t("databases.grants")}: —`}
-                      </div>
-                    </div>
-                    <div className="stack-item-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={busy || databases.length === 0}
-                        onClick={() => {
-                          const dbId = role.grants?.[0]?.database_id || databases[0]?.id || "";
-                          setConnRole(role);
-                          setConnDbId(dbId);
-                          setConnInfo(null);
-                          if (dbId) void loadRoleConnection(role, dbId);
-                        }}
-                      >
-                        {t("databases.showConnection")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={busy}
-                        onClick={() =>
-                          run(async () => {
-                            await api.deletePgRole(id, role.id);
-                          })
-                        }
-                      >
-                        {t("databases.delete")}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <form
-            className="card"
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () => {
-                const created = await api.createPgRole(id, {
-                  name: roleName.trim(),
-                  password: rolePassword || undefined,
-                });
-                if (created.password) {
-                  setCreatedPassword(created.password);
-                }
-                setRoleName("");
-                setRolePassword("");
-              });
-            }}
-          >
-            <h2 className="section-title">{t("databases.createRole")}</h2>
-            <div className="form-grid">
-              <div className="field">
-                <label className="label" htmlFor="role-name">
-                  {t("databases.roleName")}
-                </label>
-                <input
-                  id="role-name"
-                  className="input"
-                  value={roleName}
-                  onChange={(e) => setRoleName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="role-pass">
-                  {t("databases.rolePassword")}
-                </label>
-                <input
-                  id="role-pass"
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  value={rolePassword}
-                  onChange={(e) => setRolePassword(e.target.value)}
-                  placeholder={t("databases.adminPasswordHint")}
-                />
-              </div>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn" disabled={busy}>
-                {t("databases.createRole")}
-              </button>
-            </div>
-          </form>
-
-          <form
-            className="card"
-            onSubmit={(e) => {
-              e.preventDefault();
-              run(async () => {
-                await api.grantPgRole(id, grantRoleId, {
-                  database_id: grantDbId,
-                  is_owner: grantOwner,
-                });
-              });
-            }}
-          >
-            <h2 className="section-title">{t("databases.grant")}</h2>
-            <div className="form-grid">
-              <div className="field">
-                <label className="label" htmlFor="grant-role">
-                  {t("databases.roles")}
-                </label>
-                <select
-                  id="grant-role"
-                  className="select"
-                  value={grantRoleId}
-                  onChange={(e) => setGrantRoleId(e.target.value)}
-                  required
-                >
-                  <option value="">—</option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label className="label" htmlFor="grant-db">
-                  {t("databases.databases")}
-                </label>
-                <select
-                  id="grant-db"
-                  className="select"
-                  value={grantDbId}
-                  onChange={(e) => setGrantDbId(e.target.value)}
-                  required
-                >
-                  <option value="">—</option>
-                  {databases.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="field" style={{ marginTop: "1rem" }}>
-              <label className="label checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={grantOwner}
-                  onChange={(e) => setGrantOwner(e.target.checked)}
-                />
-                <span>{t("databases.grantOwner")}</span>
-              </label>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn" disabled={busy}>
-                {t("databases.grant")}
-              </button>
-            </div>
-          </form>
-        </>
-      )}
-
-
-
       {queryResult && (
         <div
           className="modal-backdrop"
@@ -747,70 +512,6 @@ export function PostgresManager({
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setQueryResult(null)}
-              >
-                {t("common.cancel")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {connRole && (
-        <div
-          className="modal-backdrop"
-          onClick={() => {
-            setConnRole(null);
-            setConnInfo(null);
-          }}
-          role="presentation"
-        >
-          <div
-            className="modal card"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-labelledby="pg-conn-title"
-          >
-            <h2 id="pg-conn-title" className="section-title">
-              {t("databases.connectionTitle")}: {connRole.name}
-            </h2>
-            <div className="field">
-              <label className="label" htmlFor="conn-db">
-                {t("databases.selectDatabase")}
-              </label>
-              <select
-                id="conn-db"
-                className="select"
-                value={connDbId}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setConnDbId(next);
-                  void loadRoleConnection(connRole, next);
-                }}
-              >
-                <option value="">—</option>
-                {databases.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {connInfo && (
-              <ConnectionFields
-                info={connInfo}
-                copied={copied}
-                onCopy={copyText}
-                t={t}
-              />
-            )}
-            <div className="form-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  setConnRole(null);
-                  setConnInfo(null);
-                }}
               >
                 {t("common.cancel")}
               </button>

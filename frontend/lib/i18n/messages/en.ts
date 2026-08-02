@@ -489,14 +489,14 @@ export const en = {
   },
   databases: {
     title: "Databases",
-    subtitle: "One Postgres on this host: databases, users, and S3 backups.",
+    subtitle: "One Postgres on this host: databases and S3 backups.",
     backupsMoved: "Schedules and restores moved to",
     loadFailed: "Failed to load databases",
     migrationNeeded:
       "Database tables are missing. Run panel migrations (make migrate / upgrade), then refresh.",
     empty: "Postgres is not set up yet.",
     emptyHint:
-      "Create the single Postgres container for this host, deploy it, then add databases and users.",
+      "Create the single Postgres container for this host, deploy it, then add databases.",
     create: "Set up Postgres",
     createTitle: "Set up Postgres",
     cancelCreate: "Cancel",
