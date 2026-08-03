@@ -396,7 +396,7 @@ export const ru: Messages = {
   backups: {
     title: "Бэкапы",
     subtitle:
-      "Полный снимок Амбар (БД панели + managed Postgres + секреты) и дампы отдельных БД — всё в S3.",
+      "Полный снимок Амбар (БД панели + secrets.env) и отдельно дампы managed-БД — всё в S3.",
     loadFailed: "Не удалось загрузить бэкапы",
     saved: "Сохранено",
     destination: "Назначение S3 (полные снимки)",
@@ -407,12 +407,12 @@ export const ru: Messages = {
     clearKeys: "Очистить сохранённые ключи S3",
     fullTitle: "Полные снимки Амбар",
     fullHint:
-      "Включает БД панели, все managed-базы и secrets.env. Сайты после restore — redeploy из git.",
+      "Включает БД панели и secrets.env. Managed-базы бекапятся отдельно ниже. Сайты после restore — redeploy из git.",
     createFull: "Создать полный бэкап",
     noFull: "Полных снимков в S3 пока нет.",
     restoreFull: "Восстановить полный бэкап",
     restoreFullConfirm:
-      "Восстановить БД панели и managed-базы из этого снимка на этом хосте? Текущие данные будут перезаписаны.",
+      "Восстановить БД панели из этого снимка на этом хосте? Текущие данные панели будут перезаписаны. Managed-базы из старых снимков пропускаются.",
     restoreLog: "Лог восстановления",
     waitingRestoreLog: "Ожидание логов restore…",
     postgresTitle: "Дампы managed Postgres",

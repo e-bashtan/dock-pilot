@@ -395,7 +395,7 @@ export const en = {
   backups: {
     title: "Backups",
     subtitle:
-      "Full Barn snapshot (panel DB + managed Postgres + secrets) and per-database dumps — all in S3.",
+      "Full Barn snapshot (panel DB + secrets.env) and separate per-database dumps — all in S3.",
     loadFailed: "Failed to load backups",
     saved: "Saved",
     destination: "S3 destination (full snapshots)",
@@ -406,12 +406,12 @@ export const en = {
     clearKeys: "Clear saved S3 keys",
     fullTitle: "Full Barn snapshots",
     fullHint:
-      "Includes panel database, all managed databases, and secrets.env. Sites redeploy from git after restore.",
+      "Includes panel database and secrets.env. Managed databases are backed up separately below. Sites redeploy from git after restore.",
     createFull: "Create full backup",
     noFull: "No full snapshots in S3 yet.",
     restoreFull: "Restore full backup",
     restoreFullConfirm:
-      "Restore panel DB and managed databases from this snapshot on this host? Current data will be overwritten.",
+      "Restore the panel database from this snapshot on this host? Current panel data will be overwritten. Managed DBs from older snapshots are skipped.",
     restoreLog: "Restore log",
     waitingRestoreLog: "Waiting for restore logs…",
     postgresTitle: "Managed Postgres dumps",
