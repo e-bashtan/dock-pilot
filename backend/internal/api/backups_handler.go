@@ -113,3 +113,36 @@ func (h *BackupsHandler) StreamRestoreFull(w http.ResponseWriter, r *http.Reques
 	_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"succeeded\"}\n\n")
 	flusher.Flush()
 }
+
+func (h *BackupsHandler) TestS3(w http.ResponseWriter, r *http.Request) {
+	var req panelbackup.TestS3Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, panelbackup.ErrInvalidInput)
+		return
+	}
+	resp, err := h.svc.TestS3(r.Context(), req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (h *BackupsHandler) ListOperations(w http.ResponseWriter, r *http.Request) {
+	limit := int32(50)
+	if r.URL.Query().Get("limit") != "" {
+		var l int
+		if _, err := fmt.Sscanf(r.URL.Query().Get("limit"), "%d", &l); err == nil && l > 0 {
+			limit = int32(l)
+		}
+	}
+	rows, err := h.svc.ListOperations(r.Context(), limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if rows == nil {
+		rows = []panelbackup.OperationResponse{}
+	}
+	writeJSON(w, http.StatusOK, rows)
+}

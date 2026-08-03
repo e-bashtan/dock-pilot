@@ -86,9 +86,9 @@ INSERT INTO pdb_backup_schedules (
     instance_id, database_id, enabled, hour, minute, timezone,
     s3_endpoint, s3_region, s3_bucket, s3_prefix,
     encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style,
-    retention_count
+    use_panel_s3, retention_count
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
 ) RETURNING *;
 
 -- name: GetPgBackupSchedule :one
@@ -116,6 +116,7 @@ UPDATE pdb_backup_schedules SET
     encrypted_s3_access_key = COALESCE(sqlc.narg('encrypted_s3_access_key'), encrypted_s3_access_key),
     encrypted_s3_secret_key = COALESCE(sqlc.narg('encrypted_s3_secret_key'), encrypted_s3_secret_key),
     s3_force_path_style = COALESCE(sqlc.narg('s3_force_path_style'), s3_force_path_style),
+    use_panel_s3 = COALESCE(sqlc.narg('use_panel_s3'), use_panel_s3),
     retention_count = COALESCE(sqlc.narg('retention_count'), retention_count),
     updated_at = now()
 WHERE id = $1
@@ -125,6 +126,7 @@ RETURNING *;
 UPDATE pdb_backup_schedules SET
     last_run_at = $2,
     last_status = $3,
+    last_error = $4,
     updated_at = now()
 WHERE id = $1
 RETURNING *;

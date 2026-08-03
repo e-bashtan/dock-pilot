@@ -168,6 +168,22 @@ func List(ctx context.Context, cfg Config, prefix string, limit int, suffixes ..
 	return out, nil
 }
 
+// Ping verifies credentials can access the bucket (ListObjects with MaxKeys=1).
+func Ping(ctx context.Context, cfg Config) error {
+	client, err := NewClient(cfg)
+	if err != nil {
+		return err
+	}
+	_, err = client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  aws.String(cfg.Bucket),
+		MaxKeys: aws.Int32(1),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 connection failed: %w", err)
+	}
+	return nil
+}
+
 func matchSuffix(key string, suffixes []string) bool {
 	lower := strings.ToLower(key)
 	for _, s := range suffixes {

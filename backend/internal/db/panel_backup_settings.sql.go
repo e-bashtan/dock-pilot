@@ -17,7 +17,7 @@ UPDATE panel_backup_settings SET
     encrypted_s3_secret_key = NULL,
     updated_at = now()
 WHERE id = 1
-RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at
+RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at
 `
 
 func (q *Queries) ClearPanelBackupS3Keys(ctx context.Context) (PanelBackupSetting, error) {
@@ -39,6 +39,7 @@ func (q *Queries) ClearPanelBackupS3Keys(ctx context.Context) (PanelBackupSettin
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -47,7 +48,7 @@ func (q *Queries) ClearPanelBackupS3Keys(ctx context.Context) (PanelBackupSettin
 const ensurePanelBackupSettings = `-- name: EnsurePanelBackupSettings :one
 INSERT INTO panel_backup_settings (id) VALUES (1)
 ON CONFLICT (id) DO UPDATE SET updated_at = panel_backup_settings.updated_at
-RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at
+RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at
 `
 
 func (q *Queries) EnsurePanelBackupSettings(ctx context.Context) (PanelBackupSetting, error) {
@@ -69,13 +70,14 @@ func (q *Queries) EnsurePanelBackupSettings(ctx context.Context) (PanelBackupSet
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getPanelBackupSettings = `-- name: GetPanelBackupSettings :one
-SELECT id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at FROM panel_backup_settings WHERE id = 1
+SELECT id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at FROM panel_backup_settings WHERE id = 1
 `
 
 func (q *Queries) GetPanelBackupSettings(ctx context.Context) (PanelBackupSetting, error) {
@@ -97,6 +99,7 @@ func (q *Queries) GetPanelBackupSettings(ctx context.Context) (PanelBackupSettin
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -106,18 +109,20 @@ const updatePanelBackupRun = `-- name: UpdatePanelBackupRun :one
 UPDATE panel_backup_settings SET
     last_run_at = $1,
     last_status = $2,
+    last_error = $3,
     updated_at = now()
 WHERE id = 1
-RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at
+RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at
 `
 
 type UpdatePanelBackupRunParams struct {
 	LastRunAt  pgtype.Timestamptz `json:"last_run_at"`
 	LastStatus string             `json:"last_status"`
+	LastError  string             `json:"last_error"`
 }
 
 func (q *Queries) UpdatePanelBackupRun(ctx context.Context, arg UpdatePanelBackupRunParams) (PanelBackupSetting, error) {
-	row := q.db.QueryRow(ctx, updatePanelBackupRun, arg.LastRunAt, arg.LastStatus)
+	row := q.db.QueryRow(ctx, updatePanelBackupRun, arg.LastRunAt, arg.LastStatus, arg.LastError)
 	var i PanelBackupSetting
 	err := row.Scan(
 		&i.ID,
@@ -135,6 +140,7 @@ func (q *Queries) UpdatePanelBackupRun(ctx context.Context, arg UpdatePanelBacku
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -146,7 +152,7 @@ UPDATE panel_backup_settings SET
     encrypted_s3_secret_key = $2,
     updated_at = now()
 WHERE id = 1
-RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at
+RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at
 `
 
 type UpdatePanelBackupS3KeysParams struct {
@@ -173,6 +179,7 @@ func (q *Queries) UpdatePanelBackupS3Keys(ctx context.Context, arg UpdatePanelBa
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -192,7 +199,7 @@ UPDATE panel_backup_settings SET
     retention_count = $10,
     updated_at = now()
 WHERE id = 1
-RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, updated_at
+RETURNING id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, last_error, updated_at
 `
 
 type UpdatePanelBackupSettingsParams struct {
@@ -238,6 +245,7 @@ func (q *Queries) UpdatePanelBackupSettings(ctx context.Context, arg UpdatePanel
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.UpdatedAt,
 	)
 	return i, err

@@ -166,6 +166,8 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 				r.Post("/full", h.Backups.CreateFull)
 				r.Post("/full/restore", h.Backups.RestoreFull)
 				r.Get("/full/restore/stream", h.Backups.StreamRestoreFull)
+				r.Post("/settings/test", h.Backups.TestS3)
+				r.Get("/operations", h.Backups.ListOperations)
 			})
 
 			r.Route("/billing", func(r chi.Router) {

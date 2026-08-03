@@ -360,9 +360,11 @@ export interface PgBackupSchedule {
   s3_bucket: string;
   s3_prefix: string;
   s3_force_path_style: boolean;
+  use_panel_s3: boolean;
   retention_count: number;
   last_run_at?: string | null;
   last_status: string;
+  last_error?: string;
   created_at: string;
   updated_at: string;
 }
@@ -408,11 +410,12 @@ export interface CreatePgScheduleRequest {
   timezone: string;
   s3_endpoint?: string;
   s3_region?: string;
-  s3_bucket: string;
+  s3_bucket?: string;
   s3_prefix?: string;
-  s3_access_key: string;
-  s3_secret_key: string;
+  s3_access_key?: string;
+  s3_secret_key?: string;
   s3_force_path_style?: boolean;
+  use_panel_s3?: boolean;
   retention_count?: number;
 }
 
@@ -450,6 +453,7 @@ export interface PanelBackupSettings {
   retention_count: number;
   last_run_at?: string | null;
   last_status: string;
+  last_error?: string;
   updated_at: string;
 }
 
@@ -467,6 +471,34 @@ export interface UpdatePanelBackupSettings {
   clear_s3_credentials?: boolean;
   s3_force_path_style: boolean;
   retention_count: number;
+}
+
+export interface TestPanelS3Request {
+  s3_endpoint?: string;
+  s3_region?: string;
+  s3_bucket?: string;
+  s3_access_key?: string;
+  s3_secret_key?: string;
+  s3_force_path_style?: boolean;
+}
+
+export interface TestPanelS3Response {
+  ok: boolean;
+  message: string;
+}
+
+export interface BackupOperation {
+  id: string;
+  kind: "panel_snapshot" | "pg_backup" | "pg_restore" | "panel_restore" | string;
+  status: "running" | "ok" | "failed" | string;
+  database_name: string;
+  instance_id?: string | null;
+  schedule_id?: string | null;
+  s3_key: string;
+  size_bytes: number;
+  message: string;
+  started_at: string;
+  finished_at?: string | null;
 }
 
 export interface FullPanelBackup {

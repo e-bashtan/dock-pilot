@@ -38,12 +38,7 @@ func (s *Service) CreateSchedule(ctx context.Context, instanceID uuid.UUID, req 
 	if err := validateScheduleTiming(req.Hour, req.Minute, req.Timezone); err != nil {
 		return ScheduleResponse{}, err
 	}
-	if strings.TrimSpace(req.S3Bucket) == "" {
-		return ScheduleResponse{}, fmt.Errorf("%w: s3_bucket is required", ErrInvalidInput)
-	}
-	if strings.TrimSpace(req.S3AccessKey) == "" || strings.TrimSpace(req.S3SecretKey) == "" {
-		return ScheduleResponse{}, fmt.Errorf("%w: s3 credentials are required", ErrInvalidInput)
-	}
+
 	var dbID pgtype.UUID
 	if req.DatabaseID != nil {
 		database, err := s.queries.GetPgDatabase(ctx, *req.DatabaseID)
@@ -58,14 +53,7 @@ func (s *Service) CreateSchedule(ctx context.Context, instanceID uuid.UUID, req 
 		}
 		dbID = pgtype.UUID{Bytes: *req.DatabaseID, Valid: true}
 	}
-	encAccess, err := s.cipher.Encrypt(strings.TrimSpace(req.S3AccessKey))
-	if err != nil {
-		return ScheduleResponse{}, err
-	}
-	encSecret, err := s.cipher.Encrypt(strings.TrimSpace(req.S3SecretKey))
-	if err != nil {
-		return ScheduleResponse{}, err
-	}
+
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
@@ -77,18 +65,121 @@ func (s *Service) CreateSchedule(ctx context.Context, instanceID uuid.UUID, req 
 	if retention < 1 || retention > 365 {
 		return ScheduleResponse{}, fmt.Errorf("%w: retention_count must be 1-365", ErrInvalidInput)
 	}
-	prefix := strings.TrimSpace(req.S3Prefix)
-	if prefix == "" {
-		prefix = "barn/pg-backups"
+
+	var encAccess, encSecret []byte
+	var bucket, endpoint, region, prefix string
+	usePanelS3 := req.UsePanelS3
+
+	if usePanelS3 {
+		// Get panel backup settings
+		panelSettings, err := s.queries.GetPanelBackupSettings(ctx)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ScheduleResponse{}, fmt.Errorf("%w: panel backup settings not configured", ErrInvalidInput)
+			}
+			return ScheduleResponse{}, err
+		}
+		if len(panelSettings.EncryptedS3AccessKey) == 0 || len(panelSettings.EncryptedS3SecretKey) == 0 {
+			return ScheduleResponse{}, fmt.Errorf("%w: panel S3 credentials not configured", ErrInvalidInput)
+		}
+
+		// Use panel credentials
+		encAccess = nil
+		encSecret = nil
+
+		// Use schedule settings if provided, otherwise fall back to panel settings
+		bucket = strings.TrimSpace(req.S3Bucket)
+		if bucket == "" {
+			bucket = panelSettings.S3Bucket
+		}
+		endpoint = strings.TrimSpace(req.S3Endpoint)
+		if endpoint == "" {
+			endpoint = panelSettings.S3Endpoint
+		}
+		region = strings.TrimSpace(req.S3Region)
+		if region == "" {
+			region = panelSettings.S3Region
+		}
+		if region == "" {
+			region = "us-east-1"
+		}
+		prefix = strings.TrimSpace(req.S3Prefix)
+		if prefix == "" {
+			// Use panel prefix + "/pg" or "barn/pg-backups"
+			panelPrefix := strings.TrimSpace(panelSettings.S3Prefix)
+			if panelPrefix == "" {
+				prefix = "barn/pg-backups"
+			} else {
+				prefix = strings.Trim(panelPrefix, "/") + "/pg"
+			}
+		}
+		pathStyle := panelSettings.S3ForcePathStyle
+		if req.S3ForcePathStyle {
+			pathStyle = true
+		}
+
+		tz := strings.TrimSpace(req.Timezone)
+		if tz == "" {
+			tz = "UTC"
+		}
+
+		row, err := s.queries.CreatePgBackupSchedule(ctx, db.CreatePgBackupScheduleParams{
+			InstanceID:           instanceID,
+			DatabaseID:           dbID,
+			Enabled:              enabled,
+			Hour:                 int32(req.Hour),
+			Minute:               int32(req.Minute),
+			Timezone:             tz,
+			S3Endpoint:           endpoint,
+			S3Region:             region,
+			S3Bucket:             bucket,
+			S3Prefix:             strings.Trim(prefix, "/"),
+			EncryptedS3AccessKey: encAccess,
+			EncryptedS3SecretKey: encSecret,
+			S3ForcePathStyle:     pathStyle,
+			UsePanelS3:           usePanelS3,
+			RetentionCount:       int32(retention),
+		})
+		if err != nil {
+			return ScheduleResponse{}, err
+		}
+		return toScheduleResponse(row), nil
 	}
-	region := strings.TrimSpace(req.S3Region)
+
+	// Use provided credentials
+	if strings.TrimSpace(req.S3Bucket) == "" {
+		return ScheduleResponse{}, fmt.Errorf("%w: s3_bucket is required", ErrInvalidInput)
+	}
+	if strings.TrimSpace(req.S3AccessKey) == "" || strings.TrimSpace(req.S3SecretKey) == "" {
+		return ScheduleResponse{}, fmt.Errorf("%w: s3 credentials are required", ErrInvalidInput)
+	}
+
+	var err error
+	encAccess, err = s.cipher.Encrypt(strings.TrimSpace(req.S3AccessKey))
+	if err != nil {
+		return ScheduleResponse{}, err
+	}
+	encSecret, err = s.cipher.Encrypt(strings.TrimSpace(req.S3SecretKey))
+	if err != nil {
+		return ScheduleResponse{}, err
+	}
+
+	bucket = strings.TrimSpace(req.S3Bucket)
+	endpoint = strings.TrimSpace(req.S3Endpoint)
+	region = strings.TrimSpace(req.S3Region)
 	if region == "" {
 		region = "us-east-1"
 	}
+	prefix = strings.TrimSpace(req.S3Prefix)
+	if prefix == "" {
+		prefix = "barn/pg-backups"
+	}
+
 	tz := strings.TrimSpace(req.Timezone)
 	if tz == "" {
 		tz = "UTC"
 	}
+
 	row, err := s.queries.CreatePgBackupSchedule(ctx, db.CreatePgBackupScheduleParams{
 		InstanceID:           instanceID,
 		DatabaseID:           dbID,
@@ -96,13 +187,14 @@ func (s *Service) CreateSchedule(ctx context.Context, instanceID uuid.UUID, req 
 		Hour:                 int32(req.Hour),
 		Minute:               int32(req.Minute),
 		Timezone:             tz,
-		S3Endpoint:           strings.TrimSpace(req.S3Endpoint),
+		S3Endpoint:           endpoint,
 		S3Region:             region,
-		S3Bucket:             strings.TrimSpace(req.S3Bucket),
+		S3Bucket:             bucket,
 		S3Prefix:             strings.Trim(prefix, "/"),
 		EncryptedS3AccessKey: encAccess,
 		EncryptedS3SecretKey: encSecret,
 		S3ForcePathStyle:     req.S3ForcePathStyle,
+		UsePanelS3:           usePanelS3,
 		RetentionCount:       int32(retention),
 	})
 	if err != nil {
@@ -205,6 +297,9 @@ func (s *Service) UpdateSchedule(ctx context.Context, instanceID, scheduleID uui
 	if req.S3ForcePathStyle != nil {
 		params.S3ForcePathStyle = pgtype.Bool{Bool: *req.S3ForcePathStyle, Valid: true}
 	}
+	if req.UsePanelS3 != nil {
+		params.UsePanelS3 = pgtype.Bool{Bool: *req.UsePanelS3, Valid: true}
+	}
 	if req.RetentionCount != nil {
 		if *req.RetentionCount < 1 || *req.RetentionCount > 365 {
 			return ScheduleResponse{}, fmt.Errorf("%w: retention_count must be 1-365", ErrInvalidInput)
@@ -244,7 +339,7 @@ func (s *Service) ListBackups(ctx context.Context, instanceID uuid.UUID, schedul
 		}
 		return nil, err
 	}
-	cfg, err := s.s3ConfigFromSchedule(schedule)
+	cfg, err := s.s3ConfigFromSchedule(ctx, schedule)
 	if err != nil {
 		return nil, err
 	}
@@ -312,7 +407,7 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 		if schedule.InstanceID != instanceID {
 			return BackupResponse{}, ErrNotFound
 		}
-		cfg, err = s.s3ConfigFromSchedule(schedule)
+		cfg, err = s.s3ConfigFromSchedule(ctx, schedule)
 		if err != nil {
 			return BackupResponse{}, err
 		}
@@ -325,6 +420,20 @@ func (s *Service) ManualBackup(ctx context.Context, instanceID uuid.UUID, req Ma
 	}
 
 	backup, err := s.runBackup(ctx, inst, database, scheduleID, cfg, prefix)
+	if scheduleID != nil {
+		// Update schedule last run
+		status, lastErr := "ok", ""
+		if err != nil {
+			status = "failed"
+			lastErr = truncate(err.Error(), 2000)
+		}
+		_, _ = s.queries.UpdatePgBackupScheduleRun(ctx, db.UpdatePgBackupScheduleRunParams{
+			ID:         *scheduleID,
+			LastRunAt:  pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
+			LastStatus: status,
+			LastError:  lastErr,
+		})
+	}
 	if err != nil {
 		return BackupResponse{}, err
 	}
@@ -357,7 +466,7 @@ func (s *Service) RestoreBackupWithLog(ctx context.Context, instanceID uuid.UUID
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
-	cfg, err := s.s3ConfigFromSchedule(schedule)
+	cfg, err := s.s3ConfigFromSchedule(ctx, schedule)
 	if err != nil {
 		return DatabaseResponse{}, err
 	}
@@ -474,6 +583,23 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database db.PdbDatabase, scheduleID *uuid.UUID, cfg s3Config, prefix string) (BackupResponse, error) {
 	key := path.Join(strings.Trim(prefix, "/"), inst.Slug, database.Name, time.Now().UTC().Format("20060102-150405")+".sql")
 
+	// Create operation record
+	instUUID := pgtype.UUID{Bytes: inst.ID, Valid: true}
+	var schedUUID pgtype.UUID
+	if scheduleID != nil {
+		schedUUID = pgtype.UUID{Bytes: *scheduleID, Valid: true}
+	}
+	op, _ := s.queries.CreateBackupOperation(ctx, db.CreateBackupOperationParams{
+		Kind:         "pg_backup",
+		Status:       "running",
+		DatabaseName: database.Name,
+		InstanceID:   instUUID,
+		ScheduleID:   schedUUID,
+		S3Key:        "",
+		SizeBytes:    0,
+		Message:      "",
+	})
+
 	pr, pw := io.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
@@ -484,6 +610,27 @@ func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database d
 	size, uploadErr := uploadToS3(ctx, cfg, key, pr)
 	dumpErr := <-errCh
 	_ = pr.Close()
+
+	// Finish operation record
+	if op.ID != (uuid.UUID{}) {
+		opStatus := "success"
+		opMsg := ""
+		opKey := key
+		opSize := size
+		if dumpErr != nil || uploadErr != nil {
+			opStatus = "failed"
+			firstError := firstErr(dumpErr, uploadErr)
+			opMsg = truncate(firstError.Error(), 2000)
+		}
+		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+			ID:        op.ID,
+			Status:    opStatus,
+			Message:   opMsg,
+			S3Key:     opKey,
+			SizeBytes: opSize,
+		})
+	}
+
 	if dumpErr != nil || uploadErr != nil {
 		return BackupResponse{}, firstErr(dumpErr, uploadErr)
 	}
@@ -565,7 +712,60 @@ func databaseNameFromS3Key(prefix, key string) string {
 	}
 }
 
-func (s *Service) s3ConfigFromSchedule(schedule db.PdbBackupSchedule) (s3Config, error) {
+func (s *Service) s3ConfigFromSchedule(ctx context.Context, schedule db.PdbBackupSchedule) (s3Config, error) {
+	if schedule.UsePanelS3 {
+		// Load panel backup settings
+		panelSettings, err := s.queries.GetPanelBackupSettings(ctx)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return s3Config{}, fmt.Errorf("panel backup settings not configured")
+			}
+			return s3Config{}, err
+		}
+		if len(panelSettings.EncryptedS3AccessKey) == 0 || len(panelSettings.EncryptedS3SecretKey) == 0 {
+			return s3Config{}, fmt.Errorf("panel S3 credentials not configured")
+		}
+
+		// Decrypt panel credentials
+		access, err := s.cipher.Decrypt(panelSettings.EncryptedS3AccessKey)
+		if err != nil {
+			return s3Config{}, err
+		}
+		secret, err := s.cipher.Decrypt(panelSettings.EncryptedS3SecretKey)
+		if err != nil {
+			return s3Config{}, err
+		}
+
+		// Use schedule settings if non-empty, otherwise use panel settings
+		bucket := schedule.S3Bucket
+		if bucket == "" {
+			bucket = panelSettings.S3Bucket
+		}
+		endpoint := schedule.S3Endpoint
+		if endpoint == "" {
+			endpoint = panelSettings.S3Endpoint
+		}
+		region := schedule.S3Region
+		if region == "" {
+			region = panelSettings.S3Region
+		}
+		forcePathStyle := schedule.S3ForcePathStyle
+
+		return s3Config{
+			Endpoint:       endpoint,
+			Region:         region,
+			Bucket:         bucket,
+			AccessKey:      access,
+			SecretKey:      secret,
+			ForcePathStyle: forcePathStyle,
+		}, nil
+	}
+
+	// Use schedule's own credentials
+	if len(schedule.EncryptedS3AccessKey) == 0 || len(schedule.EncryptedS3SecretKey) == 0 {
+		return s3Config{}, fmt.Errorf("schedule S3 credentials not set")
+	}
+
 	access, err := s.cipher.Decrypt(schedule.EncryptedS3AccessKey)
 	if err != nil {
 		return s3Config{}, err
@@ -594,15 +794,17 @@ func (s *Service) RunDueSchedules(ctx context.Context) error {
 		if !scheduleDue(schedule, now) {
 			continue
 		}
-		status := "ok"
+		status, lastErr := "ok", ""
 		if err := s.runSchedule(ctx, schedule); err != nil {
-			status = err.Error()
+			status = "failed"
+			lastErr = truncate(err.Error(), 2000)
 			s.logger.Warn("pg backup schedule failed", "schedule_id", schedule.ID, "error", err)
 		}
 		_, _ = s.queries.UpdatePgBackupScheduleRun(ctx, db.UpdatePgBackupScheduleRunParams{
 			ID:         schedule.ID,
 			LastRunAt:  pgtype.Timestamptz{Time: now.UTC(), Valid: true},
-			LastStatus: truncate(status, 500),
+			LastStatus: status,
+			LastError:  lastErr,
 		})
 	}
 	return nil
@@ -613,7 +815,7 @@ func (s *Service) runSchedule(ctx context.Context, schedule db.PdbBackupSchedule
 	if err != nil {
 		return err
 	}
-	cfg, err := s.s3ConfigFromSchedule(schedule)
+	cfg, err := s.s3ConfigFromSchedule(ctx, schedule)
 	if err != nil {
 		return err
 	}
@@ -692,9 +894,11 @@ func toScheduleResponse(row db.PdbBackupSchedule) ScheduleResponse {
 		S3Bucket:         row.S3Bucket,
 		S3Prefix:         row.S3Prefix,
 		S3ForcePathStyle: row.S3ForcePathStyle,
+		UsePanelS3:       row.UsePanelS3,
 		RetentionCount:   int(row.RetentionCount),
 		LastRunAt:        optionalTime(row.LastRunAt),
 		LastStatus:       row.LastStatus,
+		LastError:        row.LastError,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}

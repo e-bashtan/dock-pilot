@@ -1120,9 +1120,17 @@ h3 {
   display: flex;
   gap: 0.25rem;
   margin-bottom: 1.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.5rem;
+}
+
+.backup-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
 }
 
 .site-tab {

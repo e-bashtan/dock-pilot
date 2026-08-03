@@ -141,12 +141,14 @@ CREATE TABLE pdb_backup_schedules (
     s3_region TEXT NOT NULL DEFAULT 'us-east-1',
     s3_bucket TEXT NOT NULL,
     s3_prefix TEXT NOT NULL DEFAULT 'barn/pg-backups',
-    encrypted_s3_access_key BYTEA NOT NULL,
-    encrypted_s3_secret_key BYTEA NOT NULL,
+    encrypted_s3_access_key BYTEA,
+    encrypted_s3_secret_key BYTEA,
     s3_force_path_style BOOLEAN NOT NULL DEFAULT false,
+    use_panel_s3 BOOLEAN NOT NULL DEFAULT false,
     retention_count INT NOT NULL DEFAULT 7 CHECK (retention_count >= 1 AND retention_count <= 365),
     last_run_at TIMESTAMPTZ,
     last_status TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -171,8 +173,27 @@ CREATE TABLE panel_backup_settings (
     retention_count INT NOT NULL DEFAULT 7 CHECK (retention_count >= 1 AND retention_count <= 365),
     last_run_at TIMESTAMPTZ,
     last_status TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE backup_operations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    kind TEXT NOT NULL
+        CHECK (kind IN ('panel_snapshot', 'pg_backup', 'pg_restore', 'panel_restore')),
+    status TEXT NOT NULL
+        CHECK (status IN ('running', 'ok', 'failed')),
+    database_name TEXT NOT NULL DEFAULT '',
+    instance_id UUID,
+    schedule_id UUID,
+    s3_key TEXT NOT NULL DEFAULT '',
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    message TEXT NOT NULL DEFAULT '',
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_backup_operations_started ON backup_operations (started_at DESC);
 
 CREATE TABLE billing_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

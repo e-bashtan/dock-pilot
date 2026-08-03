@@ -89,9 +89,11 @@ type ScheduleResponse struct {
 	S3Bucket         string     `json:"s3_bucket"`
 	S3Prefix         string     `json:"s3_prefix"`
 	S3ForcePathStyle bool       `json:"s3_force_path_style"`
+	UsePanelS3       bool       `json:"use_panel_s3"`
 	RetentionCount   int        `json:"retention_count"`
 	LastRunAt        *time.Time `json:"last_run_at"`
 	LastStatus       string     `json:"last_status"`
+	LastError        string     `json:"last_error"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 }
@@ -109,6 +111,7 @@ type CreateScheduleRequest struct {
 	S3AccessKey      string     `json:"s3_access_key"`
 	S3SecretKey      string     `json:"s3_secret_key"`
 	S3ForcePathStyle bool       `json:"s3_force_path_style"`
+	UsePanelS3       bool       `json:"use_panel_s3"`
 	RetentionCount   int        `json:"retention_count"`
 }
 
@@ -126,6 +129,7 @@ type UpdateScheduleRequest struct {
 	S3AccessKey      *string    `json:"s3_access_key"`
 	S3SecretKey      *string    `json:"s3_secret_key"`
 	S3ForcePathStyle *bool      `json:"s3_force_path_style"`
+	UsePanelS3       *bool      `json:"use_panel_s3"`
 	RetentionCount   *int       `json:"retention_count"`
 }
 

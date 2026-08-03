@@ -40,6 +40,9 @@ import type {
   PgConnectionInfo,
   PanelBackupSettings,
   UpdatePanelBackupSettings,
+  TestPanelS3Request,
+  TestPanelS3Response,
+  BackupOperation,
   FullPanelBackup,
   BillingAccount,
   CreateBillingAccountRequest,
@@ -513,6 +516,15 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+
+  testPanelBackupS3: (body: TestPanelS3Request = {}) =>
+    request<TestPanelS3Response>("/api/backups/settings/test", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  listBackupOperations: (limit = 20) =>
+    request<BackupOperation[]>(`/api/backups/operations?limit=${limit}`),
 
   listFullPanelBackups: () =>
     request<FullPanelBackup[]>("/api/backups/full"),

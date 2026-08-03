@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -156,15 +157,52 @@ func (s *Service) CreateFullBackup(ctx context.Context) (FullBackupInfo, error) 
 		return FullBackupInfo{}, err
 	}
 
+	// Create operation record
+	op, _ := s.queries.CreateBackupOperation(ctx, db.CreateBackupOperationParams{
+		Kind:         "panel_snapshot",
+		Status:       "running",
+		DatabaseName: "panel",
+		InstanceID:   pgtype.UUID{},
+		ScheduleID:   pgtype.UUID{},
+		S3Key:        "",
+		SizeBytes:    0,
+		Message:      "",
+	})
+
 	info, err := s.buildAndUpload(ctx, cfg, prefix)
-	status := "ok"
+	status, lastErr := "ok", ""
 	if err != nil {
-		status = err.Error()
+		status = "failed"
+		lastErr = truncate(err.Error(), 2000)
 	}
 	_, _ = s.queries.UpdatePanelBackupRun(ctx, db.UpdatePanelBackupRunParams{
 		LastRunAt:  pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
-		LastStatus: truncate(status, 500),
+		LastStatus: status,
+		LastError:  lastErr,
 	})
+
+	// Finish operation record
+	if op.ID != (uuid.UUID{}) {
+		opStatus := "success"
+		opMsg := ""
+		opKey := ""
+		opSize := int64(0)
+		if err != nil {
+			opStatus = "failed"
+			opMsg = truncate(err.Error(), 2000)
+		} else {
+			opKey = info.S3Key
+			opSize = info.SizeBytes
+		}
+		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+			ID:        op.ID,
+			Status:    opStatus,
+			Message:   opMsg,
+			S3Key:     opKey,
+			SizeBytes: opSize,
+		})
+	}
+
 	if err != nil {
 		return FullBackupInfo{}, err
 	}
@@ -189,19 +227,59 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 	if key == "" {
 		return fmt.Errorf("%w: s3_key is required", ErrInvalidInput)
 	}
+
+	// Create operation record
+	op, _ := s.queries.CreateBackupOperation(ctx, db.CreateBackupOperationParams{
+		Kind:         "panel_restore",
+		Status:       "running",
+		DatabaseName: "panel",
+		InstanceID:   pgtype.UUID{},
+		ScheduleID:   pgtype.UUID{},
+		S3Key:        key,
+		SizeBytes:    0,
+		Message:      "",
+	})
+
 	cfg, _, err := s.s3Config(ctx)
 	if err != nil {
+		if op.ID != (uuid.UUID{}) {
+			_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+				ID:        op.ID,
+				Status:    "failed",
+				Message:   truncate(err.Error(), 2000),
+				S3Key:     key,
+				SizeBytes: 0,
+			})
+		}
 		return err
 	}
 	log("info", "Downloading "+key)
 	body, err := s3util.Download(ctx, cfg, key)
 	if err != nil {
+		if op.ID != (uuid.UUID{}) {
+			_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+				ID:        op.ID,
+				Status:    "failed",
+				Message:   truncate(err.Error(), 2000),
+				S3Key:     key,
+				SizeBytes: 0,
+			})
+		}
 		return err
 	}
 	defer body.Close()
 
 	gz, err := gzip.NewReader(body)
 	if err != nil {
+		if op.ID != (uuid.UUID{}) {
+			_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+				ID:        op.ID,
+				Status:    "failed",
+				Message:   truncate(fmt.Sprintf("invalid gzip bundle: %v", err), 2000),
+				S3Key:     key,
+				SizeBytes: 0,
+			})
+		}
 		return fmt.Errorf("%w: invalid gzip bundle: %v", ErrInvalidInput, err)
 	}
 	defer gz.Close()
@@ -216,6 +294,15 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 			break
 		}
 		if err != nil {
+			if op.ID != (uuid.UUID{}) {
+				_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+					ID:        op.ID,
+					Status:    "failed",
+					Message:   truncate(err.Error(), 2000),
+					S3Key:     key,
+					SizeBytes: 0,
+				})
+			}
 			return err
 		}
 		if hdr.Typeflag != tar.TypeReg {
@@ -223,6 +310,15 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 		}
 		data, err := io.ReadAll(io.LimitReader(tr, 512<<20))
 		if err != nil {
+			if op.ID != (uuid.UUID{}) {
+				_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+					ID:        op.ID,
+					Status:    "failed",
+					Message:   truncate(err.Error(), 2000),
+					S3Key:     key,
+					SizeBytes: 0,
+				})
+			}
 			return err
 		}
 		name := hdr.Name
@@ -231,6 +327,15 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 			name == "panel/dockpilot.sql.gz" || strings.HasSuffix(name, "/panel/dockpilot.sql.gz"):
 			panelSQL, err = gunzipBytes(data)
 			if err != nil {
+				if op.ID != (uuid.UUID{}) {
+					_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+						ID:        op.ID,
+						Status:    "failed",
+						Message:   truncate(err.Error(), 2000),
+						S3Key:     key,
+						SizeBytes: 0,
+					})
+				}
 				return err
 			}
 			log("info", fmt.Sprintf("Found panel dump (%d bytes)", len(panelSQL)))
@@ -239,6 +344,15 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 			dbName := strings.TrimSuffix(base, ".sql.gz")
 			plain, err := gunzipBytes(data)
 			if err != nil {
+				if op.ID != (uuid.UUID{}) {
+					_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+						ID:        op.ID,
+						Status:    "failed",
+						Message:   truncate(err.Error(), 2000),
+						S3Key:     key,
+						SizeBytes: 0,
+					})
+				}
 				return err
 			}
 			managed[dbName] = plain
@@ -250,10 +364,28 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 	}
 
 	if len(panelSQL) == 0 {
+		if op.ID != (uuid.UUID{}) {
+			_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+				ID:        op.ID,
+				Status:    "failed",
+				Message:   "panel dump missing from bundle",
+				S3Key:     key,
+				SizeBytes: 0,
+			})
+		}
 		return fmt.Errorf("%w: panel dump missing from bundle", ErrInvalidInput)
 	}
 	log("info", "Restoring panel database…")
 	if err := s.restorePanelSQL(ctx, bytes.NewReader(panelSQL)); err != nil {
+		if op.ID != (uuid.UUID{}) {
+			_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+				ID:        op.ID,
+				Status:    "failed",
+				Message:   truncate(fmt.Sprintf("restore panel database: %v", err), 2000),
+				S3Key:     key,
+				SizeBytes: 0,
+			})
+		}
 		return fmt.Errorf("restore panel database: %w", err)
 	}
 	log("info", "Panel database restored")
@@ -264,8 +396,116 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 			len(managed),
 		))
 	}
+
+	// Finish operation record
+	if op.ID != (uuid.UUID{}) {
+		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+			ID:        op.ID,
+			Status:    "success",
+			Message:   "Restore completed",
+			S3Key:     key,
+			SizeBytes: 0,
+		})
+	}
+
 	log("info", "Full restore completed — redeploy sites from git if needed")
 	return nil
+}
+
+func (s *Service) TestS3(ctx context.Context, req TestS3Request) (TestS3Response, error) {
+	var cfg s3util.Config
+
+	access := strings.TrimSpace(req.S3AccessKey)
+	secret := strings.TrimSpace(req.S3SecretKey)
+
+	if access == "" || secret == "" {
+		// Use saved panel credentials
+		existingCfg, _, err := s.s3Config(ctx)
+		if err != nil {
+			return TestS3Response{OK: false, Message: "No saved S3 credentials and none provided"}, nil
+		}
+		cfg = existingCfg
+		// Override with request fields if provided
+		if strings.TrimSpace(req.S3Bucket) != "" {
+			cfg.Bucket = strings.TrimSpace(req.S3Bucket)
+		}
+		if strings.TrimSpace(req.S3Endpoint) != "" {
+			cfg.Endpoint = strings.TrimSpace(req.S3Endpoint)
+		}
+		if strings.TrimSpace(req.S3Region) != "" {
+			cfg.Region = strings.TrimSpace(req.S3Region)
+		}
+		cfg.ForcePathStyle = req.S3ForcePathStyle
+	} else {
+		// Use request credentials
+		bucket := strings.TrimSpace(req.S3Bucket)
+		if bucket == "" {
+			return TestS3Response{OK: false, Message: "s3_bucket is required"}, nil
+		}
+		region := strings.TrimSpace(req.S3Region)
+		if region == "" {
+			region = "ru-central1"
+		}
+		cfg = s3util.Config{
+			Endpoint:       strings.TrimSpace(req.S3Endpoint),
+			Region:         region,
+			Bucket:         bucket,
+			AccessKey:      access,
+			SecretKey:      secret,
+			ForcePathStyle: req.S3ForcePathStyle,
+		}
+	}
+
+	if err := s3util.Ping(ctx, cfg); err != nil {
+		// Don't leak secrets in error message
+		msg := err.Error()
+		msg = strings.ReplaceAll(msg, cfg.AccessKey, "***")
+		msg = strings.ReplaceAll(msg, cfg.SecretKey, "***")
+		return TestS3Response{OK: false, Message: msg}, nil
+	}
+
+	return TestS3Response{OK: true, Message: "Connection successful"}, nil
+}
+
+func (s *Service) ListOperations(ctx context.Context, limit int32) ([]OperationResponse, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.queries.ListBackupOperations(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OperationResponse, 0, len(rows))
+	for _, row := range rows {
+		var instanceID, scheduleID *string
+		if row.InstanceID.Valid {
+			id := uuid.UUID(row.InstanceID.Bytes).String()
+			instanceID = &id
+		}
+		if row.ScheduleID.Valid {
+			id := uuid.UUID(row.ScheduleID.Bytes).String()
+			scheduleID = &id
+		}
+		var finishedAt *time.Time
+		if row.FinishedAt.Valid {
+			t := row.FinishedAt.Time.UTC()
+			finishedAt = &t
+		}
+		out = append(out, OperationResponse{
+			ID:           row.ID.String(),
+			Kind:         row.Kind,
+			Status:       row.Status,
+			DatabaseName: row.DatabaseName,
+			InstanceID:   instanceID,
+			ScheduleID:   scheduleID,
+			S3Key:        row.S3Key,
+			SizeBytes:    row.SizeBytes,
+			Message:      row.Message,
+			StartedAt:    row.StartedAt.UTC(),
+			FinishedAt:   finishedAt,
+		})
+	}
+	return out, nil
 }
 
 func (s *Service) RunDue(ctx context.Context) error {
@@ -531,6 +771,7 @@ func toSettingsResponse(row db.PanelBackupSetting) SettingsResponse {
 		RetentionCount:   int(row.RetentionCount),
 		LastRunAt:        optionalTime(row.LastRunAt),
 		LastStatus:       row.LastStatus,
+		LastError:        row.LastError,
 		UpdatedAt:        row.UpdatedAt,
 	}
 }

@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BackupOperation struct {
+	ID           uuid.UUID          `json:"id"`
+	Kind         string             `json:"kind"`
+	Status       string             `json:"status"`
+	DatabaseName string             `json:"database_name"`
+	InstanceID   pgtype.UUID        `json:"instance_id"`
+	ScheduleID   pgtype.UUID        `json:"schedule_id"`
+	S3Key        string             `json:"s3_key"`
+	SizeBytes    int64              `json:"size_bytes"`
+	Message      string             `json:"message"`
+	StartedAt    time.Time          `json:"started_at"`
+	FinishedAt   pgtype.Timestamptz `json:"finished_at"`
+}
+
 type BillingAccount struct {
 	ID                  uuid.UUID          `json:"id"`
 	Provider            string             `json:"provider"`
@@ -269,6 +283,7 @@ type PanelBackupSetting struct {
 	RetentionCount       int32              `json:"retention_count"`
 	LastRunAt            pgtype.Timestamptz `json:"last_run_at"`
 	LastStatus           string             `json:"last_status"`
+	LastError            string             `json:"last_error"`
 	UpdatedAt            time.Time          `json:"updated_at"`
 }
 
@@ -287,9 +302,11 @@ type PdbBackupSchedule struct {
 	EncryptedS3AccessKey []byte             `json:"encrypted_s3_access_key"`
 	EncryptedS3SecretKey []byte             `json:"encrypted_s3_secret_key"`
 	S3ForcePathStyle     bool               `json:"s3_force_path_style"`
+	UsePanelS3           bool               `json:"use_panel_s3"`
 	RetentionCount       int32              `json:"retention_count"`
 	LastRunAt            pgtype.Timestamptz `json:"last_run_at"`
 	LastStatus           string             `json:"last_status"`
+	LastError            string             `json:"last_error"`
 	CreatedAt            time.Time          `json:"created_at"`
 	UpdatedAt            time.Time          `json:"updated_at"`
 }

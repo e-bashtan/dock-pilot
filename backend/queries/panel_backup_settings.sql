@@ -42,6 +42,7 @@ RETURNING *;
 UPDATE panel_backup_settings SET
     last_run_at = $1,
     last_status = $2,
+    last_error = $3,
     updated_at = now()
 WHERE id = 1
 RETURNING *;

@@ -17,10 +17,10 @@ INSERT INTO pdb_backup_schedules (
     instance_id, database_id, enabled, hour, minute, timezone,
     s3_endpoint, s3_region, s3_bucket, s3_prefix,
     encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style,
-    retention_count
+    use_panel_s3, retention_count
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
-) RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+) RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at
 `
 
 type CreatePgBackupScheduleParams struct {
@@ -37,6 +37,7 @@ type CreatePgBackupScheduleParams struct {
 	EncryptedS3AccessKey []byte      `json:"encrypted_s3_access_key"`
 	EncryptedS3SecretKey []byte      `json:"encrypted_s3_secret_key"`
 	S3ForcePathStyle     bool        `json:"s3_force_path_style"`
+	UsePanelS3           bool        `json:"use_panel_s3"`
 	RetentionCount       int32       `json:"retention_count"`
 }
 
@@ -55,6 +56,7 @@ func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackup
 		arg.EncryptedS3AccessKey,
 		arg.EncryptedS3SecretKey,
 		arg.S3ForcePathStyle,
+		arg.UsePanelS3,
 		arg.RetentionCount,
 	)
 	var i PdbBackupSchedule
@@ -73,9 +75,11 @@ func (q *Queries) CreatePgBackupSchedule(ctx context.Context, arg CreatePgBackup
 		&i.EncryptedS3AccessKey,
 		&i.EncryptedS3SecretKey,
 		&i.S3ForcePathStyle,
+		&i.UsePanelS3,
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -237,7 +241,7 @@ func (q *Queries) DeletePgRoleGrant(ctx context.Context, arg DeletePgRoleGrantPa
 }
 
 const getPgBackupSchedule = `-- name: GetPgBackupSchedule :one
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE id = $1
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at FROM pdb_backup_schedules WHERE id = $1
 `
 
 func (q *Queries) GetPgBackupSchedule(ctx context.Context, id uuid.UUID) (PdbBackupSchedule, error) {
@@ -258,9 +262,11 @@ func (q *Queries) GetPgBackupSchedule(ctx context.Context, id uuid.UUID) (PdbBac
 		&i.EncryptedS3AccessKey,
 		&i.EncryptedS3SecretKey,
 		&i.S3ForcePathStyle,
+		&i.UsePanelS3,
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -352,7 +358,7 @@ func (q *Queries) GetPgRole(ctx context.Context, id uuid.UUID) (PdbRole, error) 
 }
 
 const listEnabledPgBackupSchedules = `-- name: ListEnabledPgBackupSchedules :many
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE enabled = true ORDER BY created_at ASC
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at FROM pdb_backup_schedules WHERE enabled = true ORDER BY created_at ASC
 `
 
 func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PdbBackupSchedule, error) {
@@ -379,9 +385,11 @@ func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PdbBackup
 			&i.EncryptedS3AccessKey,
 			&i.EncryptedS3SecretKey,
 			&i.S3ForcePathStyle,
+			&i.UsePanelS3,
 			&i.RetentionCount,
 			&i.LastRunAt,
 			&i.LastStatus,
+			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -396,7 +404,7 @@ func (q *Queries) ListEnabledPgBackupSchedules(ctx context.Context) ([]PdbBackup
 }
 
 const listPgBackupSchedules = `-- name: ListPgBackupSchedules :many
-SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at FROM pdb_backup_schedules WHERE instance_id = $1 ORDER BY created_at DESC
+SELECT id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at FROM pdb_backup_schedules WHERE instance_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUID) ([]PdbBackupSchedule, error) {
@@ -423,9 +431,11 @@ func (q *Queries) ListPgBackupSchedules(ctx context.Context, instanceID uuid.UUI
 			&i.EncryptedS3AccessKey,
 			&i.EncryptedS3SecretKey,
 			&i.S3ForcePathStyle,
+			&i.UsePanelS3,
 			&i.RetentionCount,
 			&i.LastRunAt,
 			&i.LastStatus,
+			&i.LastError,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -611,10 +621,11 @@ UPDATE pdb_backup_schedules SET
     encrypted_s3_access_key = COALESCE($12, encrypted_s3_access_key),
     encrypted_s3_secret_key = COALESCE($13, encrypted_s3_secret_key),
     s3_force_path_style = COALESCE($14, s3_force_path_style),
-    retention_count = COALESCE($15, retention_count),
+    use_panel_s3 = COALESCE($15, use_panel_s3),
+    retention_count = COALESCE($16, retention_count),
     updated_at = now()
 WHERE id = $1
-RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at
+RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at
 `
 
 type UpdatePgBackupScheduleParams struct {
@@ -632,6 +643,7 @@ type UpdatePgBackupScheduleParams struct {
 	EncryptedS3AccessKey []byte      `json:"encrypted_s3_access_key"`
 	EncryptedS3SecretKey []byte      `json:"encrypted_s3_secret_key"`
 	S3ForcePathStyle     pgtype.Bool `json:"s3_force_path_style"`
+	UsePanelS3           pgtype.Bool `json:"use_panel_s3"`
 	RetentionCount       pgtype.Int4 `json:"retention_count"`
 }
 
@@ -651,6 +663,7 @@ func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackup
 		arg.EncryptedS3AccessKey,
 		arg.EncryptedS3SecretKey,
 		arg.S3ForcePathStyle,
+		arg.UsePanelS3,
 		arg.RetentionCount,
 	)
 	var i PdbBackupSchedule
@@ -669,9 +682,11 @@ func (q *Queries) UpdatePgBackupSchedule(ctx context.Context, arg UpdatePgBackup
 		&i.EncryptedS3AccessKey,
 		&i.EncryptedS3SecretKey,
 		&i.S3ForcePathStyle,
+		&i.UsePanelS3,
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -682,19 +697,26 @@ const updatePgBackupScheduleRun = `-- name: UpdatePgBackupScheduleRun :one
 UPDATE pdb_backup_schedules SET
     last_run_at = $2,
     last_status = $3,
+    last_error = $4,
     updated_at = now()
 WHERE id = $1
-RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, retention_count, last_run_at, last_status, created_at, updated_at
+RETURNING id, instance_id, database_id, enabled, hour, minute, timezone, s3_endpoint, s3_region, s3_bucket, s3_prefix, encrypted_s3_access_key, encrypted_s3_secret_key, s3_force_path_style, use_panel_s3, retention_count, last_run_at, last_status, last_error, created_at, updated_at
 `
 
 type UpdatePgBackupScheduleRunParams struct {
 	ID         uuid.UUID          `json:"id"`
 	LastRunAt  pgtype.Timestamptz `json:"last_run_at"`
 	LastStatus string             `json:"last_status"`
+	LastError  string             `json:"last_error"`
 }
 
 func (q *Queries) UpdatePgBackupScheduleRun(ctx context.Context, arg UpdatePgBackupScheduleRunParams) (PdbBackupSchedule, error) {
-	row := q.db.QueryRow(ctx, updatePgBackupScheduleRun, arg.ID, arg.LastRunAt, arg.LastStatus)
+	row := q.db.QueryRow(ctx, updatePgBackupScheduleRun,
+		arg.ID,
+		arg.LastRunAt,
+		arg.LastStatus,
+		arg.LastError,
+	)
 	var i PdbBackupSchedule
 	err := row.Scan(
 		&i.ID,
@@ -711,9 +733,11 @@ func (q *Queries) UpdatePgBackupScheduleRun(ctx context.Context, arg UpdatePgBac
 		&i.EncryptedS3AccessKey,
 		&i.EncryptedS3SecretKey,
 		&i.S3ForcePathStyle,
+		&i.UsePanelS3,
 		&i.RetentionCount,
 		&i.LastRunAt,
 		&i.LastStatus,
+		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
