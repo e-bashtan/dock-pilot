@@ -110,6 +110,12 @@ export const ru: Messages = {
     tableUpdated: "Обновлено",
     typeWebsite: "Сайт",
     typeTelegramBot: "Telegram-бот",
+    delete: "Удалить",
+    deleting: "Удаление…",
+    deleteConfirmTitle: "Удалить сайт",
+    deleteConfirm:
+      "Удалить «{name}»? Контейнер, nginx-конфиг и SSL-сертификат будут удалены. Это нельзя отменить.",
+    deleteFailed: "Не удалось удалить сайт",
   },
   system: {
     title: "Сервер",
@@ -188,7 +194,8 @@ export const ru: Messages = {
       "Остановить контейнер «{name}»? Сайт будет недоступен, пока вы снова не запустите его.",
     restartConfirm:
       "Перезапустить контейнер «{name}»? Будет кратковременный простой.",
-    deleteConfirm: "Удалить «{name}» и все связанные данные? Это нельзя отменить.",
+    deleteConfirm:
+      "Удалить «{name}»? Контейнер, nginx-конфиг и SSL-сертификат будут удалены. Это нельзя отменить.",
     startAlreadyRunning: "Контейнер уже запущен",
     stopNotRunning: "Контейнер не запущен",
     restartNotRunning: "Для перезапуска контейнер должен быть запущен",

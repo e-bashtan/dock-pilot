@@ -18,8 +18,11 @@ type SiteConfig struct {
 // Manager generates and applies nginx configuration.
 type Manager interface {
 	WriteConfig(ctx context.Context, siteKey string, cfg SiteConfig) error
+	RemoveConfig(ctx context.Context, siteKey string) error
 	TestConfig(ctx context.Context) error
 	Reload(ctx context.Context) error
+	// EnsureHostDefaults applies http-level settings needed by the panel (upload limits, etc.).
+	EnsureHostDefaults(ctx context.Context) error
 }
 
 // StubManager logs nginx operations.
@@ -44,6 +47,16 @@ func (s *StubManager) WriteConfig(ctx context.Context, siteKey string, cfg SiteC
 		"ssl_enabled", cfg.SSLEnabled,
 		"force_https", cfg.ForceHTTPS,
 	)
+	return nil
+}
+
+func (s *StubManager) RemoveConfig(ctx context.Context, siteKey string) error {
+	s.logger.InfoContext(ctx, "stub nginx remove config", "site_key", siteKey)
+	return nil
+}
+
+func (s *StubManager) EnsureHostDefaults(ctx context.Context) error {
+	s.logger.InfoContext(ctx, "stub nginx ensure host defaults")
 	return nil
 }
 

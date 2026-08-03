@@ -25,7 +25,14 @@ func TestServerNamesHashSettings_defaultBump(t *testing.T) {
 
 func TestApplyNginxHashTuningScriptContainsMarkers(t *testing.T) {
 	script := applyNginxHashTuningScript(128, 2048)
-	for _, want := range []string{hashBeginMarker, hashEndMarker, "BUCKET=128", "grep -qF"} {
+	for _, want := range []string{
+		hashBeginMarker,
+		hashEndMarker,
+		"BUCKET=128",
+		"client_max_body_size",
+		"512m",
+		"grep -qF",
+	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("script missing %q", want)
 		}

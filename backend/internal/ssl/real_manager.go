@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ebash/barn/backend/internal/hostexec"
@@ -115,6 +117,42 @@ func certbotArgs(email string, domains []string) []string {
 		args = append(args, "-d", d)
 	}
 	return args
+}
+
+func (m *RealManager) DeleteCertificate(ctx context.Context, primaryDomain string) error {
+	name := strings.TrimSpace(primaryDomain)
+	if name == "" {
+		return nil
+	}
+
+	livePath := m.host.ChrootPath(filepath.Join("/etc/letsencrypt/live", name))
+	if _, err := os.Stat(livePath); err != nil {
+		if os.IsNotExist(err) {
+			m.logger.InfoContext(ctx, "certbot delete skipped, certificate not found", "domain", name)
+			return nil
+		}
+		return fmt.Errorf("stat certificate: %w", err)
+	}
+
+	args := []string{"delete", "--cert-name", name, "--non-interactive"}
+	m.logger.InfoContext(ctx, "certbot delete", "domain", name)
+
+	var out string
+	var err error
+	if m.host.UsesChroot() {
+		out, err = m.issueOnHost(ctx, args)
+		if err != nil {
+			m.logger.WarnContext(ctx, "certbot delete via nsenter failed, trying chroot", "error", err)
+			out, err = m.issueInChroot(ctx, args)
+		}
+	} else {
+		out, err = m.host.RunHostCombined(ctx, "certbot", args...)
+	}
+	if err != nil {
+		return fmt.Errorf("certbot delete: %w", err)
+	}
+	m.logger.InfoContext(ctx, "certbot delete finished", "output", strings.TrimSpace(out))
+	return nil
 }
 
 func shellQuote(s string) string {

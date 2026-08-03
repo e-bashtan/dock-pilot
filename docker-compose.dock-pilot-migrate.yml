@@ -26,7 +26,7 @@ services:
       - .env
     environment:
       GOOSE_DRIVER: postgres
-      GOOSE_DBSTRING: ${DATABASE_URL:?set DATABASE_URL in .env}
+      GOOSE_DBSTRING: postgres://${POSTGRES_USER:-dockpilot}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-dockpilot}?sslmode=disable
     depends_on:
       postgres:
         condition: service_healthy

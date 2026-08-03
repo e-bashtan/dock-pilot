@@ -105,6 +105,36 @@ func (m *RealManager) WriteConfig(ctx context.Context, siteKey string, cfg SiteC
 	return nil
 }
 
+func (m *RealManager) RemoveConfig(ctx context.Context, siteKey string) error {
+	safeName := safeFilename(siteKey)
+	removed := 0
+	for _, prefix := range []string{"barn-", "dockpilot-", "dock-pilot-"} {
+		name := prefix + safeName + ".conf"
+		availablePath := filepath.Join(m.available, name)
+		enabledPath := filepath.Join(m.enabled, name)
+		if err := m.host.Remove(enabledPath); err == nil {
+			removed++
+		}
+		if err := m.host.Remove(availablePath); err == nil {
+			removed++
+		}
+	}
+
+	// Also drop any leftover vhost that still declares this domain (legacy/manual).
+	primary := strings.TrimSpace(siteKey)
+	if primary != "" {
+		if err := m.cleanupConflictingConfigs(primary, ""); err != nil {
+			m.logger.WarnContext(ctx, "nginx cleanup by domain failed", "domain", primary, "error", err)
+		}
+	}
+
+	m.logger.InfoContext(ctx, "nginx config removed",
+		"site_key", siteKey,
+		"files_touched", removed,
+	)
+	return nil
+}
+
 // cleanupConflictingConfigs removes other vhosts (manual or legacy barn/dockpilot) for the same domain.
 func (m *RealManager) cleanupConflictingConfigs(primaryDomain, keepAvailablePath string) error {
 	primaryDomain = strings.TrimSpace(primaryDomain)

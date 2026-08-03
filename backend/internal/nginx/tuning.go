@@ -13,6 +13,8 @@ const (
 	legacyHashBegin     = "# BEGIN dock-pilot nginx hash"
 	legacyHashEnd       = "# END dock-pilot nginx hash"
 	legacyConfDHashPath = "/etc/nginx/conf.d/00-dockpilot-global.conf"
+	// Matches backend restore-upload MaxBytesReader (512 MiB).
+	panelUploadBodyLimit = "512m"
 )
 
 // serverNamesHashSettings returns nginx http-level hash settings for the given domain list.
@@ -63,6 +65,7 @@ LEGACY_BEGIN=%q
 LEGACY_END=%q
 BUCKET=%d
 MAX=%d
+BODY=%q
 
 rm -f %q /etc/nginx/conf.d/00-barn-global.conf /etc/nginx/conf.d/00-vpsdeploy-global.conf
 
@@ -80,10 +83,11 @@ sed -i "/^[[:space:]]*http[[:space:]]*{/a\\
     ${BEGIN}\\
     server_names_hash_bucket_size ${BUCKET};\\
     server_names_hash_max_size ${MAX};\\
+    client_max_body_size ${BODY};\\
     ${END}" "$NGINX"
 
 grep -qF "$BEGIN" "$NGINX"
-`, nginxConfHostPath, hashBeginMarker, hashEndMarker, legacyHashBegin, legacyHashEnd, bucketSize, maxSize, legacyConfDHashPath)
+`, nginxConfHostPath, hashBeginMarker, hashEndMarker, legacyHashBegin, legacyHashEnd, bucketSize, maxSize, panelUploadBodyLimit, legacyConfDHashPath)
 }
 
 // pruneForeignHashScript removes legacy conf.d snippets and comments hash lines that are
@@ -141,7 +145,51 @@ func (m *RealManager) ensureGlobalTuning(ctx context.Context, domains []string) 
 		"path", nginxConfHostPath,
 		"server_names_hash_bucket_size", bucket,
 		"server_names_hash_max_size", maxSize,
+		"client_max_body_size", panelUploadBodyLimit,
 	)
+	return nil
+}
+
+func (m *RealManager) EnsureHostDefaults(ctx context.Context) error {
+	if err := m.ensureGlobalTuning(ctx, nil); err != nil {
+		return err
+	}
+	if err := m.ensurePanelBodyLimits(ctx); err != nil {
+		m.logger.WarnContext(ctx, "panel body limit patch", "error", err)
+	}
+	if err := m.TestConfig(ctx); err != nil {
+		return fmt.Errorf("nginx -t after host defaults: %w", err)
+	}
+	if err := m.Reload(ctx); err != nil {
+		return fmt.Errorf("nginx reload after host defaults: %w", err)
+	}
+	return nil
+}
+
+// ensurePanelBodyLimits sets client_max_body_size on panel vhosts (covers certbot SSL copies).
+func (m *RealManager) ensurePanelBodyLimits(ctx context.Context) error {
+	script := fmt.Sprintf(`set -e
+BODY=%q
+for f in /etc/nginx/sites-available/barn-panel.conf \
+         /etc/nginx/sites-available/barn-panel-ip.conf \
+         /etc/nginx/sites-available/dockpilot-panel.conf \
+         /etc/nginx/sites-available/dockpilot-panel-ip.conf \
+         /etc/nginx/sites-enabled/barn-panel.conf \
+         /etc/nginx/sites-enabled/barn-panel-ip.conf; do
+  [ -f "$f" ] || continue
+  if grep -qE '[[:space:]]client_max_body_size[[:space:]]' "$f"; then
+    sed -i -E "s/client_max_body_size[[:space:]]+[^;]+;/client_max_body_size ${BODY};/g" "$f"
+  else
+    # Insert after each "server {" so HTTP and HTTPS blocks both get the limit.
+    sed -i "/^[[:space:]]*server[[:space:]]*{/a\\
+    client_max_body_size ${BODY};" "$f"
+  fi
+done
+`, panelUploadBodyLimit)
+	if err := m.host.RunShell(ctx, script); err != nil {
+		return err
+	}
+	m.logger.InfoContext(ctx, "panel nginx body limit ensured", "limit", panelUploadBodyLimit)
 	return nil
 }
 

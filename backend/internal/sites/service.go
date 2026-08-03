@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/ebash/barn/backend/internal/db"
 	"github.com/ebash/barn/backend/internal/docker"
 	"github.com/ebash/barn/backend/internal/healthcheck"
+	"github.com/ebash/barn/backend/internal/nginx"
+	"github.com/ebash/barn/backend/internal/ssl"
 )
 
 // DeploySecrets loads decrypted secrets for running a site container.
@@ -31,10 +34,34 @@ type Service struct {
 	health  *healthcheck.Checker
 	docker  docker.Client
 	secrets DeploySecrets
+	nginx   nginx.Manager
+	ssl     ssl.Manager
+	logger  *slog.Logger
 }
 
-func NewService(pool *pgxpool.Pool, queries *db.Queries, checker *healthcheck.Checker, dockerClient docker.Client, secretsSvc DeploySecrets) *Service {
-	return &Service{pool: pool, queries: queries, health: checker, docker: dockerClient, secrets: secretsSvc}
+func NewService(
+	pool *pgxpool.Pool,
+	queries *db.Queries,
+	checker *healthcheck.Checker,
+	dockerClient docker.Client,
+	secretsSvc DeploySecrets,
+	nginxMgr nginx.Manager,
+	sslMgr ssl.Manager,
+	logger *slog.Logger,
+) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Service{
+		pool:    pool,
+		queries: queries,
+		health:  checker,
+		docker:  dockerClient,
+		secrets: secretsSvc,
+		nginx:   nginxMgr,
+		ssl:     sslMgr,
+		logger:  logger,
+	}
 }
 
 func (s *Service) Create(ctx context.Context, req CreateSiteRequest) (SiteResponse, error) {
@@ -219,6 +246,41 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateSiteReques
 }
 
 func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	site, err := s.queries.GetSite(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("get site: %w", err)
+	}
+
+	names := containerNamesForSite(site)
+	if err := s.docker.Stop(ctx, names...); err != nil {
+		s.logger.WarnContext(ctx, "stop container on site delete", "site_id", id, "error", err)
+	}
+
+	primary := extractHost(site.PrimaryUrl)
+	if IsWebSite(site.SiteType) {
+		configKey := primary
+		if configKey == "" {
+			configKey = site.Slug
+		}
+		if s.nginx != nil {
+			if err := s.nginx.RemoveConfig(ctx, configKey); err != nil {
+				s.logger.WarnContext(ctx, "remove nginx config on site delete", "site_id", id, "error", err)
+			} else if err := s.nginx.TestConfig(ctx); err != nil {
+				s.logger.WarnContext(ctx, "nginx -t after site delete", "site_id", id, "error", err)
+			} else if err := s.nginx.Reload(ctx); err != nil {
+				s.logger.WarnContext(ctx, "nginx reload after site delete", "site_id", id, "error", err)
+			}
+		}
+		if s.ssl != nil && primary != "" {
+			if err := s.ssl.DeleteCertificate(ctx, primary); err != nil {
+				s.logger.WarnContext(ctx, "delete certificate on site delete", "site_id", id, "domain", primary, "error", err)
+			}
+		}
+	}
+
 	if err := s.queries.DeleteSite(ctx, id); err != nil {
 		return fmt.Errorf("delete site: %w", err)
 	}

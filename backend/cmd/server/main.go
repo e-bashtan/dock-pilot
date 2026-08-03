@@ -76,9 +76,15 @@ func main() {
 
 	logger.Info("deploy mode", "mode", cfg.Deploy.Mode, "work_dir", cfg.Deploy.WorkDir)
 
+	if err := nginxMgr.EnsureHostDefaults(ctx); err != nil {
+		logger.Warn("nginx host defaults", "error", err)
+	} else {
+		logger.Info("nginx host defaults applied", "client_max_body_size", "512m")
+	}
+
 	healthChecker := healthcheck.NewChecker(dockerClient)
 	secretsSvc := secrets.NewService(queries, cipher)
-	sitesSvc := sites.NewService(pool, queries, healthChecker, dockerClient, secretsSvc)
+	sitesSvc := sites.NewService(pool, queries, healthChecker, dockerClient, secretsSvc, nginxMgr, sslMgr, logger)
 	pgdbSvc := pgdb.NewService(queries, dockerClient, cipher, logger)
 	panelBackupSvc := panelbackup.NewService(queries, dockerClient, cipher, pgdbSvc, cfg.DatabaseURL, logger)
 	notifSvc := notifications.NewService(queries, cipher, sitesSvc, pgdbSvc)

@@ -108,6 +108,12 @@ export const en = {
     tableUpdated: "Updated",
     typeWebsite: "Website",
     typeTelegramBot: "Telegram bot",
+    delete: "Delete",
+    deleting: "Deleting…",
+    deleteConfirmTitle: "Delete site",
+    deleteConfirm:
+      "Delete «{name}»? The container, nginx config, and SSL certificate will be removed. This cannot be undone.",
+    deleteFailed: "Failed to delete site",
   },
   system: {
     title: "Server",
@@ -186,7 +192,8 @@ export const en = {
       "Stop the container for «{name}»? The site will be unavailable until you start it again.",
     restartConfirm:
       "Restart the container for «{name}»? There will be a brief downtime.",
-    deleteConfirm: "Delete «{name}» and all related data? This cannot be undone.",
+    deleteConfirm:
+      "Delete «{name}»? The container, nginx config, and SSL certificate will be removed. This cannot be undone.",
     startAlreadyRunning: "Container is already running",
     stopNotRunning: "Container is not running",
     restartNotRunning: "Container must be running to restart",

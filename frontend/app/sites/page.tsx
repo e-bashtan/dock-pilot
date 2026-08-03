@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { BillingExpiryPanel } from "@/components/BillingExpiryPanel";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { HealthBadge } from "@/components/HealthBadge";
 import { PostgresHealthSummary } from "@/components/PostgresHealthSummary";
 import { ServerStatusPanel } from "@/components/ServerStatusPanel";
@@ -18,6 +19,20 @@ export default function SitesPage() {
   const [healthBySite, setHealthBySite] = useState<Record<string, SiteHealth>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SiteListItem | null>(null);
+
+  const loadSites = useCallback(async () => {
+    try {
+      const rows = await api.listSites();
+      setSites(rows);
+      setError(null);
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : t("sites.loadFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
 
   const loadHealth = useCallback(async () => {
     try {
@@ -33,17 +48,25 @@ export default function SitesPage() {
   }, []);
 
   useEffect(() => {
-    api
-      .listSites()
-      .then(setSites)
-      .catch((e: unknown) => {
-        setError(e instanceof ApiError ? e.message : t("sites.loadFailed"));
-      })
-      .finally(() => setLoading(false));
-    loadHealth();
+    void loadSites();
+    void loadHealth();
     const timer = setInterval(loadHealth, 30_000);
     return () => clearInterval(timer);
-  }, [loadHealth, t]);
+  }, [loadHealth, loadSites]);
+
+  const runDelete = async (site: SiteListItem) => {
+    setDeletingId(site.id);
+    setError(null);
+    try {
+      await api.deleteSite(site.id);
+      setPendingDelete(null);
+      setSites((prev) => prev.filter((s) => s.id !== site.id));
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : t("sites.deleteFailed"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div>
@@ -81,6 +104,7 @@ export default function SitesPage() {
                 <th>{t("sites.tableHealth")}</th>
                 <th className="col-hide-mobile">{t("sites.tableStatus")}</th>
                 <th className="col-hide-mobile">{t("sites.tableUpdated")}</th>
+                <th>{t("sites.delete")}</th>
               </tr>
             </thead>
             <tbody>
@@ -127,6 +151,18 @@ export default function SitesPage() {
                     <StatusBadge status={site.status} />
                   </td>
                   <td className="col-hide-mobile">{formatDateTime(site.updated_at)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={deletingId !== null}
+                      onClick={() => setPendingDelete(site)}
+                    >
+                      {deletingId === site.id
+                        ? t("sites.deleting")
+                        : t("sites.delete")}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -134,6 +170,24 @@ export default function SitesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={t("sites.deleteConfirmTitle")}
+        message={
+          pendingDelete
+            ? t("sites.deleteConfirm", { name: pendingDelete.name })
+            : ""
+        }
+        danger
+        busy={deletingId !== null}
+        onCancel={() => {
+          if (deletingId === null) setPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (pendingDelete) void runDelete(pendingDelete);
+        }}
+      />
     </div>
   );
 }

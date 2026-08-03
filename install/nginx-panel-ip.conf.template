@@ -5,6 +5,9 @@ server {
     listen {{PANEL_HTTP_PORT}};
     server_name _;
 
+    # DB dump restore uploads (API allows up to 512 MiB).
+    client_max_body_size 512m;
+
     location /api/ {
         proxy_pass http://127.0.0.1:{{API_PORT}};
         proxy_http_version 1.1;
@@ -13,7 +16,10 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
+        proxy_request_buffering off;
         proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         chunked_transfer_encoding off;
     }
 

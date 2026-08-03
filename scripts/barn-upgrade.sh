@@ -163,6 +163,11 @@ if [[ -d "${EXTRACT}/scripts" ]]; then
   chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
   log "Updated scripts/"
 fi
+if [[ -d "${EXTRACT}/install" ]]; then
+  mkdir -p "${ROOT}/install"
+  cp -a "${EXTRACT}/install/." "${ROOT}/install/"
+  log "Updated install/ (nginx templates)"
+fi
 if [[ -f "${EXTRACT}/VERSION" ]]; then
   cp "${EXTRACT}/VERSION" "${ROOT}/VERSION"
   log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
@@ -195,10 +200,12 @@ if [[ -x "${ROOT}/scripts/configure-panel-nginx.sh" ]]; then
     [[ "$SKIP_CERT" -eq 1 ]] && NGINX_ARGS+=(--skip-cert)
     bash "${ROOT}/scripts/configure-panel-nginx.sh" "${NGINX_ARGS[@]}"
   elif [[ -n "${PANEL_DOMAIN:-}" ]]; then
-    log "Refreshing nginx panel config..."
+    log "Refreshing nginx panel config (domain from .env)..."
     bash "${ROOT}/scripts/configure-panel-nginx.sh" || log "WARN: configure-panel-nginx failed — check nginx manually"
   else
-    log "Panel on IP:port — skipping nginx refresh (use --domain to add HTTPS)"
+    # IP:port panel — still rewrite vhost so template fixes (e.g. client_max_body_size) apply.
+    log "Refreshing nginx panel config (IP access)..."
+    bash "${ROOT}/scripts/configure-panel-nginx.sh" || log "WARN: configure-panel-nginx failed — check nginx manually"
   fi
 fi
 
