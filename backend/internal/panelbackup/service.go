@@ -301,9 +301,18 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 		slugs = append(slugs, site.Slug)
 	}
 	managedNames, _ := s.pgdb.ListManagedDatabaseNames(ctx)
-	u, _ := url.Parse(s.databaseURL)
 	panelDB := "barn"
-	if u != nil && strings.Trim(u.Path, "/") != "" {
+	if user, password, preferred, err := s.panelDBCreds(ctx); err == nil {
+		if container, cerr := s.resolvePanelPostgresContainer(ctx); cerr == nil {
+			if name, rerr := s.resolvePanelDatabaseName(ctx, container, user, password, preferred); rerr == nil {
+				panelDB = name
+			} else {
+				panelDB = preferred
+			}
+		} else {
+			panelDB = preferred
+		}
+	} else if u, err := url.Parse(s.databaseURL); err == nil && strings.Trim(u.Path, "/") != "" {
 		panelDB = strings.Trim(u.Path, "/")
 	}
 
@@ -366,11 +375,15 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 }
 
 func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
-	user, password, dbName, err := s.panelDBCreds(ctx)
+	user, password, preferredDB, err := s.panelDBCreds(ctx)
 	if err != nil {
 		return err
 	}
 	container, err := s.resolvePanelPostgresContainer(ctx)
+	if err != nil {
+		return err
+	}
+	dbName, err := s.resolvePanelDatabaseName(ctx, container, user, password, preferredDB)
 	if err != nil {
 		return err
 	}
@@ -400,11 +413,15 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 }
 
 func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
-	user, password, dbName, err := s.panelDBCreds(ctx)
+	user, password, preferredDB, err := s.panelDBCreds(ctx)
 	if err != nil {
 		return err
 	}
 	container, err := s.resolvePanelPostgresContainer(ctx)
+	if err != nil {
+		return err
+	}
+	dbName, err := s.resolvePanelDatabaseName(ctx, container, user, password, preferredDB)
 	if err != nil {
 		return err
 	}
@@ -619,33 +636,76 @@ func parseDatabaseURL(raw string) (user, password, dbName string, err error) {
 // panelDBCreds resolves pg_dump/psql credentials for the panel database.
 // Priority: managed Postgres admin (pdb) → POSTGRES_* env → DATABASE_URL.
 // This avoids stale DATABASE_URL users like dockpilot after a barn rebrand.
-func (s *Service) panelDBCreds(ctx context.Context) (user, password, dbName string, err error) {
+func (s *Service) panelDBCreds(ctx context.Context) (user, password, preferredDB string, err error) {
 	urlUser, urlPass, urlDB, urlErr := parseDatabaseURL(s.databaseURL)
 
-	dbName = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
-	if dbName == "" && urlErr == nil {
-		dbName = urlDB
+	preferredDB = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+	if preferredDB == "" && urlErr == nil {
+		preferredDB = urlDB
 	}
-	if dbName == "" {
-		dbName = "barn"
+	if preferredDB == "" {
+		preferredDB = "barn"
 	}
 
 	if s.pgdb != nil {
 		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" && adminPass != "" {
-			return adminUser, adminPass, dbName, nil
+			return adminUser, adminPass, preferredDB, nil
 		}
 	}
 
 	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
 		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
-			return u, p, dbName, nil
+			return u, p, preferredDB, nil
 		}
 	}
 
 	if urlErr != nil {
 		return "", "", "", urlErr
 	}
-	return urlUser, urlPass, dbName, nil
+	return urlUser, urlPass, preferredDB, nil
+}
+
+// resolvePanelDatabaseName picks an existing DB among preferred + barn/dockpilot aliases.
+func (s *Service) resolvePanelDatabaseName(ctx context.Context, container, user, password, preferred string) (string, error) {
+	seen := map[string]struct{}{}
+	var candidates []string
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		candidates = append(candidates, name)
+	}
+	add(preferred)
+	add(os.Getenv("POSTGRES_DB"))
+	add("barn")
+	add("dockpilot")
+
+	for _, name := range candidates {
+		var stdout, stderr bytes.Buffer
+		code, err := s.docker.Exec(ctx, docker.ExecOptions{
+			ContainerName: container,
+			Cmd: []string{
+				"psql",
+				"-U", user,
+				"-d", name,
+				"-tAc", "SELECT 1",
+			},
+			Env: []string{"PGPASSWORD=" + password},
+		}, nil, &stdout, &stderr)
+		if err == nil && code == 0 && strings.TrimSpace(stdout.String()) == "1" {
+			if name != preferred {
+				s.logger.InfoContext(ctx, "panel database resolved",
+					"preferred", preferred, "using", name)
+			}
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("panel database not found (tried %s)", strings.Join(candidates, ", "))
 }
 
 func buildSecretsEnv() string {
