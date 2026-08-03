@@ -302,16 +302,8 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 	}
 	managedNames, _ := s.pgdb.ListManagedDatabaseNames(ctx)
 	panelDB := "barn"
-	if user, password, preferred, err := s.panelDBCreds(ctx); err == nil {
-		if container, cerr := s.resolvePanelPostgresContainer(ctx); cerr == nil {
-			if name, rerr := s.resolvePanelDatabaseName(ctx, container, user, password, preferred); rerr == nil {
-				panelDB = name
-			} else {
-				panelDB = preferred
-			}
-		} else {
-			panelDB = preferred
-		}
+	if conn, err := s.resolvePanelDumpConn(ctx); err == nil {
+		panelDB = conn.dbName
 	} else if u, err := url.Parse(s.databaseURL); err == nil && strings.Trim(u.Path, "/") != "" {
 		panelDB = strings.Trim(u.Path, "/")
 	}
@@ -375,29 +367,23 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 }
 
 func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
-	user, password, preferredDB, err := s.panelDBCreds(ctx)
-	if err != nil {
-		return err
-	}
-	container, err := s.resolvePanelPostgresContainer(ctx)
-	if err != nil {
-		return err
-	}
-	dbName, err := s.resolvePanelDatabaseName(ctx, container, user, password, preferredDB)
+	conn, err := s.resolvePanelDumpConn(ctx)
 	if err != nil {
 		return err
 	}
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: container,
+		ContainerName: conn.container,
 		Cmd: []string{
 			"pg_dump",
-			"-U", user,
-			"-d", dbName,
+			"-h", "127.0.0.1",
+			"-p", "5432",
+			"-U", conn.user,
+			"-d", conn.dbName,
 			"--no-owner",
 			"--no-acl",
 		},
-		Env: []string{"PGPASSWORD=" + password},
+		Env: []string{"PGPASSWORD=" + conn.password},
 	}, nil, w, &stderr)
 	if err != nil {
 		return err
@@ -409,32 +395,27 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 		}
 		return fmt.Errorf("%s", msg)
 	}
+	s.logger.InfoContext(ctx, "panel dump ok", "database", conn.dbName, "user", conn.user)
 	return nil
 }
 
 func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
-	user, password, preferredDB, err := s.panelDBCreds(ctx)
-	if err != nil {
-		return err
-	}
-	container, err := s.resolvePanelPostgresContainer(ctx)
-	if err != nil {
-		return err
-	}
-	dbName, err := s.resolvePanelDatabaseName(ctx, container, user, password, preferredDB)
+	conn, err := s.resolvePanelDumpConn(ctx)
 	if err != nil {
 		return err
 	}
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: container,
+		ContainerName: conn.container,
 		Cmd: []string{
 			"psql",
+			"-h", "127.0.0.1",
+			"-p", "5432",
 			"-v", "ON_ERROR_STOP=1",
-			"-U", user,
-			"-d", dbName,
+			"-U", conn.user,
+			"-d", conn.dbName,
 		},
-		Env: []string{"PGPASSWORD=" + password},
+		Env: []string{"PGPASSWORD=" + conn.password},
 	}, r, io.Discard, &stderr)
 	if err != nil {
 		return err
@@ -633,39 +614,78 @@ func parseDatabaseURL(raw string) (user, password, dbName string, err error) {
 	return user, password, dbName, nil
 }
 
-// panelDBCreds resolves pg_dump/psql credentials for the panel database.
-// Priority: managed Postgres admin (pdb) → POSTGRES_* env → DATABASE_URL.
-// This avoids stale DATABASE_URL users like dockpilot after a barn rebrand.
-func (s *Service) panelDBCreds(ctx context.Context) (user, password, preferredDB string, err error) {
-	urlUser, urlPass, urlDB, urlErr := parseDatabaseURL(s.databaseURL)
-
-	preferredDB = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
-	if preferredDB == "" && urlErr == nil {
-		preferredDB = urlDB
-	}
-	if preferredDB == "" {
-		preferredDB = "barn"
-	}
-
-	if s.pgdb != nil {
-		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" && adminPass != "" {
-			return adminUser, adminPass, preferredDB, nil
-		}
-	}
-
-	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
-		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
-			return u, p, preferredDB, nil
-		}
-	}
-
-	if urlErr != nil {
-		return "", "", "", urlErr
-	}
-	return urlUser, urlPass, preferredDB, nil
+type panelDumpConn struct {
+	container string
+	user      string
+	password  string
+	dbName    string
 }
 
-// resolvePanelDatabaseName picks an existing DB among preferred + barn/dockpilot aliases.
+// resolvePanelDumpConn finds working credentials + database for panel pg_dump.
+// Prefers DATABASE_URL (same as the running API), then POSTGRES_*, then managed admin,
+// and finally discovers a DB that has the sites table.
+func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, error) {
+	container, err := s.resolvePanelPostgresContainer(ctx)
+	if err != nil {
+		return panelDumpConn{}, err
+	}
+
+	type cred struct {
+		user, pass, preferredDB, source string
+	}
+	var tries []cred
+
+	if u, p, d, urlErr := parseDatabaseURL(s.databaseURL); urlErr == nil {
+		tries = append(tries, cred{u, p, d, "DATABASE_URL"})
+	}
+	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
+		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
+			d := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+			if d == "" {
+				d = "barn"
+			}
+			tries = append(tries, cred{u, p, d, "POSTGRES_*"})
+		}
+	}
+	if s.pgdb != nil {
+		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" {
+			preferred := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+			if preferred == "" {
+				if _, _, d, urlErr := parseDatabaseURL(s.databaseURL); urlErr == nil {
+					preferred = d
+				}
+			}
+			if preferred == "" {
+				preferred = "barn"
+			}
+			tries = append(tries, cred{adminUser, adminPass, preferred, "pdb_admin"})
+		}
+	}
+
+	var lastErr error
+	for _, t := range tries {
+		dbName, probeErr := s.resolvePanelDatabaseName(ctx, container, t.user, t.pass, t.preferredDB)
+		if probeErr != nil {
+			lastErr = fmt.Errorf("%s: %w", t.source, probeErr)
+			s.logger.WarnContext(ctx, "panel dump probe failed", "source", t.source, "error", probeErr)
+			continue
+		}
+		s.logger.InfoContext(ctx, "panel dump connection resolved",
+			"source", t.source, "user", t.user, "database", dbName)
+		return panelDumpConn{
+			container: container,
+			user:      t.user,
+			password:  t.pass,
+			dbName:    dbName,
+		}, nil
+	}
+	if lastErr != nil {
+		return panelDumpConn{}, lastErr
+	}
+	return panelDumpConn{}, fmt.Errorf("no credentials available for panel dump")
+}
+
+// resolvePanelDatabaseName picks an existing DB: preferred aliases, then any DB with public.sites.
 func (s *Service) resolvePanelDatabaseName(ctx context.Context, container, user, password, preferred string) (string, error) {
 	seen := map[string]struct{}{}
 	var candidates []string
@@ -685,27 +705,112 @@ func (s *Service) resolvePanelDatabaseName(ctx context.Context, container, user,
 	add("barn")
 	add("dockpilot")
 
+	var errs []string
 	for _, name := range candidates {
+		ok, detail := s.probeDatabase(ctx, container, user, password, name)
+		if ok {
+			return name, nil
+		}
+		if detail != "" {
+			errs = append(errs, name+": "+detail)
+		}
+	}
+
+	// Discover: list non-template DBs and pick one that has public.sites.
+	listed, listErr := s.listDatabases(ctx, container, user, password)
+	if listErr != nil {
+		errs = append(errs, "list: "+listErr.Error())
+	} else {
+		for _, name := range listed {
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			if s.databaseHasSitesTable(ctx, container, user, password, name) {
+				s.logger.InfoContext(ctx, "panel database discovered via sites table", "database", name)
+				return name, nil
+			}
+		}
+		errs = append(errs, "listed=["+strings.Join(listed, ",")+"]")
+	}
+
+	return "", fmt.Errorf("panel database not found (%s)", strings.Join(errs, "; "))
+}
+
+func (s *Service) probeDatabase(ctx context.Context, container, user, password, dbName string) (ok bool, detail string) {
+	var stdout, stderr bytes.Buffer
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: container,
+		Cmd: []string{
+			"psql",
+			"-h", "127.0.0.1",
+			"-p", "5432",
+			"-U", user,
+			"-d", dbName,
+			"-tAc", "SELECT 1",
+		},
+		Env: []string{"PGPASSWORD=" + password},
+	}, nil, &stdout, &stderr)
+	if err != nil {
+		return false, err.Error()
+	}
+	if code != 0 {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = fmt.Sprintf("exit %d", code)
+		}
+		return false, msg
+	}
+	return strings.TrimSpace(stdout.String()) == "1", ""
+}
+
+func (s *Service) listDatabases(ctx context.Context, container, user, password string) ([]string, error) {
+	// Connect via maintenance DB candidates.
+	for _, maintenance := range []string{"postgres", "barn", "dockpilot", user} {
 		var stdout, stderr bytes.Buffer
 		code, err := s.docker.Exec(ctx, docker.ExecOptions{
 			ContainerName: container,
 			Cmd: []string{
 				"psql",
+				"-h", "127.0.0.1",
+				"-p", "5432",
 				"-U", user,
-				"-d", name,
-				"-tAc", "SELECT 1",
+				"-d", maintenance,
+				"-tAc", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
 			},
 			Env: []string{"PGPASSWORD=" + password},
 		}, nil, &stdout, &stderr)
-		if err == nil && code == 0 && strings.TrimSpace(stdout.String()) == "1" {
-			if name != preferred {
-				s.logger.InfoContext(ctx, "panel database resolved",
-					"preferred", preferred, "using", name)
+		if err != nil || code != 0 {
+			continue
+		}
+		var out []string
+		for _, line := range strings.Split(stdout.String(), "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				out = append(out, line)
 			}
-			return name, nil
+		}
+		if len(out) > 0 {
+			return out, nil
 		}
 	}
-	return "", fmt.Errorf("panel database not found (tried %s)", strings.Join(candidates, ", "))
+	return nil, fmt.Errorf("could not list databases as %s", user)
+}
+
+func (s *Service) databaseHasSitesTable(ctx context.Context, container, user, password, dbName string) bool {
+	var stdout, stderr bytes.Buffer
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: container,
+		Cmd: []string{
+			"psql",
+			"-h", "127.0.0.1",
+			"-p", "5432",
+			"-U", user,
+			"-d", dbName,
+			"-tAc", "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sites' LIMIT 1",
+		},
+		Env: []string{"PGPASSWORD=" + password},
+	}, nil, &stdout, &stderr)
+	return err == nil && code == 0 && strings.TrimSpace(stdout.String()) == "1"
 }
 
 func buildSecretsEnv() string {
