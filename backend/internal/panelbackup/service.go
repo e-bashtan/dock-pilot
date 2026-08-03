@@ -366,7 +366,7 @@ func (s *Service) buildAndUpload(ctx context.Context, cfg s3util.Config, prefix 
 }
 
 func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
-	user, password, dbName, err := parseDatabaseURL(s.databaseURL)
+	user, password, dbName, err := s.panelDBCreds(ctx)
 	if err != nil {
 		return err
 	}
@@ -400,7 +400,7 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 }
 
 func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
-	user, password, dbName, err := parseDatabaseURL(s.databaseURL)
+	user, password, dbName, err := s.panelDBCreds(ctx)
 	if err != nil {
 		return err
 	}
@@ -614,6 +614,38 @@ func parseDatabaseURL(raw string) (user, password, dbName string, err error) {
 		return "", "", "", fmt.Errorf("%w: DATABASE_URL missing user or database", ErrInvalidInput)
 	}
 	return user, password, dbName, nil
+}
+
+// panelDBCreds resolves pg_dump/psql credentials for the panel database.
+// Priority: managed Postgres admin (pdb) → POSTGRES_* env → DATABASE_URL.
+// This avoids stale DATABASE_URL users like dockpilot after a barn rebrand.
+func (s *Service) panelDBCreds(ctx context.Context) (user, password, dbName string, err error) {
+	urlUser, urlPass, urlDB, urlErr := parseDatabaseURL(s.databaseURL)
+
+	dbName = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+	if dbName == "" && urlErr == nil {
+		dbName = urlDB
+	}
+	if dbName == "" {
+		dbName = "barn"
+	}
+
+	if s.pgdb != nil {
+		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" && adminPass != "" {
+			return adminUser, adminPass, dbName, nil
+		}
+	}
+
+	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
+		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
+			return u, p, dbName, nil
+		}
+	}
+
+	if urlErr != nil {
+		return "", "", "", urlErr
+	}
+	return urlUser, urlPass, dbName, nil
 }
 
 func buildSecretsEnv() string {

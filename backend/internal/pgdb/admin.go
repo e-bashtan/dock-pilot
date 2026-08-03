@@ -54,6 +54,24 @@ func (s *Service) resolvePGNames(ctx context.Context) (container, volume string)
 	return "barn-postgres", "barn-postgres-data"
 }
 
+// AdminExecCreds returns the managed Postgres container name and superuser password.
+// Used by panel backup when DATABASE_URL still has a legacy user (e.g. dockpilot).
+func (s *Service) AdminExecCreds(ctx context.Context) (containerName, adminUser, password string, err error) {
+	instances, err := s.queries.ListPgInstances(ctx)
+	if err != nil {
+		return "", "", "", err
+	}
+	if len(instances) == 0 {
+		return "", "", "", fmt.Errorf("%w: no postgres instance configured", ErrNotFound)
+	}
+	inst := instances[0]
+	password, err = s.adminPassword(inst)
+	if err != nil {
+		return "", "", "", err
+	}
+	return s.containerName(inst), inst.AdminUser, password, nil
+}
+
 func (s *Service) adminPassword(inst db.PdbInstance) (string, error) {
 	return s.cipher.Decrypt(inst.EncryptedAdminPassword)
 }
