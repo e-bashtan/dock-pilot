@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 	"time"
@@ -442,39 +441,24 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 // so it hits the same host:port the API uses (system Postgres or published docker port).
 func (s *Service) runPgClientHostNet(ctx context.Context, conn panelDumpConn, stdin io.Reader, stdout, stderr io.Writer, args []string) (int, error) {
 	image := s.pgClientImage(ctx, conn.container)
-	cmdArgs := []string{
-		"run", "--rm", "-i", "--network", "host",
-		"-e", "PGPASSWORD=" + conn.password,
-		image,
-	}
-	cmdArgs = append(cmdArgs, args...)
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	err := cmd.Run()
-	if err == nil {
-		return 0, nil
-	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		return ee.ExitCode(), nil
-	}
-	return -1, err
+	return s.docker.RunOnce(ctx, docker.RunOnceOptions{
+		Image:       image,
+		Cmd:         args,
+		Env:         []string{"PGPASSWORD=" + conn.password},
+		NetworkHost: true,
+	}, stdin, stdout, stderr)
 }
 
 func (s *Service) pgClientImage(ctx context.Context, container string) string {
 	if container != "" {
-		// Prefer the image already running as panel/managed Postgres.
-		out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.Config.Image}}", container).Output()
-		if err == nil {
-			if img := strings.TrimSpace(string(out)); img != "" {
+		if img, err := s.docker.ContainerImage(ctx, container); err == nil {
+			if img = strings.TrimSpace(img); img != "" {
 				return img
 			}
 		}
 	}
 	for _, img := range []string{"barn-postgres:latest", "dockpilot-postgres:latest", "postgres:16"} {
-		if err := exec.CommandContext(ctx, "docker", "image", "inspect", img).Run(); err == nil {
+		if s.docker.ImageExists(ctx, img) {
 			return img
 		}
 	}

@@ -54,6 +54,10 @@ type Client interface {
 	InspectContainer(ctx context.Context, names ...string) (ContainerStatus, error)
 	StreamContainerLogs(ctx context.Context, tail int, follow bool, names []string, fn func(ContainerLogLine) error) error
 	Exec(ctx context.Context, opts ExecOptions, stdin io.Reader, stdout, stderr io.Writer) (exitCode int, err error)
+	// RunOnce runs a one-shot container (network host optional) and returns its exit code.
+	RunOnce(ctx context.Context, opts RunOnceOptions, stdin io.Reader, stdout, stderr io.Writer) (exitCode int, err error)
+	ContainerImage(ctx context.Context, name string) (string, error)
+	ImageExists(ctx context.Context, ref string) bool
 	Prune(ctx context.Context) (PruneResult, error)
 	DiskUsage(ctx context.Context) (DiskUsageSnapshot, error)
 }
