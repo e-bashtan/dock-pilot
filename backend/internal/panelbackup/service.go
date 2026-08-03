@@ -353,32 +353,17 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 		return err
 	}
 	var stderr bytes.Buffer
-	var code int
-	if conn.useHostNet {
-		code, err = s.runPgClientHostNet(ctx, conn, nil, w, &stderr, []string{
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: conn.container,
+		Cmd: []string{
 			"pg_dump",
-			"-h", conn.host,
-			"-p", conn.port,
 			"-U", conn.user,
 			"-d", conn.dbName,
 			"--no-owner",
 			"--no-acl",
-		})
-	} else {
-		code, err = s.docker.Exec(ctx, docker.ExecOptions{
-			ContainerName: conn.container,
-			Cmd: []string{
-				"pg_dump",
-				"-h", "127.0.0.1",
-				"-p", "5432",
-				"-U", conn.user,
-				"-d", conn.dbName,
-				"--no-owner",
-				"--no-acl",
-			},
-			Env: []string{"PGPASSWORD=" + conn.password},
-		}, nil, w, &stderr)
-	}
+		},
+		Env: []string{"PGPASSWORD=" + conn.password},
+	}, nil, w, &stderr)
 	if err != nil {
 		return err
 	}
@@ -389,8 +374,7 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 		}
 		return fmt.Errorf("%s", msg)
 	}
-	s.logger.InfoContext(ctx, "panel dump ok",
-		"database", conn.dbName, "user", conn.user, "host_net", conn.useHostNet)
+	s.logger.InfoContext(ctx, "panel dump ok", "database", conn.dbName, "user", conn.user)
 	return nil
 }
 
@@ -400,30 +384,16 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 		return err
 	}
 	var stderr bytes.Buffer
-	var code int
-	if conn.useHostNet {
-		code, err = s.runPgClientHostNet(ctx, conn, r, io.Discard, &stderr, []string{
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: conn.container,
+		Cmd: []string{
 			"psql",
-			"-h", conn.host,
-			"-p", conn.port,
 			"-v", "ON_ERROR_STOP=1",
 			"-U", conn.user,
 			"-d", conn.dbName,
-		})
-	} else {
-		code, err = s.docker.Exec(ctx, docker.ExecOptions{
-			ContainerName: conn.container,
-			Cmd: []string{
-				"psql",
-				"-h", "127.0.0.1",
-				"-p", "5432",
-				"-v", "ON_ERROR_STOP=1",
-				"-U", conn.user,
-				"-d", conn.dbName,
-			},
-			Env: []string{"PGPASSWORD=" + conn.password},
-		}, r, io.Discard, &stderr)
-	}
+		},
+		Env: []string{"PGPASSWORD=" + conn.password},
+	}, r, io.Discard, &stderr)
 	if err != nil {
 		return err
 	}
@@ -435,34 +405,6 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
-}
-
-// runPgClientHostNet runs pg_dump/psql in a one-shot container on the host network,
-// so it hits the same host:port the API uses (system Postgres or published docker port).
-func (s *Service) runPgClientHostNet(ctx context.Context, conn panelDumpConn, stdin io.Reader, stdout, stderr io.Writer, args []string) (int, error) {
-	image := s.pgClientImage(ctx, conn.container)
-	return s.docker.RunOnce(ctx, docker.RunOnceOptions{
-		Image:       image,
-		Cmd:         args,
-		Env:         []string{"PGPASSWORD=" + conn.password},
-		NetworkHost: true,
-	}, stdin, stdout, stderr)
-}
-
-func (s *Service) pgClientImage(ctx context.Context, container string) string {
-	if container != "" {
-		if img, err := s.docker.ContainerImage(ctx, container); err == nil {
-			if img = strings.TrimSpace(img); img != "" {
-				return img
-			}
-		}
-	}
-	for _, img := range []string{"barn-postgres:latest", "dockpilot-postgres:latest", "postgres:16"} {
-		if s.docker.ImageExists(ctx, img) {
-			return img
-		}
-	}
-	return "postgres:16"
 }
 
 // resolvePanelPostgresContainer picks the running panel Postgres container.
@@ -676,59 +618,36 @@ func rewriteDatabaseURLPath(raw, dbName string) (string, error) {
 }
 
 type panelDumpConn struct {
-	container  string
-	user       string
-	password   string
-	dbName     string
-	host       string
-	port       string
-	useHostNet bool // dump/restore via docker run --network host (same endpoint as API)
+	container string
+	user      string
+	password  string
+	dbName    string
 }
 
 // resolvePanelDumpConn finds working credentials + database for panel pg_dump.
-// Prefers the live DATABASE_URL (what the API already uses), then discovers a
-// non-managed DB with panel schema. Managed application databases are never
-// selected during discovery — they are backed up separately.
+// Same mechanism as managed DB dumps: docker exec into the Postgres container.
+// The DB name comes from the live DATABASE_URL (or schema discovery), not from
+// a stale barn/dockpilot guess. Managed application databases are skipped.
 func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, error) {
-	managed := s.managedDBSet(ctx)
-	host, port := databaseURLEndpoint(s.databaseURL)
-
-	// 1) Live API connection — authoritative.
-	if live, liveErr := s.probeLiveDatabaseURL(ctx); liveErr == nil {
-		s.logger.InfoContext(ctx, "panel dump connection resolved",
-			"source", "DATABASE_URL_live", "user", live.user, "database", live.dbName,
-			"host", host, "port", port)
-		live.host = host
-		live.port = port
-		live.useHostNet = true
-		if c, cerr := s.resolvePanelPostgresContainer(ctx); cerr == nil {
-			live.container = c
-		}
-		return live, nil
-	} else {
-		s.logger.WarnContext(ctx, "DATABASE_URL live probe failed", "error", liveErr)
-	}
-
-	// 2) Discover via pgx on the same host:port (works even if DB name in URL is stale).
-	if found, discErr := s.discoverPanelDBViaPgx(ctx, managed); discErr == nil {
-		s.logger.InfoContext(ctx, "panel dump connection resolved",
-			"source", "pgx_discovery", "user", found.user, "database", found.dbName,
-			"host", host, "port", port)
-		found.host = host
-		found.port = port
-		found.useHostNet = true
-		if c, cerr := s.resolvePanelPostgresContainer(ctx); cerr == nil {
-			found.container = c
-		}
-		return found, nil
-	} else {
-		s.logger.WarnContext(ctx, "pgx panel DB discovery failed", "error", discErr)
-	}
-
-	// 3) Fall back: docker exec into panel/managed postgres container.
 	container, err := s.resolvePanelPostgresContainer(ctx)
 	if err != nil {
 		return panelDumpConn{}, err
+	}
+	managed := s.managedDBSet(ctx)
+
+	// Resolve the real panel database name via the API's live connection.
+	dbName := ""
+	if live, liveErr := s.probeLiveDatabaseURL(ctx); liveErr == nil {
+		dbName = live.dbName
+		s.logger.InfoContext(ctx, "panel database from live DATABASE_URL", "database", dbName)
+	} else {
+		s.logger.WarnContext(ctx, "DATABASE_URL live probe failed", "error", liveErr)
+		if found, discErr := s.discoverPanelDBViaPgx(ctx, managed); discErr == nil {
+			dbName = found.dbName
+			s.logger.InfoContext(ctx, "panel database from pgx discovery", "database", dbName)
+		} else {
+			s.logger.WarnContext(ctx, "pgx panel DB discovery failed", "error", discErr)
+		}
 	}
 
 	type cred struct {
@@ -736,45 +655,72 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 	}
 	var tries []cred
 
-	if u, p, d, urlErr := parseDatabaseURL(s.databaseURL); urlErr == nil {
-		tries = append(tries, cred{u, p, d, "DATABASE_URL"})
-	}
-	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
-		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
-			d := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
-			if d == "" {
-				d = "barn"
-			}
-			tries = append(tries, cred{u, p, d, "POSTGRES_*"})
-		}
-	}
+	// Prefer managed admin — same creds as per-database dumps.
 	if s.pgdb != nil {
 		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" {
-			preferred := strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+			preferred := dbName
+			if preferred == "" {
+				preferred = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+			}
 			if preferred == "" {
 				preferred = "barn"
 			}
 			tries = append(tries, cred{adminUser, adminPass, preferred, "pdb_admin"})
 		}
 	}
+	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
+		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
+			preferred := dbName
+			if preferred == "" {
+				preferred = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
+			}
+			if preferred == "" {
+				preferred = "barn"
+			}
+			tries = append(tries, cred{u, p, preferred, "POSTGRES_*"})
+		}
+	}
+	if u, p, d, urlErr := parseDatabaseURL(s.databaseURL); urlErr == nil {
+		preferred := dbName
+		if preferred == "" {
+			preferred = d
+		}
+		tries = append(tries, cred{u, p, preferred, "DATABASE_URL"})
+	}
 
 	var lastErr error
 	for _, t := range tries {
-		dbName, probeErr := s.resolvePanelDatabaseName(ctx, container, t.user, t.pass, t.preferredDB, managed)
+		name := t.preferredDB
+		// If we already know the live DB name, use it — only verify connectivity.
+		if dbName != "" {
+			ok, detail := s.probeDatabase(ctx, container, t.user, t.pass, dbName)
+			if ok {
+				s.logger.InfoContext(ctx, "panel dump connection resolved",
+					"source", t.source, "user", t.user, "database", dbName)
+				return panelDumpConn{
+					container: container,
+					user:      t.user,
+					password:  t.pass,
+					dbName:    dbName,
+				}, nil
+			}
+			lastErr = fmt.Errorf("%s: %s: %s", t.source, dbName, detail)
+			s.logger.WarnContext(ctx, "panel dump probe failed", "source", t.source, "database", dbName, "error", detail)
+			continue
+		}
+		resolved, probeErr := s.resolvePanelDatabaseName(ctx, container, t.user, t.pass, name, managed)
 		if probeErr != nil {
 			lastErr = fmt.Errorf("%s: %w", t.source, probeErr)
 			s.logger.WarnContext(ctx, "panel dump probe failed", "source", t.source, "error", probeErr)
 			continue
 		}
 		s.logger.InfoContext(ctx, "panel dump connection resolved",
-			"source", t.source, "user", t.user, "database", dbName)
+			"source", t.source, "user", t.user, "database", resolved)
 		return panelDumpConn{
 			container: container,
 			user:      t.user,
 			password:  t.pass,
-			dbName:    dbName,
-			host:      "127.0.0.1",
-			port:      "5432",
+			dbName:    resolved,
 		}, nil
 	}
 	if lastErr != nil {
