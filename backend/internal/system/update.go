@@ -248,25 +248,18 @@ func (s *Service) StartUpgrade(ctx context.Context, target string) (UpgradeStart
 
 	installDir := s.installDir()
 	stateDir := filepath.Join(installDir, upgradeStateDir)
-	scriptPath := ""
-	for _, name := range []string{"barn-upgrade.sh", "dock-pilot-upgrade.sh"} {
-		p := filepath.Join(installDir, "scripts", name)
-		if st, err := os.Stat(s.hostPath(p)); err == nil && !st.IsDir() {
-			scriptPath = p
-			break
-		}
-	}
-	if scriptPath == "" {
-		return UpgradeStartResult{}, fmt.Errorf("%w: upgrade script missing", ErrUpgradeStartFail)
-	}
+	repo := s.githubRepo()
 	launchPath := filepath.Join(stateDir, "launch.sh")
 
+	// Always download the target release and run its upgrade script from the
+	// tarball. Running the on-disk copy overwrites itself mid-flight and dies
+	// with "syntax error near fi".
 	launchBody := fmt.Sprintf(`#!/bin/bash
 set -eu
 STATE=%q
 INSTALL=%q
-SCRIPT=%q
 TARGET=%q
+REPO=%q
 mkdir -p "$STATE"
 echo "$TARGET" > "$STATE/target"
 : > "$STATE/log"
@@ -275,17 +268,69 @@ export BARN_FORCE_PROGRESS=1
 export DOCK_PILOT_FORCE_PROGRESS=1
 export BARN_INSTALL_DIR="$INSTALL"
 export DOCK_PILOT_INSTALL_DIR="$INSTALL"
+
+resolve_version() {
+  local t="$1"
+  if [ "$t" != "latest" ]; then
+    echo "$t"
+    return 0
+  fi
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
+}
+
+VERSION="$(resolve_version "$TARGET")"
+if [ -z "$VERSION" ]; then
+  echo "Could not resolve release version" >>"$STATE/log"
+  echo failed > "$STATE/status"
+  exit 1
+fi
+echo "$VERSION" > "$STATE/target"
+FILE_TAG="${VERSION#v}"
+BUNDLE="/tmp/barn-${FILE_TAG}-upgrade.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/barn-${FILE_TAG}.tar.gz"
+echo "[barn] Fetching ${URL}" >>"$STATE/log"
+if ! curl -fL --progress-bar "$URL" -o "$BUNDLE" >>"$STATE/log" 2>&1; then
+  URL="https://github.com/${REPO}/releases/download/${VERSION}/dock-pilot-${FILE_TAG}.tar.gz"
+  echo "[barn] Trying ${URL}" >>"$STATE/log"
+  if ! curl -fL --progress-bar "$URL" -o "$BUNDLE" >>"$STATE/log" 2>&1; then
+    echo failed > "$STATE/status"
+    exit 1
+  fi
+fi
+EXTRACT="$(mktemp -d /tmp/barn-upgrade-XXXXXX)"
+tar -xzf "$BUNDLE" -C "$EXTRACT" --strip-components=1
+SCRIPT=""
+for name in barn-upgrade.sh dock-pilot-upgrade.sh; do
+  if [ -f "$EXTRACT/scripts/$name" ]; then
+    SCRIPT="$EXTRACT/scripts/$name"
+    break
+  fi
+done
+if [ -z "$SCRIPT" ]; then
+  echo "upgrade script missing in release bundle" >>"$STATE/log"
+  echo failed > "$STATE/status"
+  rm -rf "$EXTRACT"
+  exit 1
+fi
+chmod +x "$SCRIPT" "$EXTRACT/scripts/"*.sh 2>/dev/null || true
+
 set +e
-bash "$SCRIPT" "$TARGET" >>"$STATE/log" 2>&1
+# Pass the already-downloaded bundle so the script does not fetch twice.
+env BARN_UPGRADE_BUNDLE="$BUNDLE" BARN_UPGRADE_EXTRACT="$EXTRACT" \
+  bash "$SCRIPT" "$VERSION" >>"$STATE/log" 2>&1
 ec=$?
 set -e
+rm -rf "$EXTRACT"
+rm -f "$BUNDLE"
 if [ "$ec" -eq 0 ]; then
   echo ok > "$STATE/status"
 else
   echo failed > "$STATE/status"
 fi
 exit "$ec"
-`, stateDir, installDir, scriptPath, target)
+`, stateDir, installDir, target, repo)
+
 
 	hostLaunch := s.hostPath(launchPath)
 	if err := os.MkdirAll(filepath.Dir(hostLaunch), 0o755); err != nil {

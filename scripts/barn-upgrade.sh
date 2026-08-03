@@ -8,6 +8,10 @@
 set -euo pipefail
 
 ROOT="${BARN_INSTALL_DIR:-${DOCK_PILOT_INSTALL_DIR:-/opt/barn}}"
+# Legacy installs live under /opt/dock-pilot
+if [[ ! -d "$ROOT" && -d /opt/dock-pilot ]]; then
+  ROOT=/opt/dock-pilot
+fi
 GITHUB_REPO="${BARN_GITHUB_REPO:-${DOCK_PILOT_GITHUB_REPO:-ebasht/barn}}"
 VERSION="${1:-latest}"
 DOMAIN=""
@@ -34,7 +38,7 @@ Options:
 EOF
       exit 0
       ;;
-    *) die "Unknown option: $1 (try --help)" ;;
+    *) echo "[barn] ERROR: Unknown option: $1 (try --help)" >&2; exit 1 ;;
   esac
 done
 
@@ -119,63 +123,110 @@ fi
 cd "$ROOT"
 [[ -f .env ]] || die "Missing ${ROOT}/.env"
 
-if [[ "$VERSION" == "latest" ]]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
-    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)"
-fi
-[[ -n "$VERSION" ]] || die "Could not resolve release version"
+# ---------------------------------------------------------------------------
+# Phase 1: download + unpack + load images + copy files, then re-exec.
+# Overwriting this script in-place mid-run breaks bash (syntax error near `fi`).
+# ---------------------------------------------------------------------------
+if [[ "${BARN_UPGRADE_REEXEC:-}" != "1" ]]; then
+  if [[ -n "${BARN_UPGRADE_EXTRACT:-}" && -d "${BARN_UPGRADE_EXTRACT}" ]]; then
+    EXTRACT="${BARN_UPGRADE_EXTRACT}"
+    OWN_EXTRACT=0
+  else
+    if [[ "$VERSION" == "latest" ]]; then
+      VERSION="$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+        | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)"
+    fi
+    [[ -n "$VERSION" ]] || die "Could not resolve release version"
 
-FILE_TAG="${VERSION#v}"
-BUNDLE="/tmp/barn-${FILE_TAG}.tar.gz"
-# Try barn artifact first, fall back to dock-pilot for older releases
-URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/barn-${FILE_TAG}.tar.gz"
-if ! download_with_progress "$URL" "$BUNDLE" 2>/dev/null; then
-  log "barn-${FILE_TAG}.tar.gz not found, trying dock-pilot-${FILE_TAG}.tar.gz..."
-  URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/dock-pilot-${FILE_TAG}.tar.gz"
-  BUNDLE="/tmp/dock-pilot-${FILE_TAG}.tar.gz"
-  download_with_progress "$URL" "$BUNDLE"
-fi
+    if [[ -n "${BARN_UPGRADE_BUNDLE:-}" && -f "${BARN_UPGRADE_BUNDLE}" ]]; then
+      BUNDLE="${BARN_UPGRADE_BUNDLE}"
+    else
+      FILE_TAG="${VERSION#v}"
+      BUNDLE="/tmp/barn-${FILE_TAG}.tar.gz"
+      URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/barn-${FILE_TAG}.tar.gz"
+      if ! download_with_progress "$URL" "$BUNDLE" 2>/dev/null; then
+        log "barn-${FILE_TAG}.tar.gz not found, trying dock-pilot-${FILE_TAG}.tar.gz..."
+        URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/dock-pilot-${FILE_TAG}.tar.gz"
+        BUNDLE="/tmp/dock-pilot-${FILE_TAG}.tar.gz"
+        download_with_progress "$URL" "$BUNDLE"
+      fi
+    fi
 
-EXTRACT="$(mktemp -d)"
-trap 'rm -rf "$EXTRACT"' EXIT
-tar -xzf "$BUNDLE" -C "$EXTRACT" --strip-components=1
+    EXTRACT="$(mktemp -d)"
+    OWN_EXTRACT=1
+    tar -xzf "$BUNDLE" -C "$EXTRACT" --strip-components=1
+  fi
 
-# Try barn images first, fall back to dock-pilot
-IMAGES="${EXTRACT}/barn-images.tar.gz"
-if [[ ! -f "$IMAGES" ]]; then
-  IMAGES="${EXTRACT}/dock-pilot-images.tar.gz"
-fi
-[[ -f "$IMAGES" ]] || die "barn-images.tar.gz / dock-pilot-images.tar.gz missing in ${VERSION} release"
+  IMAGES="${EXTRACT}/barn-images.tar.gz"
+  if [[ ! -f "$IMAGES" ]]; then
+    IMAGES="${EXTRACT}/dock-pilot-images.tar.gz"
+  fi
+  [[ -f "$IMAGES" ]] || die "barn-images.tar.gz / dock-pilot-images.tar.gz missing in ${VERSION} release"
 
-log "Loading Docker images (replaces :latest tags)..."
-load_docker_images "$IMAGES"
+  log "Loading Docker images (replaces :latest tags)..."
+  load_docker_images "$IMAGES"
 
-# Copy compose files from the release (keep legacy full.yml available for rollback).
-if [[ -f "${EXTRACT}/docker-compose.barn-full.yml" ]]; then
-  cp "${EXTRACT}/docker-compose.barn-full.yml" "${ROOT}/docker-compose.barn-full.yml"
-  log "Updated docker-compose.barn-full.yml"
-fi
-if [[ -f "${EXTRACT}/docker-compose.full.yml" ]]; then
-  cp "${EXTRACT}/docker-compose.full.yml" "${ROOT}/docker-compose.full.yml"
-  log "Updated docker-compose.full.yml"
-fi
-if [[ -f "${EXTRACT}/docker-compose.dock-pilot.yml" ]]; then
-  cp "${EXTRACT}/docker-compose.dock-pilot.yml" "${ROOT}/docker-compose.dock-pilot.yml"
-fi
-if [[ -d "${EXTRACT}/scripts" ]]; then
-  cp -a "${EXTRACT}/scripts/." "${ROOT}/scripts/"
+  if [[ -f "${EXTRACT}/docker-compose.barn-full.yml" ]]; then
+    cp "${EXTRACT}/docker-compose.barn-full.yml" "${ROOT}/docker-compose.barn-full.yml"
+    log "Updated docker-compose.barn-full.yml"
+  fi
+  if [[ -f "${EXTRACT}/docker-compose.full.yml" ]]; then
+    cp "${EXTRACT}/docker-compose.full.yml" "${ROOT}/docker-compose.full.yml"
+    log "Updated docker-compose.full.yml"
+  fi
+  if [[ -f "${EXTRACT}/docker-compose.dock-pilot.yml" ]]; then
+    cp "${EXTRACT}/docker-compose.dock-pilot.yml" "${ROOT}/docker-compose.dock-pilot.yml"
+  fi
+  if [[ -d "${EXTRACT}/scripts" ]]; then
+    mkdir -p "${ROOT}/scripts"
+    # Copy everything except the running upgrade script first (in-place overwrite
+    # of $0 corrupts bash's reader → "syntax error near fi").
+    for f in "${EXTRACT}/scripts/"*; do
+      [[ -e "$f" ]] || continue
+      base="$(basename "$f")"
+      case "$base" in
+        barn-upgrade.sh|dock-pilot-upgrade.sh) continue ;;
+      esac
+      cp -a "$f" "${ROOT}/scripts/"
+    done
+    chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
+    log "Updated scripts/"
+  fi
+  if [[ -d "${EXTRACT}/install" ]]; then
+    mkdir -p "${ROOT}/install"
+    cp -a "${EXTRACT}/install/." "${ROOT}/install/"
+    log "Updated install/ (nginx templates)"
+  fi
+  if [[ -f "${EXTRACT}/VERSION" ]]; then
+    cp "${EXTRACT}/VERSION" "${ROOT}/VERSION"
+    log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
+  fi
+
+  # Install the new upgrade script last, then re-exec it (never continue after overwrite).
+  if [[ -f "${EXTRACT}/scripts/barn-upgrade.sh" ]]; then
+    cp -a "${EXTRACT}/scripts/barn-upgrade.sh" "${ROOT}/scripts/barn-upgrade.sh"
+  fi
+  if [[ -f "${EXTRACT}/scripts/dock-pilot-upgrade.sh" ]]; then
+    cp -a "${EXTRACT}/scripts/dock-pilot-upgrade.sh" "${ROOT}/scripts/dock-pilot-upgrade.sh"
+  fi
   chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
-  log "Updated scripts/"
+
+  if [[ "${OWN_EXTRACT:-0}" -eq 1 ]]; then
+    rm -rf "$EXTRACT"
+  fi
+
+  REEXEC_ARGS=("$VERSION")
+  [[ -n "$DOMAIN" ]] && REEXEC_ARGS+=(--domain "$DOMAIN")
+  [[ -n "$EMAIL" ]] && REEXEC_ARGS+=(--email "$EMAIL")
+  [[ "$SKIP_CERT" -eq 1 ]] && REEXEC_ARGS+=(--skip-cert)
+  log "Continuing with updated upgrade script..."
+  exec env BARN_UPGRADE_REEXEC=1 BARN_INSTALL_DIR="$ROOT" DOCK_PILOT_INSTALL_DIR="$ROOT" \
+    bash "${ROOT}/scripts/barn-upgrade.sh" "${REEXEC_ARGS[@]}"
 fi
-if [[ -d "${EXTRACT}/install" ]]; then
-  mkdir -p "${ROOT}/install"
-  cp -a "${EXTRACT}/install/." "${ROOT}/install/"
-  log "Updated install/ (nginx templates)"
-fi
-if [[ -f "${EXTRACT}/VERSION" ]]; then
-  cp "${EXTRACT}/VERSION" "${ROOT}/VERSION"
-  log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
-fi
+
+# ---------------------------------------------------------------------------
+# Phase 2: migrate + recreate (always runs from the freshly copied script).
+# ---------------------------------------------------------------------------
 
 # If a pre-rebrand Postgres volume exists, go back to docker-compose.full.yml
 # (dock_pilot_pg) — same as before barn-full created an empty barn_pg.
@@ -193,7 +244,7 @@ if [[ -n "$LEGACY_PG" ]]; then
   [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"
   [[ -f "$COMPOSE" ]] || die "legacy Postgres volume ${LEGACY_PG} found but docker-compose.full.yml missing"
   # Project name "dock-pilot" makes volume dock-pilot_dock_pilot_pg — as before.
-  if [[ "$LEGACY_PG" == dock-pilot_dock_pilot_pg || "$LEGACY_PG" == dock_pilot_pg ]]; then
+  if [[ "$LEGACY_PG" == "dock-pilot_dock_pilot_pg" || "$LEGACY_PG" == "dock_pilot_pg" ]]; then
     COMPOSE_PROJECT_ARGS=(-p dock-pilot)
   fi
   log "Restoring previous stack: ${COMPOSE} (volume ${LEGACY_PG})"
@@ -211,7 +262,7 @@ compose() {
 
 log "Running migrations..."
 if ! compose run --rm -T migrate; then
-  die "Migrations failed — check migrate image includes latest SQL (00016_fleet / 00017_*) and DATABASE_URL"
+  die "Migrations failed — check migrate image includes latest SQL and DATABASE_URL"
 fi
 
 log "Recreating postgres + api + frontend (picks up new images and compose)..."
