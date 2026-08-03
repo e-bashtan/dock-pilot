@@ -179,8 +179,8 @@ if [[ "${BARN_UPGRADE_REEXEC:-}" != "1" ]]; then
   fi
   if [[ -d "${EXTRACT}/scripts" ]]; then
     mkdir -p "${ROOT}/scripts"
-    # Copy everything except the running upgrade script first (in-place overwrite
-    # of $0 corrupts bash's reader → "syntax error near fi").
+    # Never copy barn-upgrade.sh over the running $0 — that truncates the inode
+    # bash is still reading and causes "syntax error near (".
     for f in "${EXTRACT}/scripts/"*; do
       [[ -e "$f" ]] || continue
       base="$(basename "$f")"
@@ -202,31 +202,33 @@ if [[ "${BARN_UPGRADE_REEXEC:-}" != "1" ]]; then
     log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
   fi
 
-  # Install the new upgrade script last, then re-exec it (never continue after overwrite).
-  if [[ -f "${EXTRACT}/scripts/barn-upgrade.sh" ]]; then
-    cp -a "${EXTRACT}/scripts/barn-upgrade.sh" "${ROOT}/scripts/barn-upgrade.sh"
-  fi
-  if [[ -f "${EXTRACT}/scripts/dock-pilot-upgrade.sh" ]]; then
-    cp -a "${EXTRACT}/scripts/dock-pilot-upgrade.sh" "${ROOT}/scripts/dock-pilot-upgrade.sh"
-  fi
-  chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
+  NEXT_SCRIPT="${EXTRACT}/scripts/barn-upgrade.sh"
+  [[ -f "$NEXT_SCRIPT" ]] || NEXT_SCRIPT="${EXTRACT}/scripts/dock-pilot-upgrade.sh"
+  [[ -f "$NEXT_SCRIPT" ]] || die "upgrade script missing in release extract"
 
-  if [[ "${OWN_EXTRACT:-0}" -eq 1 ]]; then
-    rm -rf "$EXTRACT"
-  fi
-
-  REEXEC_ARGS=("$VERSION")
-  [[ -n "$DOMAIN" ]] && REEXEC_ARGS+=(--domain "$DOMAIN")
-  [[ -n "$EMAIL" ]] && REEXEC_ARGS+=(--email "$EMAIL")
-  [[ "$SKIP_CERT" -eq 1 ]] && REEXEC_ARGS+=(--skip-cert)
-  log "Continuing with updated upgrade script..."
-  exec env BARN_UPGRADE_REEXEC=1 BARN_INSTALL_DIR="$ROOT" DOCK_PILOT_INSTALL_DIR="$ROOT" \
-    bash "${ROOT}/scripts/barn-upgrade.sh" "${REEXEC_ARGS[@]}"
+  # Re-exec from EXTRACT copy — never overwrite the running $0 first.
+  log "Continuing upgrade (phase 2)..."
+  EXTRA_ARGS=""
+  [[ -n "$DOMAIN" ]] && EXTRA_ARGS="$EXTRA_ARGS --domain $DOMAIN"
+  [[ -n "$EMAIL" ]] && EXTRA_ARGS="$EXTRA_ARGS --email $EMAIL"
+  [[ "$SKIP_CERT" -eq 1 ]] && EXTRA_ARGS="$EXTRA_ARGS --skip-cert"
+  # shellcheck disable=SC2086
+  exec env BARN_UPGRADE_REEXEC=1 BARN_UPGRADE_EXTRACT="$EXTRACT" \
+    BARN_INSTALL_DIR="$ROOT" DOCK_PILOT_INSTALL_DIR="$ROOT" \
+    bash "$NEXT_SCRIPT" "$VERSION" $EXTRA_ARGS
 fi
 
 # ---------------------------------------------------------------------------
-# Phase 2: migrate + recreate (always runs from the freshly copied script).
+# Phase 2: migrate + recreate (runs from EXTRACT copy, never from overwritten $0).
 # ---------------------------------------------------------------------------
+
+# Persist the fixed upgrade script for the next run (safe now — we are not $0).
+if [[ -n "${BARN_UPGRADE_EXTRACT:-}" && -d "${BARN_UPGRADE_EXTRACT}/scripts" ]]; then
+  mkdir -p "${ROOT}/scripts"
+  cp -a "${BARN_UPGRADE_EXTRACT}/scripts/barn-upgrade.sh" "${ROOT}/scripts/barn-upgrade.sh" 2>/dev/null || true
+  cp -a "${BARN_UPGRADE_EXTRACT}/scripts/dock-pilot-upgrade.sh" "${ROOT}/scripts/dock-pilot-upgrade.sh" 2>/dev/null || true
+  chmod +x "${ROOT}/scripts/"*.sh 2>/dev/null || true
+fi
 
 # If a pre-rebrand Postgres volume exists, go back to docker-compose.full.yml
 # (dock_pilot_pg) — same as before barn-full created an empty barn_pg.
@@ -238,14 +240,14 @@ for v in dock-pilot_dock_pilot_pg dock_pilot_pg dockpilot-postgres-data; do
   fi
 done
 
-COMPOSE_PROJECT_ARGS=()
+COMPOSE_P=""
 if [[ -n "$LEGACY_PG" ]]; then
   COMPOSE="docker-compose.full.yml"
   [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"
   [[ -f "$COMPOSE" ]] || die "legacy Postgres volume ${LEGACY_PG} found but docker-compose.full.yml missing"
   # Project name "dock-pilot" makes volume dock-pilot_dock_pilot_pg — as before.
   if [[ "$LEGACY_PG" == "dock-pilot_dock_pilot_pg" || "$LEGACY_PG" == "dock_pilot_pg" ]]; then
-    COMPOSE_PROJECT_ARGS=(-p dock-pilot)
+    COMPOSE_P="dock-pilot"
   fi
   log "Restoring previous stack: ${COMPOSE} (volume ${LEGACY_PG})"
   docker rm -f barn-postgres barn-api barn-frontend barn-migrate 2>/dev/null || true
@@ -257,7 +259,11 @@ else
 fi
 
 compose() {
-  docker compose "${COMPOSE_PROJECT_ARGS[@]}" -f "$COMPOSE" "$@"
+  if [[ -n "$COMPOSE_P" ]]; then
+    docker compose -p "$COMPOSE_P" -f "$COMPOSE" "$@"
+  else
+    docker compose -f "$COMPOSE" "$@"
+  fi
 }
 
 log "Running migrations..."
@@ -277,9 +283,10 @@ if [[ -x "${ROOT}/scripts/configure-panel-nginx.sh" ]]; then
   if [[ -n "$DOMAIN" ]]; then
     [[ -n "$EMAIL" ]] || die "--email is required with --domain"
     log "Configuring panel domain and SSL..."
-    NGINX_ARGS=(--domain "$DOMAIN" --email "$EMAIL")
-    [[ "$SKIP_CERT" -eq 1 ]] && NGINX_ARGS+=(--skip-cert)
-    bash "${ROOT}/scripts/configure-panel-nginx.sh" "${NGINX_ARGS[@]}"
+    NGINX_ARGS="--domain $DOMAIN --email $EMAIL"
+    [[ "$SKIP_CERT" -eq 1 ]] && NGINX_ARGS="$NGINX_ARGS --skip-cert"
+    # shellcheck disable=SC2086
+    bash "${ROOT}/scripts/configure-panel-nginx.sh" $NGINX_ARGS
   elif [[ -n "${PANEL_DOMAIN:-}" ]]; then
     log "Refreshing nginx panel config (domain from .env)..."
     bash "${ROOT}/scripts/configure-panel-nginx.sh" || log "WARN: configure-panel-nginx failed — check nginx manually"
