@@ -150,13 +150,17 @@ fi
 log "Loading Docker images (replaces :latest tags)..."
 load_docker_images "$IMAGES"
 
-# Copy barn compose files if available, fall back to dock-pilot
+# Copy compose files from the release (keep legacy full.yml available for rollback).
 if [[ -f "${EXTRACT}/docker-compose.barn-full.yml" ]]; then
   cp "${EXTRACT}/docker-compose.barn-full.yml" "${ROOT}/docker-compose.barn-full.yml"
   log "Updated docker-compose.barn-full.yml"
-elif [[ -f "${EXTRACT}/docker-compose.full.yml" ]]; then
+fi
+if [[ -f "${EXTRACT}/docker-compose.full.yml" ]]; then
   cp "${EXTRACT}/docker-compose.full.yml" "${ROOT}/docker-compose.full.yml"
   log "Updated docker-compose.full.yml"
+fi
+if [[ -f "${EXTRACT}/docker-compose.dock-pilot.yml" ]]; then
+  cp "${EXTRACT}/docker-compose.dock-pilot.yml" "${ROOT}/docker-compose.dock-pilot.yml"
 fi
 if [[ -d "${EXTRACT}/scripts" ]]; then
   cp -a "${EXTRACT}/scripts/." "${ROOT}/scripts/"
@@ -173,39 +177,46 @@ if [[ -f "${EXTRACT}/VERSION" ]]; then
   log "Updated VERSION → $(tr -d '[:space:]' < "${ROOT}/VERSION")"
 fi
 
-# Prefer the compose/volume the install already used. barn-full.yml with a fresh
-# barn_pg volume wiped panels on upgrade from dock-pilot — never do that again.
-COMPOSE=""
-if docker volume inspect dock-pilot_dock_pilot_pg >/dev/null 2>&1 \
-  || docker volume inspect dock_pilot_pg >/dev/null 2>&1; then
-  if [[ -f docker-compose.full.yml ]]; then
-    COMPOSE="docker-compose.full.yml"
-    log "Keeping legacy docker-compose.full.yml (dock_pilot_pg volume)"
-  elif [[ -f docker-compose.dock-pilot.yml ]]; then
-    COMPOSE="docker-compose.dock-pilot.yml"
-    log "Keeping legacy docker-compose.dock-pilot.yml (dock_pilot_pg volume)"
+# If a pre-rebrand Postgres volume exists, go back to docker-compose.full.yml
+# (dock_pilot_pg) — same as before barn-full created an empty barn_pg.
+LEGACY_PG=""
+for v in dock-pilot_dock_pilot_pg dock_pilot_pg dockpilot-postgres-data; do
+  if docker volume inspect "$v" >/dev/null 2>&1; then
+    LEGACY_PG="$v"
+    break
   fi
-fi
-if [[ -z "$COMPOSE" ]]; then
+done
+
+COMPOSE_PROJECT_ARGS=()
+if [[ -n "$LEGACY_PG" ]]; then
+  COMPOSE="docker-compose.full.yml"
+  [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"
+  [[ -f "$COMPOSE" ]] || die "legacy Postgres volume ${LEGACY_PG} found but docker-compose.full.yml missing"
+  # Project name "dock-pilot" makes volume dock-pilot_dock_pilot_pg — as before.
+  if [[ "$LEGACY_PG" == dock-pilot_dock_pilot_pg || "$LEGACY_PG" == dock_pilot_pg ]]; then
+    COMPOSE_PROJECT_ARGS=(-p dock-pilot)
+  fi
+  log "Restoring previous stack: ${COMPOSE} (volume ${LEGACY_PG})"
+  docker rm -f barn-postgres barn-api barn-frontend barn-migrate 2>/dev/null || true
+else
   COMPOSE="docker-compose.barn-full.yml"
   [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.full.yml"
   [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.barn.yml"
   [[ -f "$COMPOSE" ]] || COMPOSE="docker-compose.dock-pilot.yml"
 fi
 
+compose() {
+  docker compose "${COMPOSE_PROJECT_ARGS[@]}" -f "$COMPOSE" "$@"
+}
+
 log "Running migrations..."
-if ! docker compose -f "$COMPOSE" run --rm -T migrate; then
+if ! compose run --rm -T migrate; then
   die "Migrations failed — check migrate image includes latest SQL (00016_fleet / 00017_*) and DATABASE_URL"
 fi
 
 log "Recreating postgres + api + frontend (picks up new images and compose)..."
-# Clean up legacy and current containers
 docker rm -f dock-pilot-telegram-socks-relay barn-telegram-socks-relay 2>/dev/null || true
-# If we are back on legacy compose, drop the empty barn-postgres from a bad upgrade.
-if [[ "$COMPOSE" == docker-compose.full.yml || "$COMPOSE" == docker-compose.dock-pilot.yml ]]; then
-  docker rm -f barn-postgres 2>/dev/null || true
-fi
-docker compose -f "$COMPOSE" up -d --force-recreate postgres api frontend
+compose up -d --force-recreate postgres api frontend
 
 if [[ -x "${ROOT}/scripts/configure-panel-nginx.sh" ]]; then
   set -a
@@ -222,12 +233,11 @@ if [[ -x "${ROOT}/scripts/configure-panel-nginx.sh" ]]; then
     log "Refreshing nginx panel config (domain from .env)..."
     bash "${ROOT}/scripts/configure-panel-nginx.sh" || log "WARN: configure-panel-nginx failed — check nginx manually"
   else
-    # IP:port panel — still rewrite vhost so template fixes (e.g. client_max_body_size) apply.
     log "Refreshing nginx panel config (IP access)..."
     bash "${ROOT}/scripts/configure-panel-nginx.sh" || log "WARN: configure-panel-nginx failed — check nginx manually"
   fi
 fi
 
 log "Upgrade complete → ${VERSION}"
-docker compose -f "$COMPOSE" ps
-log "Check version in panel header (e.g. ${VERSION}) or: docker inspect barn-frontend --format '{{.Image}}' (or dock-pilot-frontend for legacy)"
+compose ps
+log "Check version in panel header (e.g. ${VERSION})"
