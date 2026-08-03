@@ -591,32 +591,6 @@ func parseDatabaseURL(raw string) (user, password, dbName string, err error) {
 	return user, password, dbName, nil
 }
 
-func databaseURLEndpoint(raw string) (host, port string) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "127.0.0.1", "5432"
-	}
-	host = u.Hostname()
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port = u.Port()
-	if port == "" {
-		port = "5432"
-	}
-	return host, port
-}
-
-// rewriteDatabaseURLPath swaps the database name in a postgres URL.
-func rewriteDatabaseURLPath(raw, dbName string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", err
-	}
-	u.Path = "/" + strings.Trim(dbName, "/")
-	return u.String(), nil
-}
-
 type panelDumpConn struct {
 	container string
 	user      string
@@ -624,109 +598,47 @@ type panelDumpConn struct {
 	dbName    string
 }
 
-// resolvePanelDumpConn finds working credentials + database for panel pg_dump.
-// Same mechanism as managed DB dumps: docker exec into the Postgres container.
-// The DB name comes from the live DATABASE_URL (or schema discovery), not from
-// a stale barn/dockpilot guess. Managed application databases are skipped.
+// resolvePanelDumpConn finds credentials + database for panel pg_dump.
+// Uses the same path as managed DB dumps: docker exec as pdb admin over the
+// local socket. Stale POSTGRES_USER/DATABASE_URL (e.g. dockpilot after rebrand)
+// are ignored for auth — only used as a name hint when the live API connection works.
 func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, error) {
-	container, err := s.resolvePanelPostgresContainer(ctx)
+	if s.pgdb == nil {
+		return panelDumpConn{}, fmt.Errorf("managed postgres is not configured — needed for panel dump")
+	}
+	container, adminUser, adminPass, err := s.pgdb.AdminExecCreds(ctx)
 	if err != nil {
-		return panelDumpConn{}, err
+		return panelDumpConn{}, fmt.Errorf("pdb_admin: %w", err)
+	}
+	if container == "" {
+		container, err = s.resolvePanelPostgresContainer(ctx)
+		if err != nil {
+			return panelDumpConn{}, err
+		}
 	}
 	managed := s.managedDBSet(ctx)
 
-	// Resolve the real panel database name via the API's live connection.
-	dbName := ""
+	preferred := ""
 	if live, liveErr := s.probeLiveDatabaseURL(ctx); liveErr == nil {
-		dbName = live.dbName
-		s.logger.InfoContext(ctx, "panel database from live DATABASE_URL", "database", dbName)
+		preferred = live.dbName
+		s.logger.InfoContext(ctx, "panel database hint from live DATABASE_URL", "database", preferred)
 	} else {
-		s.logger.WarnContext(ctx, "DATABASE_URL live probe failed", "error", liveErr)
-		if found, discErr := s.discoverPanelDBViaPgx(ctx, managed); discErr == nil {
-			dbName = found.dbName
-			s.logger.InfoContext(ctx, "panel database from pgx discovery", "database", dbName)
-		} else {
-			s.logger.WarnContext(ctx, "pgx panel DB discovery failed", "error", discErr)
-		}
+		s.logger.WarnContext(ctx, "DATABASE_URL live probe failed (stale user/db is ok if pdb admin works)",
+			"error", liveErr)
 	}
 
-	type cred struct {
-		user, pass, preferredDB, source string
+	dbName, err := s.resolvePanelDatabaseName(ctx, container, adminUser, adminPass, preferred, managed)
+	if err != nil {
+		return panelDumpConn{}, fmt.Errorf("pdb_admin: %w", err)
 	}
-	var tries []cred
-
-	// Prefer managed admin — same creds as per-database dumps.
-	if s.pgdb != nil {
-		if _, adminUser, adminPass, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && adminUser != "" {
-			preferred := dbName
-			if preferred == "" {
-				preferred = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
-			}
-			if preferred == "" {
-				preferred = "barn"
-			}
-			tries = append(tries, cred{adminUser, adminPass, preferred, "pdb_admin"})
-		}
-	}
-	if u := strings.TrimSpace(os.Getenv("POSTGRES_USER")); u != "" {
-		if p := os.Getenv("POSTGRES_PASSWORD"); p != "" {
-			preferred := dbName
-			if preferred == "" {
-				preferred = strings.TrimSpace(os.Getenv("POSTGRES_DB"))
-			}
-			if preferred == "" {
-				preferred = "barn"
-			}
-			tries = append(tries, cred{u, p, preferred, "POSTGRES_*"})
-		}
-	}
-	if u, p, d, urlErr := parseDatabaseURL(s.databaseURL); urlErr == nil {
-		preferred := dbName
-		if preferred == "" {
-			preferred = d
-		}
-		tries = append(tries, cred{u, p, preferred, "DATABASE_URL"})
-	}
-
-	var lastErr error
-	for _, t := range tries {
-		name := t.preferredDB
-		// If we already know the live DB name, use it — only verify connectivity.
-		if dbName != "" {
-			ok, detail := s.probeDatabase(ctx, container, t.user, t.pass, dbName)
-			if ok {
-				s.logger.InfoContext(ctx, "panel dump connection resolved",
-					"source", t.source, "user", t.user, "database", dbName)
-				return panelDumpConn{
-					container: container,
-					user:      t.user,
-					password:  t.pass,
-					dbName:    dbName,
-				}, nil
-			}
-			lastErr = fmt.Errorf("%s: %s: %s", t.source, dbName, detail)
-			s.logger.WarnContext(ctx, "panel dump probe failed", "source", t.source, "database", dbName, "error", detail)
-			continue
-		}
-		resolved, probeErr := s.resolvePanelDatabaseName(ctx, container, t.user, t.pass, name, managed)
-		if probeErr != nil {
-			lastErr = fmt.Errorf("%s: %w", t.source, probeErr)
-			s.logger.WarnContext(ctx, "panel dump probe failed", "source", t.source, "error", probeErr)
-			continue
-		}
-		s.logger.InfoContext(ctx, "panel dump connection resolved",
-			"source", t.source, "user", t.user, "database", resolved)
-		return panelDumpConn{
-			container: container,
-			user:      t.user,
-			password:  t.pass,
-			dbName:    resolved,
-		}, nil
-	}
-	if lastErr != nil {
-		return panelDumpConn{}, lastErr
-	}
-	return panelDumpConn{}, fmt.Errorf("no credentials available for panel dump")
+	s.logger.InfoContext(ctx, "panel dump connection resolved",
+		"source", "pdb_admin", "user", adminUser, "database", dbName, "container", container)
+	return panelDumpConn{
+		container: container,
+		user:      adminUser,
+		password:  adminPass,
+		dbName:    dbName,
+	}, nil
 }
 
 func (s *Service) managedDBSet(ctx context.Context) map[string]bool {
@@ -771,101 +683,6 @@ func (s *Service) probeLiveDatabaseURL(ctx context.Context) (panelDumpConn, erro
 		return panelDumpConn{}, fmt.Errorf("database %q has no panel schema (sites/goose_db_version)", dbName)
 	}
 	return panelDumpConn{user: user, password: password, dbName: dbName}, nil
-}
-
-// discoverPanelDBViaPgx lists DBs on the API's Postgres endpoint and picks one
-// with panel schema, skipping managed application databases.
-func (s *Service) discoverPanelDBViaPgx(ctx context.Context, managed map[string]bool) (panelDumpConn, error) {
-	user, password, _, err := parseDatabaseURL(s.databaseURL)
-	if err != nil {
-		return panelDumpConn{}, err
-	}
-
-	var listed []string
-	var lastErr error
-	for _, maint := range []string{"postgres", "barn", "dockpilot", user} {
-		maintURL, rwErr := rewriteDatabaseURLPath(s.databaseURL, maint)
-		if rwErr != nil {
-			lastErr = rwErr
-			continue
-		}
-		conn, connErr := pgx.Connect(ctx, maintURL)
-		if connErr != nil {
-			lastErr = connErr
-			continue
-		}
-		rows, qErr := conn.Query(ctx, `SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname`)
-		if qErr != nil {
-			conn.Close(ctx)
-			lastErr = qErr
-			continue
-		}
-		for rows.Next() {
-			var name string
-			if scanErr := rows.Scan(&name); scanErr == nil && name != "" {
-				listed = append(listed, name)
-			}
-		}
-		rows.Close()
-		conn.Close(ctx)
-		if len(listed) > 0 {
-			lastErr = nil
-			break
-		}
-	}
-	if len(listed) == 0 {
-		if lastErr != nil {
-			return panelDumpConn{}, lastErr
-		}
-		return panelDumpConn{}, fmt.Errorf("could not list databases via DATABASE_URL")
-	}
-
-	preferred := []string{}
-	if d := strings.TrimSpace(os.Getenv("POSTGRES_DB")); d != "" {
-		preferred = append(preferred, d)
-	}
-	preferred = append(preferred, "barn", "dockpilot", "postgres")
-	seen := map[string]struct{}{}
-	var order []string
-	for _, name := range append(preferred, listed...) {
-		if _, ok := seen[name]; ok {
-			continue
-		}
-		seen[name] = struct{}{}
-		order = append(order, name)
-	}
-
-	for _, name := range order {
-		if managed[name] {
-			continue
-		}
-		dbURL, rwErr := rewriteDatabaseURLPath(s.databaseURL, name)
-		if rwErr != nil {
-			continue
-		}
-		conn, connErr := pgx.Connect(ctx, dbURL)
-		if connErr != nil {
-			continue
-		}
-		var hasPanel bool
-		_ = conn.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM information_schema.tables
-				WHERE table_schema = 'public' AND table_name IN ('sites', 'goose_db_version', 'pdb_instances')
-			)`).Scan(&hasPanel)
-		var curUser string
-		_ = conn.QueryRow(ctx, `SELECT current_user`).Scan(&curUser)
-		conn.Close(ctx)
-		if !hasPanel {
-			continue
-		}
-		if curUser == "" {
-			curUser = user
-		}
-		return panelDumpConn{user: curUser, password: password, dbName: name}, nil
-	}
-
-	return panelDumpConn{}, fmt.Errorf("panel database not found via pgx; listed=[%s]", strings.Join(listed, ","))
 }
 
 // resolvePanelDatabaseName picks the panel DB among preferred names / discovery.
@@ -933,8 +750,6 @@ func (s *Service) probeDatabase(ctx context.Context, container, user, password, 
 		ContainerName: container,
 		Cmd: []string{
 			"psql",
-			"-h", "127.0.0.1",
-			"-p", "5432",
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1",
@@ -955,15 +770,13 @@ func (s *Service) probeDatabase(ctx context.Context, container, user, password, 
 }
 
 func (s *Service) listDatabases(ctx context.Context, container, user, password string) ([]string, error) {
-	// Connect via maintenance DB candidates.
-	for _, maintenance := range []string{"postgres", "barn", "dockpilot", user} {
+	// Connect via maintenance DB candidates (local socket, same as managed dumps).
+	for _, maintenance := range []string{"postgres", user, "barn", "dockpilot"} {
 		var stdout, stderr bytes.Buffer
 		code, err := s.docker.Exec(ctx, docker.ExecOptions{
 			ContainerName: container,
 			Cmd: []string{
 				"psql",
-				"-h", "127.0.0.1",
-				"-p", "5432",
 				"-U", user,
 				"-d", maintenance,
 				"-tAc", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
@@ -993,8 +806,6 @@ func (s *Service) databaseHasPanelSchema(ctx context.Context, container, user, p
 		ContainerName: container,
 		Cmd: []string{
 			"psql",
-			"-h", "127.0.0.1",
-			"-p", "5432",
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('sites','goose_db_version','pdb_instances') LIMIT 1",
