@@ -624,37 +624,59 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 		}
 	}
 
-	// 1) Exact DB the running API is connected to.
+	// 1) Exact DB the running API is connected to (panel only — never dump managed DBs here).
 	if live, liveErr := s.probeLiveDatabaseURL(ctx); liveErr == nil {
-		s.logger.InfoContext(ctx, "panel DB from live DATABASE_URL",
-			"database", live.dbName, "user", live.user)
-		if adminUser != "" {
-			if ok, _ := s.probeDatabase(ctx, container, adminUser, adminPass, live.dbName); ok {
-				return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: live.dbName}, nil
-			}
-		}
-		if ok, detail := s.probeDatabase(ctx, container, live.user, live.password, live.dbName); ok {
-			return panelDumpConn{container: container, user: live.user, password: live.password, dbName: live.dbName}, nil
+		managed := s.managedDBSet(ctx)
+		if managed[live.dbName] {
+			s.logger.WarnContext(ctx, "DATABASE_URL points at a managed DB name; searching for panel DB instead",
+				"database", live.dbName)
 		} else {
-			s.logger.WarnContext(ctx, "live DB not reachable via docker exec",
-				"database", live.dbName, "detail", detail)
+			s.logger.InfoContext(ctx, "panel DB from live DATABASE_URL",
+				"database", live.dbName, "user", live.user)
+			if adminUser != "" {
+				if ok, _ := s.probeDatabase(ctx, container, adminUser, adminPass, live.dbName); ok {
+					return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: live.dbName}, nil
+				}
+			}
+			if ok, detail := s.probeDatabase(ctx, container, live.user, live.password, live.dbName); ok {
+				return panelDumpConn{container: container, user: live.user, password: live.password, dbName: live.dbName}, nil
+			} else {
+				s.logger.WarnContext(ctx, "live DB not reachable via docker exec",
+					"database", live.dbName, "detail", detail)
+			}
 		}
 	} else {
 		s.logger.WarnContext(ctx, "DATABASE_URL live probe failed", "error", liveErr)
 	}
 
-	// 2) Find any database that has the panel sites table (do not skip managed names —
-	// app DBs do not have public.sites; the panel DB does).
+	// 2) Find the panel DB by public.sites, skipping managed application databases
+	// (those are backed up separately — never included in the full panel snapshot).
 	if adminUser == "" {
 		return panelDumpConn{}, fmt.Errorf("no admin credentials and DATABASE_URL probe failed")
 	}
-	dbName, err := s.findDatabaseWithSitesTable(ctx, container, adminUser, adminPass)
+	managed := s.managedDBSet(ctx)
+	dbName, err := s.findPanelDatabase(ctx, container, adminUser, adminPass, managed)
 	if err != nil {
 		return panelDumpConn{}, err
 	}
 	s.logger.InfoContext(ctx, "panel dump connection resolved",
 		"source", "sites_table", "user", adminUser, "database", dbName, "container", container)
 	return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: dbName}, nil
+}
+
+func (s *Service) managedDBSet(ctx context.Context) map[string]bool {
+	out := map[string]bool{}
+	if s.pgdb == nil {
+		return out
+	}
+	names, err := s.pgdb.ListManagedDatabaseNames(ctx)
+	if err != nil {
+		return out
+	}
+	for _, n := range names {
+		out[strings.TrimSpace(n)] = true
+	}
+	return out
 }
 
 func (s *Service) probeLiveDatabaseURL(ctx context.Context) (panelDumpConn, error) {
@@ -686,20 +708,23 @@ func (s *Service) probeLiveDatabaseURL(ctx context.Context) (panelDumpConn, erro
 	return panelDumpConn{user: user, password: password, dbName: dbName}, nil
 }
 
-// findDatabaseWithSitesTable lists all DBs and returns the one with public.sites.
-func (s *Service) findDatabaseWithSitesTable(ctx context.Context, container, user, password string) (string, error) {
+// findPanelDatabase returns a non-managed DB that has public.sites (panel schema).
+func (s *Service) findPanelDatabase(ctx context.Context, container, user, password string, managed map[string]bool) (string, error) {
 	listed, err := s.listDatabases(ctx, container, user, password)
 	if err != nil {
 		return "", err
 	}
 	var checked []string
 	for _, name := range listed {
+		if managed[name] {
+			continue
+		}
+		checked = append(checked, name)
 		if s.databaseHasSitesTable(ctx, container, user, password, name) {
 			return name, nil
 		}
-		checked = append(checked, name)
 	}
-	return "", fmt.Errorf("no database with public.sites table (listed=[%s])", strings.Join(checked, ","))
+	return "", fmt.Errorf("no panel database with public.sites (checked non-managed=[%s])", strings.Join(checked, ","))
 }
 
 func (s *Service) probeDatabase(ctx context.Context, container, user, password, dbName string) (ok bool, detail string) {
