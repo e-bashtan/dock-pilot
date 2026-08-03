@@ -17,6 +17,20 @@ func ImageTagForSlug(slug string) string {
 	return fmt.Sprintf("barn/%s:latest", name)
 }
 
+// ImageTagsForSlug returns preferred and legacy image refs for a site slug.
+// Older deployments may still have dockpilot/* or dock-pilot/* tags locally.
+func ImageTagsForSlug(slug string) []string {
+	name := sanitizeImageName(slug)
+	if name == "" {
+		name = "site"
+	}
+	return []string{
+		fmt.Sprintf("barn/%s:latest", name),
+		fmt.Sprintf("dockpilot/%s:latest", name),
+		fmt.Sprintf("dock-pilot/%s:latest", name),
+	}
+}
+
 func sanitizeImageName(s string) string {
 	s = strings.TrimSpace(strings.ToLower(s))
 	if s == "" {

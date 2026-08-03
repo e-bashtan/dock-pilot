@@ -34,9 +34,13 @@ func RunSiteContainer(ctx context.Context, dockerClient docker.Client, site db.S
 	}
 
 	tag := docker.ImageTagForSlug(site.Slug)
+	resolved, err := dockerClient.ResolveLocalImage(ctx, tag, docker.ImageTagsForSlug(site.Slug)...)
+	if err != nil {
+		return err
+	}
 	containerName, stopNames := docker.NamesForSite(site.Slug, site.PrimaryUrl)
 	runOpts := docker.RunOptions{
-		ImageTag:      tag,
+		ImageTag:      resolved,
 		ContainerName: containerName,
 		StopNames:     stopNames,
 		Env:           env,

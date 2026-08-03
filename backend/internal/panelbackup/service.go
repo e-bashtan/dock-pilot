@@ -51,9 +51,6 @@ func NewService(
 		logger = slog.Default()
 	}
 	container := strings.TrimSpace(os.Getenv("PANEL_POSTGRES_CONTAINER"))
-	if container == "" {
-		container = "barn-postgres"
-	}
 	return &Service{
 		queries:                queries,
 		docker:                 dockerClient,
@@ -61,7 +58,7 @@ func NewService(
 		pgdb:                   pgdbSvc,
 		logger:                 logger,
 		databaseURL:            databaseURL,
-		panelPostgresContainer: container,
+		panelPostgresContainer: container, // empty → resolve at use (barn / dockpilot)
 	}
 }
 
@@ -373,9 +370,13 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 	if err != nil {
 		return err
 	}
+	container, err := s.resolvePanelPostgresContainer(ctx)
+	if err != nil {
+		return err
+	}
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.panelPostgresContainer,
+		ContainerName: container,
 		Cmd: []string{
 			"pg_dump",
 			"-U", user,
@@ -403,9 +404,13 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 	if err != nil {
 		return err
 	}
+	container, err := s.resolvePanelPostgresContainer(ctx)
+	if err != nil {
+		return err
+	}
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.panelPostgresContainer,
+		ContainerName: container,
 		Cmd: []string{
 			"psql",
 			"-v", "ON_ERROR_STOP=1",
@@ -425,6 +430,36 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+// resolvePanelPostgresContainer picks the running panel Postgres container.
+// Prefer PANEL_POSTGRES_CONTAINER, then dockpilot-postgres (legacy), then barn-postgres.
+func (s *Service) resolvePanelPostgresContainer(ctx context.Context) (string, error) {
+	if name := strings.TrimSpace(s.panelPostgresContainer); name != "" {
+		st, err := s.docker.InspectContainer(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		if !st.Found {
+			return "", fmt.Errorf("PANEL_POSTGRES_CONTAINER=%s not found", name)
+		}
+		if !st.Running {
+			return "", fmt.Errorf("postgres container %s is not running", name)
+		}
+		return st.Container, nil
+	}
+
+	st, err := s.docker.InspectContainer(ctx, "dockpilot-postgres", "barn-postgres")
+	if err != nil {
+		return "", err
+	}
+	if !st.Found {
+		return "", fmt.Errorf("postgres container not found (tried dockpilot-postgres, barn-postgres) — start the panel database")
+	}
+	if !st.Running {
+		return "", fmt.Errorf("postgres container %s is not running", st.Container)
+	}
+	return st.Container, nil
 }
 
 func (s *Service) applyRetention(ctx context.Context, cfg s3util.Config, prefix string, keep int) error {

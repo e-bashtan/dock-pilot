@@ -32,3 +32,20 @@ func TestImageTagForSlug(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestImageTagsForSlugIncludesLegacy(t *testing.T) {
+	got := ImageTagsForSlug("coachman")
+	want := []string{
+		"barn/coachman:latest",
+		"dockpilot/coachman:latest",
+		"dock-pilot/coachman:latest",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %#v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %#v want %#v", got, want)
+		}
+	}
+}

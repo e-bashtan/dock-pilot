@@ -45,6 +45,9 @@ type ExecOptions struct {
 type Client interface {
 	Build(ctx context.Context, opts BuildOptions) error
 	Pull(ctx context.Context, image string) error
+	// ResolveLocalImage returns the first ref that exists locally.
+	// If preferred is non-empty and a legacy ref is found, it is retagged to preferred.
+	ResolveLocalImage(ctx context.Context, preferred string, candidates ...string) (string, error)
 	Run(ctx context.Context, opts RunOptions) (containerID string, err error)
 	Stop(ctx context.Context, containerNames ...string) error
 	AllocatePort(ctx context.Context) (int, error)
@@ -83,6 +86,16 @@ func (s *StubClient) Build(ctx context.Context, opts BuildOptions) error {
 func (s *StubClient) Pull(ctx context.Context, image string) error {
 	s.logger.InfoContext(ctx, "stub docker pull", "image", image)
 	return nil
+}
+
+func (s *StubClient) ResolveLocalImage(ctx context.Context, preferred string, candidates ...string) (string, error) {
+	if preferred != "" {
+		return preferred, nil
+	}
+	if len(candidates) > 0 {
+		return candidates[0], nil
+	}
+	return "", fmt.Errorf("no image candidates")
 }
 
 func (s *StubClient) Exec(ctx context.Context, opts ExecOptions, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
