@@ -70,7 +70,7 @@ function OverviewCard({
 }) {
   return (
     <div className="card backup-status-card">
-      <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.85rem" }}>{title}</h3>
+      <h3>{title}</h3>
       <div className="backup-status-card-body">{children}</div>
       <div className="backup-status-card-actions">{action}</div>
     </div>
@@ -171,7 +171,7 @@ export function BackupsOverview({
 
   return (
     <div>
-      <h2 style={{ fontSize: "1.05rem", margin: "0 0 1rem" }}>
+      <h2 style={{ fontSize: "1rem", margin: "0 0 0.75rem" }}>
         {t("backups.overviewStateTitle")}
       </h2>
 
@@ -182,7 +182,6 @@ export function BackupsOverview({
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ fontSize: "0.85rem" }}
               onClick={onCreateSnapshot}
               disabled={busy || !settings}
             >
@@ -232,7 +231,6 @@ export function BackupsOverview({
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ fontSize: "0.85rem" }}
               onClick={onOpenDatabases}
             >
               {t("backups.overviewGoToDatabases")}
@@ -274,7 +272,6 @@ export function BackupsOverview({
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ fontSize: "0.85rem" }}
               onClick={onOpenSettings}
             >
               {t("backups.overviewGoToSettings")}
