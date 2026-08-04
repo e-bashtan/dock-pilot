@@ -595,14 +595,12 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
 		ContainerName: conn.container,
-		Cmd: []string{
-			"pg_dump",
-			"-h", "127.0.0.1",
+		Cmd: append(pgClientPrefix("pg_dump", conn.tcp),
 			"-U", conn.user,
 			"-d", conn.dbName,
 			"--no-owner",
 			"--no-acl",
-		},
+		),
 		Env: []string{"PGPASSWORD=" + conn.password},
 	}, nil, w, &stderr)
 	if err != nil {
@@ -627,13 +625,11 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 	var stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
 		ContainerName: conn.container,
-		Cmd: []string{
-			"psql",
-			"-h", "127.0.0.1",
+		Cmd: append(pgClientPrefix("psql", conn.tcp),
 			"-v", "ON_ERROR_STOP=1",
 			"-U", conn.user,
 			"-d", conn.dbName,
-		},
+		),
 		Env: []string{"PGPASSWORD=" + conn.password},
 	}, r, io.Discard, &stderr)
 	if err != nil {
@@ -647,6 +643,14 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+// pgClientPrefix returns [bin] or [bin, -h, 127.0.0.1].
+func pgClientPrefix(bin string, tcp bool) []string {
+	if tcp {
+		return []string{bin, "-h", "127.0.0.1"}
+	}
+	return []string{bin}
 }
 
 // resolvePanelPostgresContainer picks the running panel Postgres container.
@@ -838,6 +842,7 @@ type panelDumpConn struct {
 	user      string
 	password  string
 	dbName    string
+	tcp       bool
 }
 
 // resolvePanelDumpConn uses the same DATABASE_URL the API already uses, then
@@ -847,7 +852,7 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 	if err != nil {
 		// Fall back to managed postgres container name.
 		if s.pgdb != nil {
-			if c, _, _, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && c != "" {
+			if c, _, _, _, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil && c != "" {
 				container = c
 			} else {
 				return panelDumpConn{}, err
@@ -857,10 +862,10 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 		}
 	}
 
-	adminUser, adminPass := "", ""
+	adminUser, adminPass, adminTCP := "", "", false
 	if s.pgdb != nil {
-		if c, u, p, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil {
-			adminUser, adminPass = u, p
+		if c, u, p, tcp, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil {
+			adminUser, adminPass, adminTCP = u, p, tcp
 			if c != "" {
 				container = c
 			}
@@ -877,12 +882,15 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 			s.logger.InfoContext(ctx, "panel DB from live DATABASE_URL",
 				"database", live.dbName, "user", live.user)
 			if adminUser != "" {
-				if ok, _ := s.probeDatabase(ctx, container, adminUser, adminPass, live.dbName); ok {
-					return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: live.dbName}, nil
+				if ok, _ := s.probeDatabase(ctx, container, adminUser, adminPass, live.dbName, adminTCP); ok {
+					return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: live.dbName, tcp: adminTCP}, nil
 				}
 			}
-			if ok, detail := s.probeDatabase(ctx, container, live.user, live.password, live.dbName); ok {
-				return panelDumpConn{container: container, user: live.user, password: live.password, dbName: live.dbName}, nil
+			if ok, _ := s.probeDatabase(ctx, container, live.user, live.password, live.dbName, true); ok {
+				return panelDumpConn{container: container, user: live.user, password: live.password, dbName: live.dbName, tcp: true}, nil
+			}
+			if ok, detail := s.probeDatabase(ctx, container, live.user, live.password, live.dbName, false); ok {
+				return panelDumpConn{container: container, user: live.user, password: live.password, dbName: live.dbName, tcp: false}, nil
 			} else {
 				s.logger.WarnContext(ctx, "live DB not reachable via docker exec",
 					"database", live.dbName, "detail", detail)
@@ -898,13 +906,13 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 		return panelDumpConn{}, fmt.Errorf("no admin credentials and DATABASE_URL probe failed")
 	}
 	managed := s.managedDBSet(ctx)
-	dbName, err := s.findPanelDatabase(ctx, container, adminUser, adminPass, managed)
+	dbName, err := s.findPanelDatabase(ctx, container, adminUser, adminPass, adminTCP, managed)
 	if err != nil {
 		return panelDumpConn{}, err
 	}
 	s.logger.InfoContext(ctx, "panel dump connection resolved",
-		"source", "sites_table", "user", adminUser, "database", dbName, "container", container)
-	return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: dbName}, nil
+		"source", "sites_table", "user", adminUser, "database", dbName, "container", container, "tcp", adminTCP)
+	return panelDumpConn{container: container, user: adminUser, password: adminPass, dbName: dbName, tcp: adminTCP}, nil
 }
 
 func (s *Service) managedDBSet(ctx context.Context) map[string]bool {
@@ -952,8 +960,8 @@ func (s *Service) probeLiveDatabaseURL(ctx context.Context) (panelDumpConn, erro
 }
 
 // findPanelDatabase returns a non-managed DB that has public.sites (panel schema).
-func (s *Service) findPanelDatabase(ctx context.Context, container, user, password string, managed map[string]bool) (string, error) {
-	listed, err := s.listDatabases(ctx, container, user, password)
+func (s *Service) findPanelDatabase(ctx context.Context, container, user, password string, tcp bool, managed map[string]bool) (string, error) {
+	listed, err := s.listDatabases(ctx, container, user, password, tcp)
 	if err != nil {
 		return "", err
 	}
@@ -963,24 +971,22 @@ func (s *Service) findPanelDatabase(ctx context.Context, container, user, passwo
 			continue
 		}
 		checked = append(checked, name)
-		if s.databaseHasSitesTable(ctx, container, user, password, name) {
+		if s.databaseHasSitesTable(ctx, container, user, password, name, tcp) {
 			return name, nil
 		}
 	}
 	return "", fmt.Errorf("no panel database with public.sites (checked non-managed=[%s])", strings.Join(checked, ","))
 }
 
-func (s *Service) probeDatabase(ctx context.Context, container, user, password, dbName string) (ok bool, detail string) {
+func (s *Service) probeDatabase(ctx context.Context, container, user, password, dbName string, tcp bool) (ok bool, detail string) {
 	var stdout, stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
 		ContainerName: container,
-		Cmd: []string{
-			"psql",
-			"-h", "127.0.0.1",
+		Cmd: append(pgClientPrefix("psql", tcp),
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1",
-		},
+		),
 		Env: []string{"PGPASSWORD=" + password},
 	}, nil, &stdout, &stderr)
 	if err != nil {
@@ -996,18 +1002,16 @@ func (s *Service) probeDatabase(ctx context.Context, container, user, password, 
 	return strings.TrimSpace(stdout.String()) == "1", ""
 }
 
-func (s *Service) listDatabases(ctx context.Context, container, user, password string) ([]string, error) {
+func (s *Service) listDatabases(ctx context.Context, container, user, password string, tcp bool) ([]string, error) {
 	for _, maintenance := range []string{"postgres", user} {
 		var stdout, stderr bytes.Buffer
 		code, err := s.docker.Exec(ctx, docker.ExecOptions{
 			ContainerName: container,
-			Cmd: []string{
-				"psql",
-				"-h", "127.0.0.1",
+			Cmd: append(pgClientPrefix("psql", tcp),
 				"-U", user,
 				"-d", maintenance,
 				"-tAc", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
-			},
+			),
 			Env: []string{"PGPASSWORD=" + password},
 		}, nil, &stdout, &stderr)
 		if err != nil || code != 0 {
@@ -1027,17 +1031,15 @@ func (s *Service) listDatabases(ctx context.Context, container, user, password s
 	return nil, fmt.Errorf("could not list databases as %s", user)
 }
 
-func (s *Service) databaseHasSitesTable(ctx context.Context, container, user, password, dbName string) bool {
+func (s *Service) databaseHasSitesTable(ctx context.Context, container, user, password, dbName string, tcp bool) bool {
 	var stdout, stderr bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
 		ContainerName: container,
-		Cmd: []string{
-			"psql",
-			"-h", "127.0.0.1",
+		Cmd: append(pgClientPrefix("psql", tcp),
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sites' LIMIT 1",
-		},
+		),
 		Env: []string{"PGPASSWORD=" + password},
 	}, nil, &stdout, &stderr)
 	return err == nil && code == 0 && strings.TrimSpace(stdout.String()) == "1"
