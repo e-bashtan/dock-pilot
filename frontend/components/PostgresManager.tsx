@@ -18,8 +18,6 @@ import type {
   PgTableInfo,
 } from "@/lib/types";
 
-type Tab = "databases" | "deployments";
-
 export function PostgresManager({
   instanceId,
   onDeleted,
@@ -30,7 +28,6 @@ export function PostgresManager({
   const { t, formatDateTime } = useI18n();
   const id = instanceId;
 
-  const [tab, setTab] = useState<Tab>("databases");
   const [instance, setInstance] = useState<PgInstance | null>(null);
   const [health, setHealth] = useState<PgHealth | null>(null);
   const [databases, setDatabases] = useState<PgDatabase[]>([]);
@@ -205,7 +202,6 @@ export function PostgresManager({
               disabled={busy || deploying}
               onClick={() => {
                 setError(null);
-                setTab("deployments");
                 setDeploySession((n) => n + 1);
                 setDeploying(true);
               }}
@@ -247,51 +243,26 @@ export function PostgresManager({
         <PostgresHealthPanel instanceId={id} />
       </div>
 
-      <nav className="site-tabs" aria-label={t("databases.title")}>
-        {(["databases", "deployments"] as Tab[]).map((key) => (
-          <button
-            key={key}
-            type="button"
-            className={tab === key ? "site-tab site-tab-active" : "site-tab"}
-            onClick={() => setTab(key)}
-          >
-            {t(`databases.${key}`)}
-          </button>
-        ))}
-      </nav>
-
       <p className="muted" style={{ marginBottom: "1rem", fontSize: "0.9rem" }}>
         {t("databases.backupsMoved")}{" "}
         <Link href="/backups">{t("nav.backups")}</Link>
       </p>
 
       {deploySession > 0 ? (
-        <div hidden={tab !== "deployments"}>
-          <div className="card">
-            <h2 className="section-title">{t("databases.deployLog")}</h2>
-            <PostgresDeployLog
-              key={deploySession}
-              instanceId={id}
-              onFinished={() => {
-                setDeploying(false);
-                void load();
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {tab === "deployments" && deploySession === 0 ? (
-        <div className="card">
+        <div className="card" style={{ marginBottom: "1rem" }}>
           <h2 className="section-title">{t("databases.deployLog")}</h2>
-          <p className="muted" style={{ margin: 0 }}>
-            {t("databases.noDeployYet")}
-          </p>
+          <PostgresDeployLog
+            key={deploySession}
+            instanceId={id}
+            onFinished={() => {
+              setDeploying(false);
+              void load();
+            }}
+          />
         </div>
       ) : null}
 
-      {tab === "databases" && (
-        <>
+      <>
           <div className="card">
             <h2 className="section-title">{t("databases.databases")}</h2>
             {databases.length === 0 ? (
@@ -457,7 +428,6 @@ export function PostgresManager({
             </div>
           </form>
         </>
-      )}
 
       {queryResult && (
         <div

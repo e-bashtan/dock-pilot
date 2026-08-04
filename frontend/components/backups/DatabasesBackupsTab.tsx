@@ -165,14 +165,6 @@ export function DatabasesBackupsTab({
         >
           {t("backups.createBackup")}
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => openRestoreFromFile()}
-          disabled={busy || loading}
-        >
-          {t("databases.restoreFromFile")}
-        </button>
       </div>
 
       {loading ? (

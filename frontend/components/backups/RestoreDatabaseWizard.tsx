@@ -128,8 +128,13 @@ export function RestoreDatabaseWizard({
           databases[0]?.name ||
           "",
       );
+      const targetName =
+        initialTarget || backup?.database_name || databases[0]?.name || "";
+      const targetExists = databases.some((d) => d.name === targetName);
       setCreateDb(true);
-      setDropDb(false);
+      // Restoring into an existing DB without drop leaves old objects and
+      // fails with "relation already exists" on CREATE TABLE in the dump.
+      setDropDb(targetExists);
       setConfirmTyped("");
       setRestoreRunning(false);
     }
@@ -322,7 +327,10 @@ export function RestoreDatabaseWizard({
               id="restore-target"
               databases={databases}
               value={target}
-              onChange={setTarget}
+              onChange={(name) => {
+                setTarget(name);
+                setDropDb(databases.some((d) => d.name === name));
+              }}
               required
               t={t}
             />

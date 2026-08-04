@@ -529,8 +529,35 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		return DatabaseResponse{}, err
 	}
 
-	createDB := opts.CreateDatabase
-	if opts.DropExisting {
+	creds, err := s.resolveExecCreds(ctx, inst)
+	if err != nil {
+		return DatabaseResponse{}, fmt.Errorf("resolve admin: %w", err)
+	}
+	clusterDBs := s.listClusterDatabases(ctx, creds)
+	existsInCluster := clusterHasDatabase(clusterDBs, targetName)
+	s.logPGOp(ctx, "restore_prep", inst, creds, targetName,
+		"exists_in_cluster", existsInCluster,
+		"create_database", opts.CreateDatabase,
+		"drop_existing", opts.DropExisting,
+		"cluster_databases", clusterDBs,
+	)
+
+	doDrop, doCreate, err := restorePrep(existsInCluster, opts.CreateDatabase, opts.DropExisting)
+	if err != nil {
+		log("error", err.Error())
+		return DatabaseResponse{}, err
+	}
+
+	ownerUser := creds.user
+	if ownerUser == "" {
+		ownerUser = inst.AdminUser
+	}
+	ownerIdent, err := quoteIdent(ownerUser)
+	if err != nil {
+		return DatabaseResponse{}, err
+	}
+
+	if doDrop {
 		log("info", "Dropping existing database "+targetName)
 		_ = s.execSQL(ctx, inst, "postgres", fmt.Sprintf(
 			"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
@@ -542,19 +569,12 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		if panelErr == nil {
 			_ = s.queries.DeletePgDatabase(ctx, existingPanelDB.ID)
 		}
-		createDB = true
 	}
 
-	if createDB || panelErr != nil {
-		ownerIdent, err := quoteIdent(inst.AdminUser)
-		if err != nil {
-			return DatabaseResponse{}, err
-		}
+	if doCreate {
 		log("info", "Creating database "+targetName)
 		if err := s.execSQL(ctx, inst, "postgres", fmt.Sprintf("CREATE DATABASE %s OWNER %s", dbIdent, ownerIdent)); err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "already exists") {
-				return DatabaseResponse{}, err
-			}
+			return DatabaseResponse{}, err
 		}
 	}
 
@@ -568,7 +588,7 @@ func (s *Service) restoreDumpInto(ctx context.Context, inst db.PdbInstance, opts
 		created, cerr := s.queries.CreatePgDatabase(ctx, db.CreatePgDatabaseParams{
 			InstanceID: instanceID,
 			Name:       targetName,
-			OwnerRole:  inst.AdminUser,
+			OwnerRole:  ownerUser,
 		})
 		if cerr != nil {
 			return DatabaseResponse{}, cerr
