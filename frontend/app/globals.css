@@ -1129,8 +1129,52 @@ h3 {
 
 .backup-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
+  align-items: stretch;
+}
+
+@media (max-width: 960px) {
+  .backup-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.backup-status-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.backup-status-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  font-size: 0.875rem;
+}
+
+.backup-status-card-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.backup-status-card-row strong {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.backup-status-card-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.backup-status-card-actions {
+  margin-top: auto;
+  padding-top: 1rem;
 }
 
 .site-tab {

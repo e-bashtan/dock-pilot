@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { formatBytes, nextDailyRun } from "./format";
 import { StatusBadge } from "./StatusBadge";
 import { BackupErrorDetails } from "./BackupErrorDetails";
@@ -29,6 +30,53 @@ function operationKindLabel(
   return kind;
 }
 
+function formatScheduleTime(hour: number, minute: number, timezone: string) {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${timezone || "UTC"}`;
+}
+
+function isSuccessStatus(status: string): boolean {
+  const s = (status || "").toLowerCase();
+  return s === "ok" || s === "succeeded" || s === "success";
+}
+
+function isErrorStatus(status: string, lastError?: string): boolean {
+  const s = (status || "").toLowerCase();
+  return s === "failed" || s === "error" || !!lastError;
+}
+
+function OverviewRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="backup-status-card-row">
+      <strong>{label}</strong>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function OverviewCard({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children: ReactNode;
+  action: ReactNode;
+}) {
+  return (
+    <div className="card backup-status-card">
+      <h3 style={{ fontSize: "0.95rem", margin: "0 0 0.85rem" }}>{title}</h3>
+      <div className="backup-status-card-body">{children}</div>
+      <div className="backup-status-card-actions">{action}</div>
+    </div>
+  );
+}
+
 export function BackupsOverview({
   settings,
   schedules,
@@ -54,24 +102,72 @@ export function BackupsOverview({
   onOpenSettings: () => void;
   busy: boolean;
 }) {
-  const nextRun = settings?.enabled
+  const panelNextRun = settings?.enabled
     ? nextDailyRun(settings.hour, settings.minute, settings.timezone)
     : null;
 
-  const schedulesWithSuccess = schedules.filter((s) => {
-    const st = (s.last_status || "").toLowerCase();
-    return st === "ok" || st === "succeeded" || st === "success";
-  });
-  const schedulesWithError = schedules.filter((s) => {
-    const st = (s.last_status || "").toLowerCase();
-    return st === "failed" || st === "error" || !!s.last_error;
-  });
+  const enabledSchedules = schedules.filter((s) => s.enabled);
+  const primarySchedule =
+    enabledSchedules[0] ||
+    schedules
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.last_run_at || 0).getTime() -
+          new Date(a.last_run_at || 0).getTime(),
+      )[0];
 
-  const nearestDbRun = schedules
-    .filter((s) => s.enabled)
+  const latestDbRun = schedules
+    .filter((s) => s.last_run_at)
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.last_run_at!).getTime() - new Date(a.last_run_at!).getTime(),
+    )[0];
+
+  const dbAggregateStatus = (() => {
+    if (schedules.some((s) => isErrorStatus(s.last_status, s.last_error))) {
+      return "failed";
+    }
+    if (schedules.some((s) => isSuccessStatus(s.last_status))) {
+      return "ok";
+    }
+    return latestDbRun?.last_status || "";
+  })();
+
+  const nearestDbRun = enabledSchedules
     .map((s) => nextDailyRun(s.hour, s.minute, s.timezone))
     .filter((iso): iso is string => !!iso)
     .sort()[0];
+
+  const dbScheduleLabel = (() => {
+    if (schedules.length === 0) return t("backups.scheduleNotConfigured");
+    if (schedules.length === 1 && primarySchedule) {
+      const enabledLabel = primarySchedule.enabled
+        ? t("common.enabled")
+        : t("common.disabled");
+      return `${enabledLabel} · ${formatScheduleTime(primarySchedule.hour, primarySchedule.minute, primarySchedule.timezone)}`;
+    }
+    const enabledCount = enabledSchedules.length;
+    const sample = primarySchedule
+      ? formatScheduleTime(
+          primarySchedule.hour,
+          primarySchedule.minute,
+          primarySchedule.timezone,
+        )
+      : "";
+    return t("backups.overviewSchedulesSummary", {
+      total: String(schedules.length),
+      enabled: String(enabledCount),
+      time: sample,
+    });
+  })();
+
+  const storageReady = !!(
+    settings?.s3_bucket &&
+    settings?.s3_endpoint &&
+    settings?.s3_credentials_set
+  );
 
   return (
     <div>
@@ -80,164 +176,178 @@ export function BackupsOverview({
       </h2>
 
       <div className="backup-status-grid">
-        <div className="card">
-          <h3 style={{ fontSize: "0.95rem", marginBottom: "0.75rem" }}>
-            {t("backups.overviewPanelSnapshot")}
-          </h3>
+        <OverviewCard
+          title={t("backups.overviewPanelSnapshot")}
+          action={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem" }}
+              onClick={onCreateSnapshot}
+              disabled={busy || !settings}
+            >
+              {busy ? t("common.loading") : t("backups.createSnapshot")}
+            </button>
+          }
+        >
           {settings ? (
-            <div style={{ fontSize: "0.875rem" }}>
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewLastSuccess")}:</strong>{" "}
-                {settings.last_run_at && isSuccessStatus(settings.last_status)
+            <>
+              <OverviewRow label={t("backups.overviewLastRun")}>
+                {settings.last_run_at
                   ? formatDateTime(settings.last_run_at)
                   : t("backups.neverRan")}
-              </div>
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewStatus")}:</strong>{" "}
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewStatus")}>
                 {settings.last_status ? (
                   <StatusBadge status={settings.last_status} t={t} />
                 ) : (
                   t("backups.noData")
                 )}
-              </div>
-              {settings.last_error ? (
-                <BackupErrorDetails error={settings.last_error} t={t} />
-              ) : null}
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewSchedule")}:</strong>{" "}
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewSchedule")}>
                 {settings.enabled ? t("common.enabled") : t("common.disabled")}
                 {" · "}
-                {`${String(settings.hour).padStart(2, "0")}:${String(settings.minute).padStart(2, "0")} ${settings.timezone || "UTC"}`}
-              </div>
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewNextRun")}:</strong>{" "}
+                {formatScheduleTime(
+                  settings.hour,
+                  settings.minute,
+                  settings.timezone,
+                )}
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewNextRun")}>
                 {settings.enabled
-                  ? nextRun
-                    ? formatDateTime(nextRun)
-                    : t("backups.unknownDatabase")
+                  ? panelNextRun
+                    ? formatDateTime(panelNextRun)
+                    : t("backups.noData")
                   : t("backups.scheduleDisabled")}
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}
-                onClick={onCreateSnapshot}
-                disabled={busy}
-              >
-                {busy ? t("common.loading") : t("backups.createSnapshot")}
-              </button>
-            </div>
+              </OverviewRow>
+            </>
           ) : (
-            <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
-              {t("backups.noData")}
-            </p>
+            <p style={{ margin: 0, color: "var(--muted)" }}>{t("backups.noData")}</p>
           )}
-        </div>
+        </OverviewCard>
 
-        <div className="card">
-          <h3 style={{ fontSize: "0.95rem", marginBottom: "0.75rem" }}>
-            {t("backups.overviewDatabases")}
-          </h3>
-          <div style={{ fontSize: "0.875rem" }}>
-            <div style={{ marginBottom: "0.5rem" }}>
-              <strong>{t("backups.overviewDbCount")}:</strong> {dbCount}
-            </div>
-            <div style={{ marginBottom: "0.5rem" }}>
-              <strong>{t("backups.overviewDbSuccess")}:</strong>{" "}
-              {schedules.length > 0 ? schedulesWithSuccess.length : t("backups.noData")}
-            </div>
-            <div style={{ marginBottom: "0.5rem" }}>
-              <strong>{t("backups.overviewDbErrors")}:</strong>{" "}
-              {schedules.length > 0 ? schedulesWithError.length : t("backups.noData")}
-            </div>
-            <div style={{ marginBottom: "0.5rem" }}>
-              <strong>{t("backups.overviewNextRun")}:</strong>{" "}
-              {nearestDbRun
-                ? formatDateTime(nearestDbRun)
-                : t("backups.scheduleNotConfigured")}
-            </div>
+        <OverviewCard
+          title={t("backups.overviewDatabases")}
+          action={
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}
+              style={{ fontSize: "0.85rem" }}
               onClick={onOpenDatabases}
             >
               {t("backups.overviewGoToDatabases")}
             </button>
-          </div>
-        </div>
+          }
+        >
+          <OverviewRow label={t("backups.overviewLastRun")}>
+            {latestDbRun?.last_run_at
+              ? formatDateTime(latestDbRun.last_run_at)
+              : t("backups.neverRan")}
+          </OverviewRow>
+          <OverviewRow label={t("backups.overviewStatus")}>
+            {dbAggregateStatus ? (
+              <StatusBadge status={dbAggregateStatus} t={t} />
+            ) : (
+              t("backups.noData")
+            )}
+          </OverviewRow>
+          <OverviewRow label={t("backups.overviewSchedule")}>
+            {dbScheduleLabel}
+          </OverviewRow>
+          <OverviewRow label={t("backups.overviewNextRun")}>
+            {enabledSchedules.length > 0
+              ? nearestDbRun
+                ? formatDateTime(nearestDbRun)
+                : t("backups.noData")
+              : schedules.length > 0
+                ? t("backups.scheduleDisabled")
+                : t("backups.scheduleNotConfigured")}
+          </OverviewRow>
+          <OverviewRow label={t("backups.overviewDbCount")}>
+            {dbCount}
+          </OverviewRow>
+        </OverviewCard>
 
-        <div className="card">
-          <h3 style={{ fontSize: "0.95rem", marginBottom: "0.75rem" }}>
-            {t("backups.overviewStorage")}
-          </h3>
+        <OverviewCard
+          title={t("backups.overviewStorage")}
+          action={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ fontSize: "0.85rem" }}
+              onClick={onOpenSettings}
+            >
+              {t("backups.overviewGoToSettings")}
+            </button>
+          }
+        >
           {settings ? (
-            <div style={{ fontSize: "0.875rem" }}>
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewBucket")}:</strong>{" "}
+            <>
+              <OverviewRow label={t("backups.overviewStatus")}>
+                {storageReady
+                  ? t("backups.overviewStorageReady")
+                  : t("backups.overviewStorageIncomplete")}
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewBucket")}>
                 {settings.s3_bucket || t("backups.noData")}
-              </div>
-              <div
-                style={{
-                  marginBottom: "0.5rem",
-                  maxWidth: "100%",
-                  overflowWrap: "anywhere",
-                }}
-              >
-                <strong>{t("backups.overviewEndpoint")}:</strong>{" "}
-                <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewEndpoint")}>
+                <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
                   {settings.s3_endpoint || t("backups.noData")}
                 </span>
-              </div>
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong>{t("backups.overviewCredentials")}:</strong>{" "}
+              </OverviewRow>
+              <OverviewRow label={t("backups.overviewCredentials")}>
                 {settings.s3_credentials_set
                   ? t("backups.overviewCredsSet")
                   : t("backups.overviewCredsNotSet")}
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}
-                onClick={onOpenSettings}
-              >
-                {t("backups.overviewGoToSettings")}
-              </button>
-            </div>
+              </OverviewRow>
+            </>
           ) : (
-            <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)" }}>
-              {t("backups.noData")}
-            </p>
+            <p style={{ margin: 0, color: "var(--muted)" }}>{t("backups.noData")}</p>
           )}
-        </div>
+        </OverviewCard>
       </div>
 
       <div className="card" style={{ marginTop: "1.25rem" }}>
-        <h3 style={{ fontSize: "1rem", marginBottom: "0.75rem" }}>
+        <h3 style={{ fontSize: "1rem", margin: "0 0 0.75rem" }}>
           {t("backups.overviewRecentOps")}
         </h3>
         <div style={{ fontSize: "0.875rem" }}>
           {operations.length > 0 ? (
-            <ul style={{ paddingLeft: "1.25rem", margin: 0 }}>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {operations.slice(0, 10).map((op) => (
-                <li key={op.id} style={{ marginBottom: "0.65rem" }}>
-                  <strong>{operationKindLabel(op.kind, t)}</strong>
-                  {op.database_name ? (
-                    <>
-                      {" · "}
-                      {op.database_name}
-                    </>
-                  ) : null}
-                  {" · "}
-                  {formatDateTime(op.started_at)}
-                  {" · "}
-                  <StatusBadge status={op.status} t={t} />
-                  {op.size_bytes > 0 ? (
+                <li
+                  key={op.id}
+                  style={{
+                    marginBottom: "0.75rem",
+                    paddingBottom: "0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.5rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    <strong>{operationKindLabel(op.kind, t)}</strong>
+                    {op.database_name ? (
+                      <span style={{ color: "var(--muted)" }}>
+                        {op.database_name}
+                      </span>
+                    ) : null}
                     <span style={{ color: "var(--muted)" }}>
-                      {" · "}
-                      {formatBytes(op.size_bytes)}
+                      {formatDateTime(op.started_at)}
                     </span>
-                  ) : null}
+                    <StatusBadge status={op.status} t={t} />
+                    {op.size_bytes > 0 ? (
+                      <span style={{ color: "var(--muted)" }}>
+                        {formatBytes(op.size_bytes)}
+                      </span>
+                    ) : null}
+                  </div>
                   {op.message && op.status === "failed" ? (
                     <BackupErrorDetails error={op.message} t={t} />
                   ) : null}
@@ -290,32 +400,49 @@ function FallbackRecentOps({
   }
 
   return (
-    <ul style={{ paddingLeft: "1.25rem", margin: 0 }}>
+    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
       {settings?.last_run_at && (
-        <li style={{ marginBottom: "0.5rem" }}>
+        <li
+          style={{
+            marginBottom: "0.75rem",
+            paddingBottom: "0.75rem",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
           <strong>{t("backups.overviewPanelSnapshot")}</strong>
-          {" · "}
-          {formatDateTime(settings.last_run_at)}
-          {" · "}
+          <span style={{ color: "var(--muted)" }}>
+            {formatDateTime(settings.last_run_at)}
+          </span>
           <StatusBadge status={settings.last_status} t={t} />
         </li>
       )}
       {recentScheduleOps.map((s) => (
-        <li key={s.id} style={{ marginBottom: "0.5rem" }}>
+        <li
+          key={s.id}
+          style={{
+            marginBottom: "0.75rem",
+            paddingBottom: "0.75rem",
+            borderBottom: "1px solid var(--border)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            alignItems: "center",
+          }}
+        >
           <strong>{t("backups.overviewDbBackupOp")}</strong>
-          {" · "}
-          {scheduleDbLabel(s, dbNamesById, t)}
-          {" · "}
-          {s.last_run_at ? formatDateTime(s.last_run_at) : t("backups.noData")}
-          {" · "}
+          <span style={{ color: "var(--muted)" }}>
+            {scheduleDbLabel(s, dbNamesById, t)}
+          </span>
+          <span style={{ color: "var(--muted)" }}>
+            {s.last_run_at ? formatDateTime(s.last_run_at) : t("backups.noData")}
+          </span>
           <StatusBadge status={s.last_status} t={t} />
         </li>
       ))}
     </ul>
   );
-}
-
-function isSuccessStatus(status: string): boolean {
-  const s = (status || "").toLowerCase();
-  return s === "ok" || s === "succeeded" || s === "success";
 }
