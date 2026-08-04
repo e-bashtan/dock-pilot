@@ -462,6 +462,7 @@ export const ru: Messages = {
     scheduleStorage: "Хранилище",
     scheduleLastRun: "Последний запуск",
     scheduleNotConfigured: "Расписание не настроено",
+    scheduleDisabled: "Расписание выключено",
     retentionCount: "Хранить последние {count} копий",
     noSnapshots: "Снимков панели пока нет",
     noSnapshotsTitle: "Снимков панели пока нет",

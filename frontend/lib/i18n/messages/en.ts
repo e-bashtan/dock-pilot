@@ -461,6 +461,7 @@ export const en = {
     scheduleStorage: "Storage",
     scheduleLastRun: "Last run",
     scheduleNotConfigured: "Schedule not configured",
+    scheduleDisabled: "Schedule is disabled",
     retentionCount: "Keep last {count} copies",
     noSnapshots: "No panel snapshots yet",
     noSnapshotsTitle: "No panel snapshots yet",

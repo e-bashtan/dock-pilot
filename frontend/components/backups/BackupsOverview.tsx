@@ -105,13 +105,17 @@ export function BackupsOverview({
               ) : null}
               <div style={{ marginBottom: "0.5rem" }}>
                 <strong>{t("backups.overviewSchedule")}:</strong>{" "}
-                {settings.enabled
-                  ? `${String(settings.hour).padStart(2, "0")}:${String(settings.minute).padStart(2, "0")} ${settings.timezone}`
-                  : t("backups.scheduleNotConfigured")}
+                {settings.enabled ? t("common.enabled") : t("common.disabled")}
+                {" · "}
+                {`${String(settings.hour).padStart(2, "0")}:${String(settings.minute).padStart(2, "0")} ${settings.timezone || "UTC"}`}
               </div>
               <div style={{ marginBottom: "0.5rem" }}>
                 <strong>{t("backups.overviewNextRun")}:</strong>{" "}
-                {nextRun ? formatDateTime(nextRun) : t("backups.scheduleNotConfigured")}
+                {settings.enabled
+                  ? nextRun
+                    ? formatDateTime(nextRun)
+                    : t("backups.unknownDatabase")
+                  : t("backups.scheduleDisabled")}
               </div>
               <button
                 type="button"
