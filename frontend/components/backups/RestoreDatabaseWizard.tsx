@@ -81,6 +81,8 @@ export function RestoreDatabaseWizard({
   instanceId,
   backup,
   databases,
+  initialSource = "s3",
+  initialTarget = "",
   t,
   formatDateTime,
   onClose,
@@ -90,6 +92,9 @@ export function RestoreDatabaseWizard({
   instanceId: string;
   backup: PgBackup | null;
   databases: PgDatabase[];
+  /** When opening without an S3 backup, use "file". */
+  initialSource?: "s3" | "file";
+  initialTarget?: string;
   t: (key: string, params?: Record<string, string>) => string;
   formatDateTime: (iso: string) => string;
   onClose: () => void;
@@ -108,18 +113,27 @@ export function RestoreDatabaseWizard({
   const [restoreJob, setRestoreJob] = useState<{ session: number } | null>(null);
   const restoreLogsRef = useRef<BackupJobLogLine[]>([]);
 
+  const s3Available = !!backup;
+  const effectiveInitialSource =
+    initialSource === "file" || !s3Available ? "file" : "s3";
+
   useEffect(() => {
     if (open) {
       setStep("source");
-      setSourceType("s3");
+      setSourceType(effectiveInitialSource);
       setUploadFile(null);
-      setTarget(backup?.database_name || databases[0]?.name || "");
+      setTarget(
+        initialTarget ||
+          backup?.database_name ||
+          databases[0]?.name ||
+          "",
+      );
       setCreateDb(true);
       setDropDb(false);
       setConfirmTyped("");
       setRestoreRunning(false);
     }
-  }, [open, backup, databases]);
+  }, [open, backup, databases, effectiveInitialSource, initialTarget]);
 
   const handleRestore = () => {
     if (restoreRunning) return;
@@ -220,29 +234,31 @@ export function RestoreDatabaseWizard({
           <p style={{ marginTop: 0, fontSize: "0.875rem" }}>
             {t("backups.restoreWizardSourceHint")}
           </p>
-          <div className="field" style={{ marginBottom: "1rem" }}>
-            <label className="label">{t("backups.restoreWizardSource")}</label>
-            <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
-              <label className="label checkbox-row">
-                <input
-                  type="radio"
-                  name="source-type"
-                  checked={sourceType === "s3"}
-                  onChange={() => setSourceType("s3")}
-                />
-                <span>{t("backups.restoreWizardSourceS3")}</span>
-              </label>
-              <label className="label checkbox-row">
-                <input
-                  type="radio"
-                  name="source-type"
-                  checked={sourceType === "file"}
-                  onChange={() => setSourceType("file")}
-                />
-                <span>{t("backups.restoreWizardSourceFile")}</span>
-              </label>
+          {s3Available ? (
+            <div className="field" style={{ marginBottom: "1rem" }}>
+              <label className="label">{t("backups.restoreWizardSource")}</label>
+              <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+                <label className="label checkbox-row">
+                  <input
+                    type="radio"
+                    name="source-type"
+                    checked={sourceType === "s3"}
+                    onChange={() => setSourceType("s3")}
+                  />
+                  <span>{t("backups.restoreWizardSourceS3")}</span>
+                </label>
+                <label className="label checkbox-row">
+                  <input
+                    type="radio"
+                    name="source-type"
+                    checked={sourceType === "file"}
+                    onChange={() => setSourceType("file")}
+                  />
+                  <span>{t("backups.restoreWizardSourceFile")}</span>
+                </label>
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {sourceType === "s3" && backup && (
             <div className="card" style={{ background: "var(--bg)", padding: "1rem" }}>

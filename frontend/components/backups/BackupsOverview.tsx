@@ -226,7 +226,7 @@ export function BackupsOverview({
         </OverviewCard>
 
         <OverviewCard
-          title={t("backups.overviewDatabases")}
+          title={`${t("backups.overviewDatabases")} · ${dbCount}`}
           action={
             <button
               type="button"
@@ -260,9 +260,6 @@ export function BackupsOverview({
               : schedules.length > 0
                 ? t("backups.scheduleDisabled")
                 : t("backups.scheduleNotConfigured")}
-          </OverviewRow>
-          <OverviewRow label={t("backups.overviewDbCount")}>
-            {dbCount}
           </OverviewRow>
         </OverviewCard>
 

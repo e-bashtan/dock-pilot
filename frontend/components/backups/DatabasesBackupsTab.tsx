@@ -42,8 +42,17 @@ export function DatabasesBackupsTab({
   const [editSchedule, setEditSchedule] = useState<PgBackupSchedule | null>(null);
   const [showRestore, setShowRestore] = useState(false);
   const [restoreBackup, setRestoreBackup] = useState<PgBackup | null>(null);
+  const [restoreSource, setRestoreSource] = useState<"s3" | "file">("s3");
+  const [restoreTarget, setRestoreTarget] = useState("");
   const [deleteScheduleId, setDeleteScheduleId] = useState<string | null>(null);
   const [dbDetails, setDbDetails] = useState<string | null>(null);
+
+  const openRestoreFromFile = (dbName?: string) => {
+    setRestoreBackup(null);
+    setRestoreSource("file");
+    setRestoreTarget(dbName || "");
+    setShowRestore(true);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -155,6 +164,14 @@ export function DatabasesBackupsTab({
           disabled={busy || loading}
         >
           {t("backups.createBackup")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => openRestoreFromFile()}
+          disabled={busy || loading}
+        >
+          {t("databases.restoreFromFile")}
         </button>
       </div>
 
@@ -315,15 +332,26 @@ export function DatabasesBackupsTab({
                             )}
                           </td>
                           <td>
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ fontSize: "0.85rem" }}
-                              onClick={() => setDbDetails(db.id)}
-                              disabled={busy}
-                            >
-                              {t("backups.details")}
-                            </button>
+                            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: "0.85rem" }}
+                                onClick={() => openRestoreFromFile(db.name)}
+                                disabled={busy}
+                              >
+                                {t("databases.restore")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                style={{ fontSize: "0.85rem" }}
+                                onClick={() => setDbDetails(db.id)}
+                                disabled={busy}
+                              >
+                                {t("backups.details")}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -345,6 +373,8 @@ export function DatabasesBackupsTab({
           onClose={() => setDbDetails(null)}
           onRestore={(backup) => {
             setRestoreBackup(backup);
+            setRestoreSource("s3");
+            setRestoreTarget(backup.database_name || "");
             setShowRestore(true);
             setDbDetails(null);
           }}
@@ -399,11 +429,15 @@ export function DatabasesBackupsTab({
         instanceId={instanceId}
         backup={restoreBackup}
         databases={databases}
+        initialSource={restoreSource}
+        initialTarget={restoreTarget}
         t={t}
         formatDateTime={formatDateTime}
         onClose={() => {
           setShowRestore(false);
           setRestoreBackup(null);
+          setRestoreTarget("");
+          setRestoreSource("s3");
         }}
         onFinished={() => {
           void load();
