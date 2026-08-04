@@ -69,34 +69,164 @@ func (s *Service) AdminExecCreds(ctx context.Context) (containerName, adminUser,
 		return "", "", "", fmt.Errorf("%w: no postgres instance configured", ErrNotFound)
 	}
 	inst := instances[0]
-	password, err = s.adminPassword(inst)
+	creds, err := s.resolveExecCreds(ctx, inst)
 	if err != nil {
 		return "", "", "", err
 	}
-	return s.containerName(inst), inst.AdminUser, password, nil
+	return creds.container, creds.user, creds.password, nil
 }
 
 func (s *Service) adminPassword(inst db.PdbInstance) (string, error) {
 	return s.cipher.Decrypt(inst.EncryptedAdminPassword)
 }
 
-func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sql string) error {
-	password, err := s.adminPassword(inst)
+type execCreds struct {
+	container string
+	user      string
+	password  string
+	peer      bool // local socket as OS user "postgres" (no PGPASSWORD)
+}
+
+// resolveExecCreds finds a working DB role inside the managed Postgres container.
+// Legacy volumes may have been initialized with POSTGRES_USER other than the
+// panel's stored admin_user (often still "postgres"), which causes:
+//
+//	FATAL: role "postgres" does not exist
+func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (execCreds, error) {
+	cname := s.containerName(inst)
+	panelPass, err := s.adminPassword(inst)
 	if err != nil {
-		return fmt.Errorf("decrypt admin password: %w", err)
+		return execCreds{}, err
 	}
-	var stderr bytes.Buffer
+
+	envUser := s.containerEnv(ctx, cname, "POSTGRES_USER")
+	envPass := s.containerEnv(ctx, cname, "POSTGRES_PASSWORD")
+
+	type try struct {
+		user string
+		pass string
+		peer bool
+	}
+	var tries []try
+	add := func(user, pass string, peer bool) {
+		user = strings.TrimSpace(user)
+		if user == "" {
+			return
+		}
+		tries = append(tries, try{user: user, pass: pass, peer: peer})
+	}
+
+	add(inst.AdminUser, panelPass, false)
+	add(envUser, panelPass, false)
+	if envPass != "" {
+		add(envUser, envPass, false)
+		add(inst.AdminUser, envPass, false)
+	}
+	for _, u := range []string{"barn", "dockpilot", "dock_pilot", "postgres"} {
+		add(u, panelPass, false)
+		if envPass != "" {
+			add(u, envPass, false)
+		}
+	}
+	// Peer/trust over the local socket as the image OS user.
+	add(envUser, "", true)
+	add(inst.AdminUser, "", true)
+	for _, u := range []string{"barn", "dockpilot", "dock_pilot", "postgres"} {
+		add(u, "", true)
+	}
+
+	seen := map[string]bool{}
+	for _, t := range tries {
+		key := fmt.Sprintf("%s|%t|%s", t.user, t.peer, t.pass)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if s.probeAdmin(ctx, cname, t.user, t.pass, t.peer) {
+			if t.user != strings.TrimSpace(inst.AdminUser) {
+				s.logger.WarnContext(ctx, "postgres admin role differs from panel setting",
+					"configured", inst.AdminUser, "actual", t.user, "peer", t.peer)
+			}
+			return execCreds{container: cname, user: t.user, password: t.pass, peer: t.peer}, nil
+		}
+	}
+	return execCreds{}, fmt.Errorf(
+		"no working postgres admin role in %s (configured admin_user=%q)",
+		cname, inst.AdminUser,
+	)
+}
+
+func (s *Service) containerEnv(ctx context.Context, cname, key string) string {
+	var stdout bytes.Buffer
 	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
+		ContainerName: cname,
+		Cmd:           []string{"printenv", key},
+	}, nil, &stdout, io.Discard)
+	if err != nil || code != 0 {
+		return ""
+	}
+	return strings.TrimSpace(stdout.String())
+}
+
+func (s *Service) probeAdmin(ctx context.Context, cname, user, password string, peer bool) bool {
+	opts := docker.ExecOptions{
+		ContainerName: cname,
 		Cmd: []string{
 			"psql",
 			"-v", "ON_ERROR_STOP=1",
-			"-U", inst.AdminUser,
-			"-d", database,
-			"-c", sql,
+			"-U", user,
+			"-d", "postgres",
+			"-c", "SELECT 1",
 		},
-		Env: []string{"PGPASSWORD=" + password},
-	}, nil, io.Discard, &stderr)
+	}
+	if peer {
+		opts.User = "postgres"
+	} else {
+		opts.Cmd = append([]string{"psql", "-h", "127.0.0.1"}, opts.Cmd[1:]...)
+		if password != "" {
+			opts.Env = []string{"PGPASSWORD=" + password}
+		}
+	}
+	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, io.Discard)
+	return err == nil && code == 0
+}
+
+func (s *Service) execOpts(creds execCreds, cmd []string) docker.ExecOptions {
+	opts := docker.ExecOptions{
+		ContainerName: creds.container,
+		Cmd:           cmd,
+	}
+	if creds.peer {
+		opts.User = "postgres"
+		return opts
+	}
+	// Force TCP so PGPASSWORD is used (avoid peer auth against a missing role).
+	if len(cmd) > 0 {
+		switch cmd[0] {
+		case "psql", "pg_dump", "pg_isready", "pg_restore":
+			opts.Cmd = append([]string{cmd[0], "-h", "127.0.0.1"}, cmd[1:]...)
+		}
+	}
+	if creds.password != "" {
+		opts.Env = []string{"PGPASSWORD=" + creds.password}
+	}
+	return opts
+}
+
+func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sql string) error {
+	creds, err := s.resolveExecCreds(ctx, inst)
+	if err != nil {
+		return fmt.Errorf("resolve admin: %w", err)
+	}
+	var stderr bytes.Buffer
+	opts := s.execOpts(creds, []string{
+		"psql",
+		"-v", "ON_ERROR_STOP=1",
+		"-U", creds.user,
+		"-d", database,
+		"-c", sql,
+	})
+	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
 	if err != nil {
 		return err
 	}
@@ -111,16 +241,18 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 }
 
 func (s *Service) waitReady(ctx context.Context, inst db.PdbInstance) error {
-	password, err := s.adminPassword(inst)
+	creds, err := s.resolveExecCreds(ctx, inst)
 	if err != nil {
-		return err
+		// During first boot the role may not be queryable yet — fall back to configured user.
+		password, pErr := s.adminPassword(inst)
+		if pErr != nil {
+			return err
+		}
+		creds = execCreds{container: s.containerName(inst), user: inst.AdminUser, password: password}
 	}
 	var stderr bytes.Buffer
-	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
-		Cmd:           []string{"pg_isready", "-U", inst.AdminUser},
-		Env:           []string{"PGPASSWORD=" + password},
-	}, nil, io.Discard, &stderr)
+	opts := s.execOpts(creds, []string{"pg_isready", "-U", creds.user})
+	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
 	if err != nil {
 		return err
 	}
@@ -158,32 +290,72 @@ func (s *Service) syncAdminPassword(ctx context.Context, inst db.PdbInstance, pa
 		return err
 	}
 	if code != 0 {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = fmt.Sprintf("psql exit %d", code)
+		// Role may not match image OS defaults — try discovered role.
+		creds, rErr := s.resolveExecCreds(ctx, inst)
+		if rErr != nil {
+			msg := strings.TrimSpace(stderr.String())
+			if msg == "" {
+				msg = fmt.Sprintf("psql exit %d", code)
+			}
+			return fmt.Errorf("%s", msg)
 		}
-		return fmt.Errorf("%s", msg)
+		userIdent, err = quoteIdent(creds.user)
+		if err != nil {
+			return err
+		}
+		sql = fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", userIdent, quoteLiteral(password))
+		stderr.Reset()
+		opts := s.execOpts(creds, []string{
+			"psql",
+			"-v", "ON_ERROR_STOP=1",
+			"-U", creds.user,
+			"-d", "postgres",
+			"-c", sql,
+		})
+		// Peer ALTER without password when needed.
+		if creds.peer {
+			opts = docker.ExecOptions{
+				ContainerName: creds.container,
+				User:          "postgres",
+				Cmd: []string{
+					"psql",
+					"-v", "ON_ERROR_STOP=1",
+					"-U", creds.user,
+					"-d", "postgres",
+					"-c", sql,
+				},
+			}
+		}
+		code, err = s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
+		if err != nil {
+			return err
+		}
+		if code != 0 {
+			msg := strings.TrimSpace(stderr.String())
+			if msg == "" {
+				msg = fmt.Sprintf("psql exit %d", code)
+			}
+			return fmt.Errorf("%s", msg)
+		}
+		return nil
 	}
 	return nil
 }
 
 func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName string, w io.Writer) error {
-	password, err := s.adminPassword(inst)
+	creds, err := s.resolveExecCreds(ctx, inst)
 	if err != nil {
 		return err
 	}
 	var stderr bytes.Buffer
-	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
-		Cmd: []string{
-			"pg_dump",
-			"-U", inst.AdminUser,
-			"-d", dbName,
-			"--no-owner",
-			"--no-acl",
-		},
-		Env: []string{"PGPASSWORD=" + password},
-	}, nil, w, &stderr)
+	opts := s.execOpts(creds, []string{
+		"pg_dump",
+		"-U", creds.user,
+		"-d", dbName,
+		"--no-owner",
+		"--no-acl",
+	})
+	code, err := s.docker.Exec(ctx, opts, nil, w, &stderr)
 	if err != nil {
 		return err
 	}
@@ -198,21 +370,18 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName 
 }
 
 func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbName string, r io.Reader) error {
-	password, err := s.adminPassword(inst)
+	creds, err := s.resolveExecCreds(ctx, inst)
 	if err != nil {
 		return err
 	}
 	var stderr bytes.Buffer
-	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
-		Cmd: []string{
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", inst.AdminUser,
-			"-d", dbName,
-		},
-		Env: []string{"PGPASSWORD=" + password},
-	}, filterRestoreSQL(r), io.Discard, &stderr)
+	opts := s.execOpts(creds, []string{
+		"psql",
+		"-v", "ON_ERROR_STOP=1",
+		"-U", creds.user,
+		"-d", dbName,
+	})
+	code, err := s.docker.Exec(ctx, opts, filterRestoreSQL(r), io.Discard, &stderr)
 	if err != nil {
 		return err
 	}

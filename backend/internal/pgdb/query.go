@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/ebash/barn/backend/internal/db"
-	"github.com/ebash/barn/backend/internal/docker"
 )
 
 const (
@@ -120,24 +119,21 @@ func (s *Service) requireDatabase(ctx context.Context, instanceID, databaseID uu
 }
 
 func (s *Service) querySQL(ctx context.Context, inst db.PdbInstance, database, sql string) (QueryResult, error) {
-	password, err := s.adminPassword(inst)
+	creds, err := s.resolveExecCreds(ctx, inst)
 	if err != nil {
-		return QueryResult{}, fmt.Errorf("decrypt admin password: %w", err)
+		return QueryResult{}, fmt.Errorf("resolve admin: %w", err)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
-		Cmd: []string{
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", inst.AdminUser,
-			"-d", database,
-			"--csv",
-			"-c", sql,
-		},
-		Env: []string{"PGPASSWORD=" + password},
-	}, nil, &stdout, &stderr)
+	opts := s.execOpts(creds, []string{
+		"psql",
+		"-v", "ON_ERROR_STOP=1",
+		"-U", creds.user,
+		"-d", database,
+		"--csv",
+		"-c", sql,
+	})
+	code, err := s.docker.Exec(ctx, opts, nil, &stdout, &stderr)
 	if err != nil {
 		return QueryResult{}, err
 	}
