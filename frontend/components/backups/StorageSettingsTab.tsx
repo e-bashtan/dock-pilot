@@ -158,6 +158,17 @@ export function StorageSettingsTab({
               />
             </div>
             <div className="field">
+              <label className="label" htmlFor="storage-region">
+                {t("databases.s3Region")}
+              </label>
+              <input
+                id="storage-region"
+                className="input"
+                value={s3Region}
+                onChange={(e) => setS3Region(e.target.value)}
+              />
+            </div>
+            <div className="field">
               <label className="label" htmlFor="storage-prefix">
                 {t("databases.s3Prefix")}
               </label>
@@ -178,20 +189,7 @@ export function StorageSettingsTab({
             <summary style={{ cursor: "pointer", fontWeight: 500 }}>
               {t("backups.storageAdvanced")}
             </summary>
-            <div className="form-grid" style={{ marginTop: "1rem" }}>
-              <div className="field">
-                <label className="label" htmlFor="storage-region">
-                  {t("databases.s3Region")}
-                </label>
-                <input
-                  id="storage-region"
-                  className="input"
-                  value={s3Region}
-                  onChange={(e) => setS3Region(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="field" style={{ marginTop: "0.75rem" }}>
+            <div className="field" style={{ marginTop: "1rem" }}>
               <label className="label checkbox-row">
                 <input
                   type="checkbox"
