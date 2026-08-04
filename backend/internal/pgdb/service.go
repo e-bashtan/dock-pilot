@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,13 +26,27 @@ type Service struct {
 	docker  docker.Client
 	cipher  *secrets.Cipher
 	logger  *slog.Logger
+
+	credMu    sync.Mutex
+	credCache map[uuid.UUID]cachedExecCreds
+}
+
+type cachedExecCreds struct {
+	creds execCreds
+	until time.Time
 }
 
 func NewService(queries *db.Queries, dockerClient docker.Client, cipher *secrets.Cipher, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{queries: queries, docker: dockerClient, cipher: cipher, logger: logger}
+	return &Service{
+		queries:   queries,
+		docker:    dockerClient,
+		cipher:    cipher,
+		logger:    logger,
+		credCache: map[uuid.UUID]cachedExecCreds{},
+	}
 }
 
 func (s *Service) ListInstances(ctx context.Context) ([]InstanceResponse, error) {

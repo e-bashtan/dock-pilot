@@ -10,7 +10,10 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
+
+	"github.com/google/uuid"
 
 	"github.com/ebash/barn/backend/internal/db"
 	"github.com/ebash/barn/backend/internal/docker"
@@ -84,15 +87,19 @@ type execCreds struct {
 	container string
 	user      string
 	password  string
-	peer      bool // local socket as OS user "postgres" (no PGPASSWORD)
 }
 
-// resolveExecCreds finds a working DB role inside the managed Postgres container.
-// Legacy volumes may have been initialized with POSTGRES_USER other than the
-// panel's stored admin_user (often still "postgres"), which causes:
-//
-//	FATAL: role "postgres" does not exist
+const execCredsTTL = 5 * time.Minute
+
+// resolveExecCreds returns TCP credentials for the managed Postgres container.
+// Prefer panel settings (admin_user + password). If the data volume was created
+// with a different POSTGRES_USER, discover that role, sync the panel password
+// onto it, then always connect via 127.0.0.1 + PGPASSWORD (same as DB create).
 func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (execCreds, error) {
+	if creds, ok := s.getCachedExecCreds(inst.ID); ok {
+		return creds, nil
+	}
+
 	cname := s.containerName(inst)
 	panelPass, err := s.adminPassword(inst)
 	if err != nil {
@@ -101,59 +108,134 @@ func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (ex
 
 	envUser := s.containerEnv(ctx, cname, "POSTGRES_USER")
 	envPass := s.containerEnv(ctx, cname, "POSTGRES_PASSWORD")
+	panelUser := strings.TrimSpace(inst.AdminUser)
 
-	type try struct {
-		user string
-		pass string
-		peer bool
-	}
-	var tries []try
-	add := func(user, pass string, peer bool) {
-		user = strings.TrimSpace(user)
-		if user == "" {
-			return
+	// Same order the container is started with: POSTGRES_USER, then panel admin.
+	candidates := uniqueNonEmpty(envUser, panelUser, "barn", "dockpilot", "dock_pilot", "postgres")
+
+	tryTCP := func(user, pass string) (execCreds, bool) {
+		if user == "" || pass == "" {
+			return execCreds{}, false
 		}
-		tries = append(tries, try{user: user, pass: pass, peer: peer})
+		if !s.probeAdmin(ctx, cname, user, pass, false) {
+			return execCreds{}, false
+		}
+		creds := execCreds{container: cname, user: user, password: pass}
+		s.putCachedExecCreds(inst.ID, creds)
+		if user != panelUser {
+			s.logger.WarnContext(ctx, "postgres admin role differs from panel setting",
+				"configured", panelUser, "actual", user)
+		}
+		return creds, true
 	}
 
-	add(inst.AdminUser, panelPass, false)
-	add(envUser, panelPass, false)
-	if envPass != "" {
-		add(envUser, envPass, false)
-		add(inst.AdminUser, envPass, false)
-	}
-	for _, u := range []string{"barn", "dockpilot", "dock_pilot", "postgres"} {
-		add(u, panelPass, false)
-		if envPass != "" {
-			add(u, envPass, false)
+	// 1) Panel password (settings used to create DBs / sync on deploy).
+	for _, user := range candidates {
+		if creds, ok := tryTCP(user, panelPass); ok {
+			return creds, nil
 		}
 	}
-	// Peer/trust over the local socket as the image OS user.
-	add(envUser, "", true)
-	add(inst.AdminUser, "", true)
-	for _, u := range []string{"barn", "dockpilot", "dock_pilot", "postgres"} {
-		add(u, "", true)
-	}
 
-	seen := map[string]bool{}
-	for _, t := range tries {
-		key := fmt.Sprintf("%s|%t|%s", t.user, t.peer, t.pass)
-		if seen[key] {
+	// 2) Password out of sync with volume — set panel password via local trust, then TCP.
+	for _, user := range candidates {
+		if !s.probeAdmin(ctx, cname, user, "", true) {
 			continue
 		}
-		seen[key] = true
-		if s.probeAdmin(ctx, cname, t.user, t.pass, t.peer) {
-			if t.user != strings.TrimSpace(inst.AdminUser) {
-				s.logger.WarnContext(ctx, "postgres admin role differs from panel setting",
-					"configured", inst.AdminUser, "actual", t.user, "peer", t.peer)
-			}
-			return execCreds{container: cname, user: t.user, password: t.pass, peer: t.peer}, nil
+		if err := s.setRolePasswordLocal(ctx, cname, user, panelPass); err != nil {
+			s.logger.WarnContext(ctx, "sync postgres role password via socket failed",
+				"user", user, "error", err)
+			continue
+		}
+		if creds, ok := tryTCP(user, panelPass); ok {
+			return creds, nil
 		}
 	}
+
+	// 3) Last resort: container env password (initial image boot).
+	if envPass != "" && envPass != panelPass {
+		for _, user := range candidates {
+			if creds, ok := tryTCP(user, envPass); ok {
+				return creds, nil
+			}
+		}
+	}
+
 	return execCreds{}, fmt.Errorf(
-		"no working postgres admin role in %s (configured admin_user=%q)",
-		cname, inst.AdminUser,
+		"no working postgres admin role in %s (configured admin_user=%q env_user=%q)",
+		cname, panelUser, envUser,
 	)
+}
+
+func (s *Service) getCachedExecCreds(id uuid.UUID) (execCreds, bool) {
+	s.credMu.Lock()
+	defer s.credMu.Unlock()
+	item, ok := s.credCache[id]
+	if !ok || time.Now().After(item.until) {
+		return execCreds{}, false
+	}
+	return item.creds, true
+}
+
+func (s *Service) putCachedExecCreds(id uuid.UUID, creds execCreds) {
+	s.credMu.Lock()
+	defer s.credMu.Unlock()
+	if s.credCache == nil {
+		s.credCache = map[uuid.UUID]cachedExecCreds{}
+	}
+	s.credCache[id] = cachedExecCreds{creds: creds, until: time.Now().Add(execCredsTTL)}
+}
+
+func (s *Service) clearCachedExecCreds(id uuid.UUID) {
+	s.credMu.Lock()
+	defer s.credMu.Unlock()
+	delete(s.credCache, id)
+}
+
+func uniqueNonEmpty(values ...string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+// setRolePasswordLocal uses the image OS user over the local socket (trust/peer)
+// to align the DB role password with panel settings.
+func (s *Service) setRolePasswordLocal(ctx context.Context, cname, user, password string) error {
+	userIdent, err := quoteIdent(user)
+	if err != nil {
+		return err
+	}
+	sql := fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", userIdent, quoteLiteral(password))
+	var stderr bytes.Buffer
+	code, err := s.docker.Exec(ctx, docker.ExecOptions{
+		ContainerName: cname,
+		User:          "postgres",
+		Cmd: []string{
+			"psql",
+			"-v", "ON_ERROR_STOP=1",
+			"-U", user,
+			"-d", "postgres",
+			"-c", sql,
+		},
+	}, nil, io.Discard, &stderr)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = fmt.Sprintf("psql exit %d", code)
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 func (s *Service) containerEnv(ctx context.Context, cname, key string) string {
@@ -168,7 +250,7 @@ func (s *Service) containerEnv(ctx context.Context, cname, key string) string {
 	return strings.TrimSpace(stdout.String())
 }
 
-func (s *Service) probeAdmin(ctx context.Context, cname, user, password string, peer bool) bool {
+func (s *Service) probeAdmin(ctx context.Context, cname, user, password string, localSocket bool) bool {
 	opts := docker.ExecOptions{
 		ContainerName: cname,
 		Cmd: []string{
@@ -179,7 +261,8 @@ func (s *Service) probeAdmin(ctx context.Context, cname, user, password string, 
 			"-c", "SELECT 1",
 		},
 	}
-	if peer {
+	if localSocket {
+		// Image OS user — local trust/peer, used only to bootstrap password sync.
 		opts.User = "postgres"
 	} else {
 		opts.Cmd = append([]string{"psql", "-h", "127.0.0.1"}, opts.Cmd[1:]...)
@@ -196,11 +279,7 @@ func (s *Service) execOpts(creds execCreds, cmd []string) docker.ExecOptions {
 		ContainerName: creds.container,
 		Cmd:           cmd,
 	}
-	if creds.peer {
-		opts.User = "postgres"
-		return opts
-	}
-	// Force TCP so PGPASSWORD is used (avoid peer auth against a missing role).
+	// Always TCP so PGPASSWORD is honored (socket peer ignores it and breaks on wrong -U).
 	if len(cmd) > 0 {
 		switch cmd[0] {
 		case "psql", "pg_dump", "pg_isready", "pg_restore":
@@ -228,9 +307,11 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 	})
 	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
 	if err != nil {
+		s.clearCachedExecCreds(inst.ID)
 		return err
 	}
 	if code != 0 {
+		s.clearCachedExecCreds(inst.ID)
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = fmt.Sprintf("psql exit %d", code)
@@ -241,15 +322,18 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 }
 
 func (s *Service) waitReady(ctx context.Context, inst db.PdbInstance) error {
-	creds, err := s.resolveExecCreds(ctx, inst)
+	password, err := s.adminPassword(inst)
 	if err != nil {
-		// During first boot the role may not be queryable yet — fall back to configured user.
-		password, pErr := s.adminPassword(inst)
-		if pErr != nil {
-			return err
-		}
-		creds = execCreds{container: s.containerName(inst), user: inst.AdminUser, password: password}
+		return err
 	}
+	user := strings.TrimSpace(inst.AdminUser)
+	if user == "" {
+		user = "postgres"
+	}
+	if envUser := s.containerEnv(ctx, s.containerName(inst), "POSTGRES_USER"); envUser != "" {
+		user = envUser
+	}
+	creds := execCreds{container: s.containerName(inst), user: user, password: password}
 	var stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{"pg_isready", "-U", creds.user})
 	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
@@ -269,77 +353,29 @@ func (s *Service) waitReady(ctx context.Context, inst db.PdbInstance) error {
 // syncAdminPassword sets the DB role password to match the panel (local socket / trust).
 // Needed when the data volume already existed — POSTGRES_PASSWORD is ignored on reuse.
 func (s *Service) syncAdminPassword(ctx context.Context, inst db.PdbInstance, password string) error {
-	userIdent, err := quoteIdent(inst.AdminUser)
-	if err != nil {
-		return err
+	s.clearCachedExecCreds(inst.ID)
+	cname := s.containerName(inst)
+	envUser := s.containerEnv(ctx, cname, "POSTGRES_USER")
+	candidates := uniqueNonEmpty(envUser, inst.AdminUser, "barn", "dockpilot", "dock_pilot", "postgres")
+
+	var lastErr error
+	for _, user := range candidates {
+		if !s.probeAdmin(ctx, cname, user, "", true) {
+			continue
+		}
+		if err := s.setRolePasswordLocal(ctx, cname, user, password); err != nil {
+			lastErr = err
+			continue
+		}
+		if s.probeAdmin(ctx, cname, user, password, false) {
+			return nil
+		}
+		lastErr = fmt.Errorf("password set for %s but TCP login failed", user)
 	}
-	sql := fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", userIdent, quoteLiteral(password))
-	var stderr bytes.Buffer
-	code, err := s.docker.Exec(ctx, docker.ExecOptions{
-		ContainerName: s.containerName(inst),
-		User:          "postgres",
-		Cmd: []string{
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", inst.AdminUser,
-			"-d", "postgres",
-			"-c", sql,
-		},
-	}, nil, io.Discard, &stderr)
-	if err != nil {
-		return err
+	if lastErr != nil {
+		return lastErr
 	}
-	if code != 0 {
-		// Role may not match image OS defaults — try discovered role.
-		creds, rErr := s.resolveExecCreds(ctx, inst)
-		if rErr != nil {
-			msg := strings.TrimSpace(stderr.String())
-			if msg == "" {
-				msg = fmt.Sprintf("psql exit %d", code)
-			}
-			return fmt.Errorf("%s", msg)
-		}
-		userIdent, err = quoteIdent(creds.user)
-		if err != nil {
-			return err
-		}
-		sql = fmt.Sprintf("ALTER ROLE %s WITH PASSWORD %s", userIdent, quoteLiteral(password))
-		stderr.Reset()
-		opts := s.execOpts(creds, []string{
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", creds.user,
-			"-d", "postgres",
-			"-c", sql,
-		})
-		// Peer ALTER without password when needed.
-		if creds.peer {
-			opts = docker.ExecOptions{
-				ContainerName: creds.container,
-				User:          "postgres",
-				Cmd: []string{
-					"psql",
-					"-v", "ON_ERROR_STOP=1",
-					"-U", creds.user,
-					"-d", "postgres",
-					"-c", sql,
-				},
-			}
-		}
-		code, err = s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
-		if err != nil {
-			return err
-		}
-		if code != 0 {
-			msg := strings.TrimSpace(stderr.String())
-			if msg == "" {
-				msg = fmt.Sprintf("psql exit %d", code)
-			}
-			return fmt.Errorf("%s", msg)
-		}
-		return nil
-	}
-	return nil
+	return fmt.Errorf("could not sync admin password for any role in %s", cname)
 }
 
 func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName string, w io.Writer) error {
@@ -357,9 +393,11 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName 
 	})
 	code, err := s.docker.Exec(ctx, opts, nil, w, &stderr)
 	if err != nil {
+		s.clearCachedExecCreds(inst.ID)
 		return err
 	}
 	if code != 0 {
+		s.clearCachedExecCreds(inst.ID)
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = fmt.Sprintf("pg_dump exit %d", code)
@@ -383,9 +421,11 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 	})
 	code, err := s.docker.Exec(ctx, opts, filterRestoreSQL(r), io.Discard, &stderr)
 	if err != nil {
+		s.clearCachedExecCreds(inst.ID)
 		return err
 	}
 	if code != 0 {
+		s.clearCachedExecCreds(inst.ID)
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = fmt.Sprintf("psql restore exit %d", code)

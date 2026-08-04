@@ -135,9 +135,11 @@ func (s *Service) querySQL(ctx context.Context, inst db.PdbInstance, database, s
 	})
 	code, err := s.docker.Exec(ctx, opts, nil, &stdout, &stderr)
 	if err != nil {
+		s.clearCachedExecCreds(inst.ID)
 		return QueryResult{}, err
 	}
 	if code != 0 {
+		s.clearCachedExecCreds(inst.ID)
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = fmt.Sprintf("psql exit %d", code)

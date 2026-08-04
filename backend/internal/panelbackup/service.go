@@ -597,6 +597,7 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 		ContainerName: conn.container,
 		Cmd: []string{
 			"pg_dump",
+			"-h", "127.0.0.1",
 			"-U", conn.user,
 			"-d", conn.dbName,
 			"--no-owner",
@@ -628,6 +629,7 @@ func (s *Service) restorePanelSQL(ctx context.Context, r io.Reader) error {
 		ContainerName: conn.container,
 		Cmd: []string{
 			"psql",
+			"-h", "127.0.0.1",
 			"-v", "ON_ERROR_STOP=1",
 			"-U", conn.user,
 			"-d", conn.dbName,
@@ -974,6 +976,7 @@ func (s *Service) probeDatabase(ctx context.Context, container, user, password, 
 		ContainerName: container,
 		Cmd: []string{
 			"psql",
+			"-h", "127.0.0.1",
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1",
@@ -1000,6 +1003,7 @@ func (s *Service) listDatabases(ctx context.Context, container, user, password s
 			ContainerName: container,
 			Cmd: []string{
 				"psql",
+				"-h", "127.0.0.1",
 				"-U", user,
 				"-d", maintenance,
 				"-tAc", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
@@ -1029,6 +1033,7 @@ func (s *Service) databaseHasSitesTable(ctx context.Context, container, user, pa
 		ContainerName: container,
 		Cmd: []string{
 			"psql",
+			"-h", "127.0.0.1",
 			"-U", user,
 			"-d", dbName,
 			"-tAc", "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sites' LIMIT 1",
