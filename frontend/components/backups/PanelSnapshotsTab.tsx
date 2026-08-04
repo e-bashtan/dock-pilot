@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { formatBytes, nextDailyRun } from "./format";
-import { StatusBadge } from "./StatusBadge";
-import { BackupErrorDetails } from "./BackupErrorDetails";
+import { formatBytes } from "./format";
+import { BackupScheduleCard } from "./BackupScheduleCard";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   BackupJobLog,
@@ -39,10 +38,6 @@ export function PanelSnapshotsTab({
   const [restoreStatus, setRestoreStatus] = useState("running");
   const restoreLogsRef = useRef<BackupJobLogLine[]>([]);
 
-  const nextRun = settings?.enabled
-    ? nextDailyRun(settings.hour, settings.minute, settings.timezone)
-    : null;
-
   return (
     <div>
       <h2 style={{ fontSize: "1.1rem", margin: "0 0 0.5rem" }}>
@@ -72,76 +67,25 @@ export function PanelSnapshotsTab({
       </div>
 
       {settings && (
-        <div className="card" style={{ marginBottom: "1.25rem" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: "1rem",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <h3 style={{ fontSize: "0.95rem", marginBottom: "0.5rem" }}>
-                {t("backups.scheduleCard")}
-              </h3>
-              <div style={{ fontSize: "0.875rem" }}>
-                <div style={{ marginBottom: "0.25rem" }}>
-                  <strong>{t("backups.scheduleStatus")}:</strong>{" "}
-                  {settings.enabled ? t("common.enabled") : t("common.disabled")}
-                </div>
-                <div style={{ marginBottom: "0.25rem" }}>
-                  <strong>{t("backups.overviewSchedule")}:</strong>{" "}
-                  {`${String(settings.hour).padStart(2, "0")}:${String(settings.minute).padStart(2, "0")} ${settings.timezone || "UTC"}`}
-                </div>
-                <div style={{ marginBottom: "0.25rem" }}>
-                  <strong>{t("backups.overviewNextRun")}:</strong>{" "}
-                  {settings.enabled
-                    ? nextRun
-                      ? formatDateTime(nextRun)
-                      : t("backups.unknownDatabase")
-                    : t("backups.scheduleDisabled")}
-                </div>
-                <div style={{ marginBottom: "0.25rem" }}>
-                  <strong>{t("backups.scheduleRetention")}:</strong>{" "}
-                  {t("backups.retentionCount", {
-                    count: String(settings.retention_count),
-                  })}
-                </div>
-                <div style={{ marginBottom: "0.25rem", overflowWrap: "anywhere" }}>
-                  <strong>{t("backups.scheduleStorage")}:</strong>{" "}
-                  <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-                    {settings.s3_bucket
-                      ? `${settings.s3_bucket}/${settings.s3_prefix}`
-                      : t("backups.noData")}
-                  </span>
-                </div>
-                {settings.last_run_at ? (
-                  <div style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
-                    {t("backups.scheduleLastRun")}: {formatDateTime(settings.last_run_at)} —{" "}
-                    <StatusBadge status={settings.last_status} t={t} />
-                    {settings.last_error ? (
-                      <BackupErrorDetails error={settings.last_error} t={t} />
-                    ) : null}
-                  </div>
-                ) : (
-                  <div style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "var(--muted)" }}>
-                    {t("backups.neverRan")}
-                  </div>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onEditSchedule}
-              disabled={busy}
-            >
-              {t("backups.edit")}
-            </button>
-          </div>
-        </div>
+        <BackupScheduleCard
+          enabled={settings.enabled}
+          hour={settings.hour}
+          minute={settings.minute}
+          timezone={settings.timezone}
+          retentionCount={settings.retention_count}
+          storageLabel={
+            settings.s3_bucket
+              ? `${settings.s3_bucket}/${settings.s3_prefix}`
+              : ""
+          }
+          lastRunAt={settings.last_run_at}
+          lastStatus={settings.last_status}
+          lastError={settings.last_error}
+          t={t}
+          formatDateTime={formatDateTime}
+          onEdit={onEditSchedule}
+          busy={busy}
+        />
       )}
 
       {fullBackups.length === 0 ? (

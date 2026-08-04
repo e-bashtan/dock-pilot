@@ -7,26 +7,36 @@ import type {
   PgDatabase,
   CreatePgScheduleRequest,
   PanelBackupSettings,
+  PgBackupSchedule,
 } from "@/lib/types";
 
 export function DbScheduleDialog({
   open,
   databases,
   panelSettings,
+  schedule,
   t,
   onClose,
   onCreate,
+  onUpdate,
   busy,
 }: {
   open: boolean;
   databases: PgDatabase[];
   panelSettings?: PanelBackupSettings | null;
+  schedule?: PgBackupSchedule | null;
   t: (key: string) => string;
   onClose: () => void;
   onCreate: (data: CreatePgScheduleRequest) => Promise<void>;
+  onUpdate?: (
+    scheduleId: string,
+    data: Partial<CreatePgScheduleRequest> & { clear_database_id?: boolean },
+  ) => Promise<void>;
   busy: boolean;
 }) {
+  const editing = !!schedule;
   const [dbId, setDbId] = useState("");
+  const [enabled, setEnabled] = useState(true);
   const [hour, setHour] = useState(3);
   const [minute, setMinute] = useState(0);
   const [tz, setTz] = useState(() => browserTimezone());
@@ -45,32 +55,83 @@ export function DbScheduleDialog({
   const canUsePanelS3 = !!panelSettings?.s3_credentials_set;
 
   useEffect(() => {
-    if (open) {
-      setDbId(databases[0]?.id || "");
-      const preferPanel = !!panelSettings?.s3_credentials_set;
-      setUsePanelS3(preferPanel);
-      setShowStorage(!preferPanel);
-      if (panelSettings) {
-        setS3Endpoint(panelSettings.s3_endpoint || "");
-        setS3Region(panelSettings.s3_region || "ru-central1");
-        setS3Bucket(panelSettings.s3_bucket || "");
-        setS3Prefix(
-          panelSettings.s3_prefix
-            ? `${panelSettings.s3_prefix}/pg`
-            : "barn/pg-backups",
-        );
-        setS3PathStyle(panelSettings.s3_force_path_style);
-      }
+    if (!open) return;
+
+    if (schedule) {
+      setDbId(schedule.database_id || "");
+      setEnabled(schedule.enabled);
+      setHour(schedule.hour);
+      setMinute(schedule.minute);
+      setTz(schedule.timezone || browserTimezone());
+      setRetention(schedule.retention_count || 7);
+      setUsePanelS3(schedule.use_panel_s3 && canUsePanelS3);
+      setShowStorage(!schedule.use_panel_s3);
+      setS3Endpoint(schedule.s3_endpoint || panelSettings?.s3_endpoint || "");
+      setS3Region(schedule.s3_region || panelSettings?.s3_region || "ru-central1");
+      setS3Bucket(schedule.s3_bucket || panelSettings?.s3_bucket || "");
+      setS3Prefix(schedule.s3_prefix || "barn/pg-backups");
+      setS3PathStyle(schedule.s3_force_path_style);
       setS3Access("");
       setS3Secret("");
+      return;
     }
-  }, [open, databases, panelSettings]);
+
+    setDbId(databases[0]?.id || "");
+    setEnabled(true);
+    setHour(3);
+    setMinute(0);
+    setTz(browserTimezone());
+    setRetention(7);
+    const preferPanel = !!panelSettings?.s3_credentials_set;
+    setUsePanelS3(preferPanel);
+    setShowStorage(!preferPanel);
+    if (panelSettings) {
+      setS3Endpoint(panelSettings.s3_endpoint || "");
+      setS3Region(panelSettings.s3_region || "ru-central1");
+      setS3Bucket(panelSettings.s3_bucket || "");
+      setS3Prefix(
+        panelSettings.s3_prefix
+          ? `${panelSettings.s3_prefix}/pg`
+          : "barn/pg-backups",
+      );
+      setS3PathStyle(panelSettings.s3_force_path_style);
+    }
+    setS3Access("");
+    setS3Secret("");
+  }, [open, databases, panelSettings, schedule, canUsePanelS3]);
 
   return (
-    <ModalShell open={open} title={t("databases.createSchedule")} onClose={onClose} wide>
+    <ModalShell
+      open={open}
+      title={editing ? t("backups.editSchedule") : t("databases.createSchedule")}
+      onClose={onClose}
+      wide
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          if (editing && schedule && onUpdate) {
+            void onUpdate(schedule.id, {
+              database_id: dbId || null,
+              clear_database_id: !dbId,
+              enabled,
+              hour,
+              minute,
+              timezone: tz,
+              use_panel_s3: usePanelS3 && canUsePanelS3,
+              s3_endpoint: usePanelS3 ? undefined : s3Endpoint.trim(),
+              s3_region: usePanelS3 ? undefined : s3Region.trim(),
+              s3_bucket: usePanelS3 ? undefined : s3Bucket.trim(),
+              s3_prefix: s3Prefix.trim() || undefined,
+              s3_access_key:
+                usePanelS3 || !s3Access.trim() ? undefined : s3Access.trim(),
+              s3_secret_key:
+                usePanelS3 || !s3Secret.trim() ? undefined : s3Secret.trim(),
+              s3_force_path_style: usePanelS3 ? undefined : s3PathStyle,
+              retention_count: retention,
+            });
+            return;
+          }
           void onCreate({
             database_id: dbId || null,
             hour,
@@ -92,6 +153,19 @@ export function DbScheduleDialog({
           });
         }}
       >
+        {editing && (
+          <div className="field" style={{ marginBottom: "1rem" }}>
+            <label className="label checkbox-row">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+              />
+              <span>{t("backups.scheduleEnabled")}</span>
+            </label>
+          </div>
+        )}
+
         <div className="form-grid">
           <div className="field">
             <label className="label" htmlFor="sched-db">
@@ -229,7 +303,7 @@ export function DbScheduleDialog({
                   className="input"
                   value={s3Bucket}
                   onChange={(e) => setS3Bucket(e.target.value)}
-                  required
+                  required={!editing}
                 />
               </div>
               <div className="field">
@@ -263,7 +337,8 @@ export function DbScheduleDialog({
                   className="input"
                   value={s3Access}
                   onChange={(e) => setS3Access(e.target.value)}
-                  required
+                  required={!editing}
+                  placeholder={editing ? t("backups.keysSet") : undefined}
                 />
               </div>
               <div className="field">
@@ -276,7 +351,7 @@ export function DbScheduleDialog({
                   type="password"
                   value={s3Secret}
                   onChange={(e) => setS3Secret(e.target.value)}
-                  required
+                  required={!editing}
                 />
               </div>
             </div>
@@ -308,10 +383,11 @@ export function DbScheduleDialog({
             disabled={
               busy ||
               (!usePanelS3 &&
+                !editing &&
                 (!s3Access.trim() || !s3Secret.trim() || !s3Bucket.trim()))
             }
           >
-            {busy ? t("common.saving") : t("databases.createSchedule")}
+            {busy ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </form>
