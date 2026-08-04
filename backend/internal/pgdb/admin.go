@@ -45,18 +45,33 @@ func (s *Service) volumeName(inst db.PdbInstance) string {
 	return v
 }
 
-// resolvePGNames prefers an already-running legacy postgres container/volume.
+// managedPostgresCandidates is the lookup order for the managed Postgres container.
+// Panel compose uses dock-pilot-postgres — that must be last so we never exec
+// managed dumps/queries into the panel DB when barn-postgres also exists.
+var managedPostgresCandidates = []string{
+	"barn-postgres",
+	"dockpilot-postgres",
+	"dock-pilot-postgres",
+}
+
+func volumeForManagedContainer(container string) string {
+	switch container {
+	case "dock-pilot-postgres":
+		return "dock-pilot_dock_pilot_pg"
+	case "dockpilot-postgres":
+		return "dockpilot-postgres-data"
+	default:
+		return "barn-postgres-data"
+	}
+}
+
+// resolvePGNames picks the managed Postgres container/volume.
+// Prefer barn-postgres (canonical). Fall back to legacy managed names, and only
+// then to dock-pilot-postgres (old shared panel+managed installs).
 func (s *Service) resolvePGNames(ctx context.Context) (container, volume string) {
-	st, err := s.docker.InspectContainer(ctx, "dock-pilot-postgres", "dockpilot-postgres", "barn-postgres")
-	if err == nil && st.Found {
-		switch st.Container {
-		case "dock-pilot-postgres":
-			return "dock-pilot-postgres", "dock-pilot_dock_pilot_pg"
-		case "dockpilot-postgres":
-			return "dockpilot-postgres", "dockpilot-postgres-data"
-		default:
-			return "barn-postgres", "barn-postgres-data"
-		}
+	st, err := s.docker.InspectContainer(ctx, managedPostgresCandidates...)
+	if err == nil && st.Found && st.Container != "" {
+		return st.Container, volumeForManagedContainer(st.Container)
 	}
 	return "barn-postgres", "barn-postgres-data"
 }

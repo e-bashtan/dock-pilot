@@ -225,6 +225,7 @@ func (s *Service) DeployInstanceWithLog(ctx context.Context, id uuid.UUID, logFn
 		ImageTag:      inst.Image,
 		ContainerName: cname,
 		StopNames:     []string{cname, "barn-postgres", "dockpilot-postgres"},
+		// Never stop dock-pilot-postgres here — that is the panel database.
 		HostPort:      hostPort,
 		ContainerPort: int(inst.ContainerPort),
 		PublishPorts:  publish,
