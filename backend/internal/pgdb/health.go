@@ -55,6 +55,7 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 	}
 
 	cname := s.containerName(inst)
+	present := s.presentManagedContainers(ctx)
 	st, err := s.docker.InspectContainer(ctx, cname)
 	if err != nil {
 		res.Overall = "unknown"
@@ -73,6 +74,17 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 		res.Container.Container = cname
 	}
 
+	s.logger.InfoContext(ctx, "managed postgres health",
+		"instance_id", inst.ID.String(),
+		"resolved_container", cname,
+		"volume", volumeForManagedContainer(cname),
+		"admin_user_setting", inst.AdminUser,
+		"present_containers", present,
+		"inspect_found", st.Found,
+		"inspect_running", st.Running,
+		"inspect_health", st.Health,
+	)
+
 	if !st.Found {
 		if inst.Status == "draft" {
 			res.Overall = "unhealthy"
@@ -80,13 +92,13 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 			return res
 		}
 		res.Overall = "unhealthy"
-		res.Message = "Container not found — deploy Postgres"
+		res.Message = fmt.Sprintf("Container %s not found — present: %v", cname, present)
 		return res
 	}
 
 	if !docker.IsContainerRunning(st) {
 		res.Overall = "unhealthy"
-		res.Message = fmt.Sprintf("Container not running (state: %s)", st.State)
+		res.Message = fmt.Sprintf("Container not running (state: %s) · resolved=%s · present=%v", st.State, cname, present)
 		return res
 	}
 
@@ -101,11 +113,34 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 	res.Ready = &ready
 	if !ready {
 		res.Overall = "degraded"
-		res.Message = "Container running but pg_isready failed"
+		res.Message = fmt.Sprintf("Container running but pg_isready failed · resolved=%s · present=%v", cname, present)
 		return res
 	}
 
+	dbs := []string(nil)
+	if creds, cerr := s.resolveExecCreds(ctx, inst); cerr == nil {
+		dbs = s.listClusterDatabases(ctx, creds)
+		s.logger.InfoContext(ctx, "managed postgres health cluster databases",
+			"instance_id", inst.ID.String(),
+			"container", creds.container,
+			"user", creds.user,
+			"mode", creds.mode.String(),
+			"databases", dbs,
+		)
+	} else {
+		s.logger.WarnContext(ctx, "managed postgres health could not resolve creds",
+			"instance_id", inst.ID.String(),
+			"container", cname,
+			"error", cerr.Error(),
+		)
+	}
+
 	res.Overall = "healthy"
-	res.Message = "Postgres is ready"
+	if len(dbs) > 0 {
+		res.Message = fmt.Sprintf("Postgres is ready · exec→%s · dbs=[%s] · present=%v",
+			cname, strings.Join(dbs, ","), present)
+	} else {
+		res.Message = fmt.Sprintf("Postgres is ready · exec→%s · present=%v", cname, present)
+	}
 	return res
 }

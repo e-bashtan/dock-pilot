@@ -123,6 +123,7 @@ func (s *Service) querySQL(ctx context.Context, inst db.PdbInstance, database, s
 	if err != nil {
 		return QueryResult{}, fmt.Errorf("resolve admin: %w", err)
 	}
+	s.logPGOp(ctx, "psql_query", inst, creds, database, "sql_preview", truncateDiag(sql, 120))
 
 	var stdout, stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{
@@ -136,7 +137,7 @@ func (s *Service) querySQL(ctx context.Context, inst db.PdbInstance, database, s
 	code, err := s.docker.Exec(ctx, opts, nil, &stdout, &stderr)
 	if err != nil {
 		s.clearCachedExecCreds(inst.ID)
-		return QueryResult{}, err
+		return QueryResult{}, s.failPGOp(ctx, "psql_query", inst, creds, database, err.Error())
 	}
 	if code != 0 {
 		s.clearCachedExecCreds(inst.ID)
@@ -144,7 +145,7 @@ func (s *Service) querySQL(ctx context.Context, inst db.PdbInstance, database, s
 		if msg == "" {
 			msg = fmt.Sprintf("psql exit %d", code)
 		}
-		return QueryResult{}, fmt.Errorf("%s", msg)
+		return QueryResult{}, s.failPGOp(ctx, "psql_query", inst, creds, database, msg)
 	}
 
 	return parseCSVResult(stdout.Bytes())

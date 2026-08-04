@@ -76,6 +76,118 @@ func (s *Service) resolvePGNames(ctx context.Context) (container, volume string)
 	return "barn-postgres", "barn-postgres-data"
 }
 
+// presentManagedContainers returns which candidate containers Docker currently knows.
+func (s *Service) presentManagedContainers(ctx context.Context) []string {
+	var out []string
+	for _, name := range managedPostgresCandidates {
+		st, err := s.docker.InspectContainer(ctx, name)
+		if err != nil || !st.Found {
+			continue
+		}
+		state := st.State
+		if state == "" {
+			if st.Running {
+				state = "running"
+			} else {
+				state = "found"
+			}
+		}
+		out = append(out, name+"="+state)
+	}
+	return out
+}
+
+// listClusterDatabases lists non-template DB names inside the resolved cluster.
+// Used only for diagnostics when an operation fails (never logs passwords).
+func (s *Service) listClusterDatabases(ctx context.Context, creds execCreds) []string {
+	var stdout, stderr bytes.Buffer
+	opts := s.execOpts(creds, []string{
+		"psql",
+		"-v", "ON_ERROR_STOP=1",
+		"-U", creds.user,
+		"-d", "postgres",
+		"-tAc", "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY 1",
+	})
+	code, err := s.docker.Exec(ctx, opts, nil, &stdout, &stderr)
+	if err != nil || code != 0 {
+		s.logger.WarnContext(ctx, "pg list databases for diagnostics failed",
+			"container", creds.container,
+			"user", creds.user,
+			"mode", creds.mode.String(),
+			"exit", code,
+			"stderr", truncateDiag(stderr.String(), 500),
+			"error", errString(err),
+		)
+		return nil
+	}
+	var names []string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			names = append(names, line)
+		}
+	}
+	return names
+}
+
+func truncateDiag(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if n <= 0 || len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func (s *Service) logPGOp(ctx context.Context, op string, inst db.PdbInstance, creds execCreds, database string, extra ...any) {
+	args := []any{
+		"op", op,
+		"instance_id", inst.ID.String(),
+		"admin_user_setting", inst.AdminUser,
+		"container", creds.container,
+		"volume", volumeForManagedContainer(creds.container),
+		"user", creds.user,
+		"mode", creds.mode.String(),
+		"database", database,
+		"present_containers", s.presentManagedContainers(ctx),
+	}
+	args = append(args, extra...)
+	s.logger.InfoContext(ctx, "managed postgres op", args...)
+}
+
+func (s *Service) failPGOp(ctx context.Context, op string, inst db.PdbInstance, creds execCreds, database, msg string) error {
+	dbs := s.listClusterDatabases(ctx, creds)
+	inCluster := false
+	for _, n := range dbs {
+		if n == database {
+			inCluster = true
+			break
+		}
+	}
+	s.logger.ErrorContext(ctx, "managed postgres op failed",
+		"op", op,
+		"instance_id", inst.ID.String(),
+		"admin_user_setting", inst.AdminUser,
+		"container", creds.container,
+		"volume", volumeForManagedContainer(creds.container),
+		"user", creds.user,
+		"mode", creds.mode.String(),
+		"database", database,
+		"database_in_cluster", inCluster,
+		"cluster_databases", dbs,
+		"present_containers", s.presentManagedContainers(ctx),
+		"error", msg,
+	)
+	return fmt.Errorf("%s (container=%s user=%s mode=%s db=%q in_cluster=%v cluster_dbs=%v present=%v)",
+		msg, creds.container, creds.user, creds.mode.String(), database, inCluster, dbs, s.presentManagedContainers(ctx))
+}
+
 // AdminExecCreds returns the managed Postgres container name and superuser login.
 // tcp is true when callers must use -h 127.0.0.1 with PGPASSWORD; false means local socket.
 func (s *Service) AdminExecCreds(ctx context.Context) (containerName, adminUser, password string, tcp bool, err error) {
@@ -128,10 +240,17 @@ const execCredsTTL = 5 * time.Minute
 // panel admin_user — this is the "role postgres does not exist" case.
 func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (execCreds, error) {
 	if creds, ok := s.getCachedExecCreds(inst.ID); ok {
+		s.logger.DebugContext(ctx, "managed postgres creds cache hit",
+			"instance_id", inst.ID.String(),
+			"container", creds.container,
+			"user", creds.user,
+			"mode", creds.mode.String(),
+		)
 		return creds, nil
 	}
 
 	cname := s.containerName(inst)
+	present := s.presentManagedContainers(ctx)
 	panelPass, err := s.adminPassword(inst)
 	if err != nil {
 		return execCreds{}, err
@@ -140,6 +259,17 @@ func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (ex
 	envUser := s.containerEnv(ctx, cname, "POSTGRES_USER")
 	envPass := s.containerEnv(ctx, cname, "POSTGRES_PASSWORD")
 	panelUser := strings.TrimSpace(inst.AdminUser)
+
+	s.logger.InfoContext(ctx, "managed postgres resolve creds start",
+		"instance_id", inst.ID.String(),
+		"container", cname,
+		"volume", volumeForManagedContainer(cname),
+		"admin_user_setting", panelUser,
+		"env_postgres_user", envUser,
+		"env_password_set", envPass != "",
+		"panel_password_set", panelPass != "",
+		"present_containers", present,
+	)
 
 	// Prefer the role the volume was created with, then panel setting.
 	candidates := uniqueNonEmpty(envUser, panelUser, "barn", "dockpilot", "dock_pilot", "postgres")
@@ -153,6 +283,14 @@ func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (ex
 		}
 		creds := execCreds{container: cname, user: user, password: pass, mode: mode}
 		s.putCachedExecCreds(inst.ID, creds)
+		s.logger.InfoContext(ctx, "managed postgres creds resolved",
+			"instance_id", inst.ID.String(),
+			"container", cname,
+			"user", user,
+			"mode", mode.String(),
+			"admin_user_setting", panelUser,
+			"role_matches_setting", user == panelUser,
+		)
 		if user != panelUser && panelUser != "" {
 			s.logger.WarnContext(ctx, "postgres admin role differs from panel setting",
 				"configured", panelUser, "actual", user, "mode", mode.String())
@@ -223,8 +361,8 @@ func (s *Service) resolveExecCreds(ctx context.Context, inst db.PdbInstance) (ex
 	}
 
 	return execCreds{}, fmt.Errorf(
-		"no working postgres admin role in %s (configured admin_user=%q env_user=%q)",
-		cname, panelUser, envUser,
+		"no working postgres admin role in %s (configured admin_user=%q env_user=%q present=%v)",
+		cname, panelUser, envUser, present,
 	)
 }
 
@@ -371,6 +509,7 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 	if err != nil {
 		return fmt.Errorf("resolve admin: %w", err)
 	}
+	s.logPGOp(ctx, "psql", inst, creds, database, "sql_preview", truncateDiag(sql, 120))
 	var stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{
 		"psql",
@@ -382,7 +521,7 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
 	if err != nil {
 		s.clearCachedExecCreds(inst.ID)
-		return err
+		return s.failPGOp(ctx, "psql", inst, creds, database, err.Error())
 	}
 	if code != 0 {
 		s.clearCachedExecCreds(inst.ID)
@@ -390,7 +529,7 @@ func (s *Service) execSQL(ctx context.Context, inst db.PdbInstance, database, sq
 		if msg == "" {
 			msg = fmt.Sprintf("psql exit %d", code)
 		}
-		return fmt.Errorf("%s", msg)
+		return s.failPGOp(ctx, "psql", inst, creds, database, msg)
 	}
 	return nil
 }
@@ -458,6 +597,7 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName 
 	if err != nil {
 		return err
 	}
+	s.logPGOp(ctx, "pg_dump", inst, creds, dbName)
 	var stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{
 		"pg_dump",
@@ -469,7 +609,7 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName 
 	code, err := s.docker.Exec(ctx, opts, nil, w, &stderr)
 	if err != nil {
 		s.clearCachedExecCreds(inst.ID)
-		return err
+		return s.failPGOp(ctx, "pg_dump", inst, creds, dbName, err.Error())
 	}
 	if code != 0 {
 		s.clearCachedExecCreds(inst.ID)
@@ -477,8 +617,15 @@ func (s *Service) dumpDatabase(ctx context.Context, inst db.PdbInstance, dbName 
 		if msg == "" {
 			msg = fmt.Sprintf("pg_dump exit %d", code)
 		}
-		return fmt.Errorf("%s", msg)
+		return s.failPGOp(ctx, "pg_dump", inst, creds, dbName, msg)
 	}
+	s.logger.InfoContext(ctx, "managed postgres op ok",
+		"op", "pg_dump",
+		"container", creds.container,
+		"user", creds.user,
+		"mode", creds.mode.String(),
+		"database", dbName,
+	)
 	return nil
 }
 
@@ -487,6 +634,7 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 	if err != nil {
 		return err
 	}
+	s.logPGOp(ctx, "pg_restore_psql", inst, creds, dbName)
 	var stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{
 		"psql",
@@ -497,7 +645,7 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 	code, err := s.docker.Exec(ctx, opts, filterRestoreSQL(r), io.Discard, &stderr)
 	if err != nil {
 		s.clearCachedExecCreds(inst.ID)
-		return err
+		return s.failPGOp(ctx, "pg_restore_psql", inst, creds, dbName, err.Error())
 	}
 	if code != 0 {
 		s.clearCachedExecCreds(inst.ID)
@@ -505,7 +653,7 @@ func (s *Service) restoreDatabase(ctx context.Context, inst db.PdbInstance, dbNa
 		if msg == "" {
 			msg = fmt.Sprintf("psql restore exit %d", code)
 		}
-		return fmt.Errorf("%s", msg)
+		return s.failPGOp(ctx, "pg_restore_psql", inst, creds, dbName, msg)
 	}
 	return nil
 }
