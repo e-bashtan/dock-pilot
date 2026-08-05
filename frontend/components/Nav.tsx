@@ -20,8 +20,7 @@ type NavItem = {
     | "nav.notifications"
     | "nav.fleetServers"
     | "nav.fleetEvents"
-    | "nav.fleetSettings"
-    | "nav.fleetThisServer";
+    | "nav.fleetSettings";
   match: string;
 };
 
@@ -35,8 +34,8 @@ const STANDALONE_LINKS: NavItem[] = [
 ];
 
 const MASTER_PRIMARY: NavItem[] = [
+  { href: "/sites", labelKey: "nav.sites", match: "sites" },
   { href: "/fleet", labelKey: "nav.fleetServers", match: "fleet" },
-  { href: "/sites", labelKey: "nav.fleetThisServer", match: "sites" },
   { href: "/payments", labelKey: "nav.payments", match: "payments" },
 ];
 
@@ -53,14 +52,7 @@ function isPrimaryActive(pathname: string, match: string): boolean {
     if (pathname === "/sites/new" || pathname.startsWith("/sites/new/")) {
       return false;
     }
-    return (
-      pathname === "/sites" ||
-      pathname.startsWith("/sites/") ||
-      pathname === "/databases" ||
-      pathname.startsWith("/databases/") ||
-      pathname === "/backups" ||
-      pathname.startsWith("/backups/")
-    );
+    return pathname === "/sites" || pathname.startsWith("/sites/");
   }
   if (match === "databases-only") {
     return pathname === "/databases" || pathname.startsWith("/databases/");
@@ -133,7 +125,6 @@ export function Nav() {
     setMoreOpen(false);
   };
 
-  const brandHref = isMaster ? "/fleet" : "/sites";
   const primaryLinks = isMaster ? MASTER_PRIMARY : STANDALONE_LINKS;
   const mobileLinks = isMaster ? [...MASTER_PRIMARY, ...MASTER_MORE] : STANDALONE_LINKS;
   const moreActive =
@@ -143,7 +134,7 @@ export function Nav() {
     <>
       <nav className={`nav${menuOpen ? " nav-menu-open" : ""}`}>
         <div className="nav-bar">
-          <Link href={brandHref} className="nav-brand" onClick={closeMenu}>
+          <Link href="/sites" className="nav-brand" onClick={closeMenu}>
             <BrandLogo showVersion showServerIP />
           </Link>
           <button
@@ -253,15 +244,13 @@ export function Nav() {
           </div>
 
           <div className="nav-actions">
-            {!isMaster && (
-              <Link
-                href="/sites/new"
-                className="btn nav-new-site"
-                onClick={closeMenu}
-              >
-                {t("nav.newSite")}
-              </Link>
-            )}
+            <Link
+              href="/sites/new"
+              className="btn nav-new-site"
+              onClick={closeMenu}
+            >
+              {t("nav.newSite")}
+            </Link>
             <button
               type="button"
               className="btn btn-secondary nav-mobile-qr"

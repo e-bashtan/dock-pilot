@@ -189,7 +189,7 @@ func (s *Service) notifyIncident(ctx context.Context, title, message string) {
 	if s.notify == nil {
 		return
 	}
-	text := fmt.Sprintf("<b>Fleet</b>\n%s\n%s", title, message)
+	text := fmt.Sprintf("<b>Barn</b>\n%s\n%s", title, message)
 	if err := s.notify.SendText(ctx, text); err != nil {
 		s.logger.Warn("fleet telegram notify", "error", err)
 	}
