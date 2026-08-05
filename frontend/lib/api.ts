@@ -56,6 +56,7 @@ import type {
   ServersPairingCode,
   PairBarnRequest,
   CreateAgentInstallRequest,
+  UpdateAgentRequest,
   UpdateServerNodeRequest,
   UpdateServerNodeBillingRequest,
   ServerInstallation,
@@ -615,6 +616,12 @@ export const api = {
 
   startAgentInstall: (body: CreateAgentInstallRequest) =>
     request<ServerInstallation>("/api/servers/installations/agent", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  startAgentUpdate: (nodeId: string, body: UpdateAgentRequest) =>
+    request<ServerInstallation>(`/api/servers/nodes/${nodeId}/update-agent`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

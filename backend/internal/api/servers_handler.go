@@ -270,6 +270,26 @@ func (h *ServersHandler) StartAgentInstall(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusAccepted, out)
 }
 
+func (h *ServersHandler) StartAgentUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, servers.ErrInvalidInput)
+		return
+	}
+	var req servers.UpdateAgentRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		writeError(w, servers.ErrInvalidInput)
+		return
+	}
+	out, err := h.svc.StartAgentUpdate(r.Context(), id, req)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	req.Password = ""
+	writeJSON(w, http.StatusAccepted, out)
+}
+
 func (h *ServersHandler) ConfirmHostKey(w http.ResponseWriter, r *http.Request) {
 	id, err := parseUUID(chi.URLParam(r, "id"))
 	if err != nil {

@@ -109,13 +109,16 @@ func (s *Service) ensureInstallSchema(ctx context.Context) error {
 	_, _ = s.pool.Exec(ctx, `
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'servers_installations_install_kind_check'
-  ) THEN
-    ALTER TABLE servers_installations
-      ADD CONSTRAINT servers_installations_install_kind_check
-      CHECK (install_kind IN ('agent', 'barn'));
-  END IF;
+  ALTER TABLE servers_installations
+    DROP CONSTRAINT IF EXISTS servers_installations_install_kind_check;
+  ALTER TABLE servers_installations
+    DROP CONSTRAINT IF EXISTS fleet_installations_install_kind_check;
+  ALTER TABLE servers_installations
+    ADD CONSTRAINT servers_installations_install_kind_check
+    CHECK (install_kind IN ('agent', 'barn', 'agent_update'));
+EXCEPTION
+  WHEN undefined_table THEN
+    NULL;
 END $$`)
 	return nil
 }

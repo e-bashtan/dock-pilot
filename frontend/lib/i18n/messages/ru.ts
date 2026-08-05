@@ -880,6 +880,13 @@ export const ru: Messages = {
     hostname: "Hostname",
     version: "Версия",
     agentVersion: "Версия агента",
+    updateAgent: "Обновить агент",
+    updateAgentHint:
+      "Залить бинарник агента с этого Master по SSH и перезапустить сервис. Конфиг и токен сохраняются.",
+    updateAgentStart: "Начать обновление",
+    updateAgentFailed: "Не удалось начать обновление агента",
+    updateAgentProgress: "Ход обновления",
+    sshHostHint: "IP или hostname для SSH (может отличаться от отображаемого имени)",
     os: "ОС",
     kernel: "Ядро",
     architecture: "Архитектура",

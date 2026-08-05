@@ -102,6 +102,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 					r.Get("/nodes/{id}", h.Servers.GetNode)
 					r.Patch("/nodes/{id}", h.Servers.UpdateNode)
 					r.Put("/nodes/{id}/billing", h.Servers.UpdateNodeBilling)
+					r.Post("/nodes/{id}/update-agent", h.Servers.StartAgentUpdate)
 					r.Delete("/nodes/{id}", h.Servers.DeleteNode)
 					r.Get("/events", h.Servers.ListEvents)
 					r.Get("/incidents", h.Servers.ListIncidents)

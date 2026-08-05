@@ -32,6 +32,8 @@ One Barn instance can run as **standalone** (default), **master**, or **managed_
 
 From Master: **Add server → Install agent**. SSH password stays in memory only (TTL ~10 min), never in PostgreSQL or logs. Host key fingerprint must be confirmed before install. API image embeds `barn-agent-linux-amd64` (и `dockpilot-agent` для compat) and `arm64` under `/app/agents`.
 
+To **update** an existing agent: open the server page → **Update agent** (`POST /api/servers/nodes/{id}/update-agent`). Same SSH + host-key flow; binary is replaced and the service restarted without re-registration (config/token kept).
+
 See also [barn-agent.md](./barn-agent.md).
 
 ## Notifications

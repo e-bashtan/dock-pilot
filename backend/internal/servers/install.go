@@ -243,7 +243,181 @@ func (s *Service) runInstall(parent context.Context, id uuid.UUID) {
 		s.runBarnInstall(ctx, client, id, inst, set)
 		return
 	}
+	if inst.InstallKind == "agent_update" {
+		s.runAgentUpdate(ctx, client, id, inst, set)
+		return
+	}
 	s.runAgentInstall(ctx, client, id, inst, set)
+}
+
+// StartAgentUpdate redeploys the agent binary on an existing agent node over SSH.
+// Keeps /etc/barn-agent/config.json (node_uid + token); does not re-register.
+func (s *Service) StartAgentUpdate(ctx context.Context, nodeID uuid.UUID, req UpdateAgentRequest) (InstallationResponse, error) {
+	settings, err := s.ensureSettings(ctx)
+	if err != nil {
+		return InstallationResponse{}, err
+	}
+	if settings.Mode != ModeMaster {
+		return InstallationResponse{}, ErrForbidden
+	}
+	if err := s.ensureInstallSchema(ctx); err != nil {
+		return InstallationResponse{}, err
+	}
+	node, err := s.q.GetServersNode(ctx, nodeID)
+	if err != nil {
+		return InstallationResponse{}, mapErr(err)
+	}
+	if node.ConnectionType != ConnAgent {
+		return InstallationResponse{}, fmt.Errorf("%w: only agent nodes can be updated this way", ErrInvalidInput)
+	}
+	host := strings.TrimSpace(req.Host)
+	user := strings.TrimSpace(req.Username)
+	if user == "" {
+		user = "root"
+	}
+	port := req.Port
+	if port <= 0 {
+		port = 22
+	}
+	pass := req.Password
+	req.Password = ""
+	if host == "" || pass == "" {
+		return InstallationResponse{}, ErrInvalidInput
+	}
+	inst, err := s.q.CreateServersInstallation(ctx, db.CreateServersInstallationParams{
+		NodeID:          pgUUID(node.ID),
+		Host:            host,
+		Port:            int32(port),
+		Username:        user,
+		Status:          "checking_host_key",
+		CurrentStep:     "Проверка SSH-ключа",
+		ExpectedNodeUid: node.NodeUid,
+		InstallKind:     "agent_update",
+		PanelUrl:        "",
+		CertEmail:       "",
+		DisplayName:     node.Name,
+	})
+	if err != nil {
+		return InstallationResponse{}, mapErr(err)
+	}
+	s.installMu.Lock()
+	jobCtx, cancel := context.WithCancel(context.Background())
+	s.installs[inst.ID] = &installSecret{
+		password:  pass,
+		expiresAt: time.Now().Add(10 * time.Minute),
+		ctx:       jobCtx,
+		cancel:    cancel,
+	}
+	s.installMu.Unlock()
+
+	go s.runHostKeyProbe(jobCtx, inst.ID, host, port, user)
+	return s.installationResponse(inst), nil
+}
+
+func (s *Service) runAgentUpdate(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.ServersInstallation, set func(status, step string)) {
+	set("detecting_system", "Определение системы")
+	osRelease, _ := sshRun(client, "cat /etc/os-release")
+	unameM, _ := sshRun(client, "uname -m")
+	arch := strings.TrimSpace(unameM)
+	goArch := ""
+	switch arch {
+	case "x86_64", "amd64":
+		goArch = "amd64"
+	case "aarch64", "arm64":
+		goArch = "arm64"
+	default:
+		s.failInstall(ctx, id, "unsupported_arch", "неподдерживаемая архитектура: "+arch)
+		return
+	}
+	if !strings.Contains(osRelease, "Ubuntu") && !strings.Contains(osRelease, "Debian") {
+		s.failInstall(ctx, id, "unsupported_os", "поддерживаются Ubuntu/Debian")
+		return
+	}
+	if _, err := sshRun(client, "command -v systemctl"); err != nil {
+		s.failInstall(ctx, id, "no_systemd", "systemd не найден")
+		return
+	}
+	_ = s.appendInstallLog(ctx, id, "info", "Определение "+detectPrettyOS(osRelease)+" "+goArch)
+
+	// Prefer barn-agent; fall back to legacy dockpilot-agent unit/binary.
+	unit := "barn-agent.service"
+	binRemote := "/opt/barn-agent/barn-agent"
+	if _, err := sshRun(client, "test -f /etc/barn-agent/config.json"); err != nil {
+		if _, err2 := sshRun(client, "test -f /etc/dockpilot-agent/config.json"); err2 != nil {
+			s.failInstall(ctx, id, "agent_not_found", "конфиг агента не найден (/etc/barn-agent или /etc/dockpilot-agent)")
+			return
+		}
+		unit = "dockpilot-agent.service"
+		binRemote = "/usr/local/bin/dockpilot-agent"
+		if out, err := sshRun(client, "test -x /opt/dockpilot-agent/dockpilot-agent && echo opt"); err == nil && strings.Contains(out, "opt") {
+			binRemote = "/opt/dockpilot-agent/dockpilot-agent"
+		}
+		_ = s.appendInstallLog(ctx, id, "info", "Найден legacy dockpilot-agent")
+	} else {
+		_ = s.appendInstallLog(ctx, id, "info", "Найден barn-agent")
+	}
+
+	prevHB := time.Time{}
+	if node, err := s.q.GetServersNodeByUID(ctx, inst.ExpectedNodeUid); err == nil && node.LastHeartbeatAt.Valid {
+		prevHB = node.LastHeartbeatAt.Time
+	}
+
+	set("uploading_agent", "Загрузка новой версии агента")
+	binPath := s.agentBinaryPath(goArch)
+	bin, err := os.ReadFile(binPath)
+	if err != nil {
+		s.failInstall(ctx, id, "agent_missing", "agent binary не найден в API image")
+		return
+	}
+	sum := sha256Hex(bin)
+	remoteTmp := "/tmp/barn-agent-update." + hex.EncodeToString([]byte(sum)[:6])
+	if err := sshUpload(client, remoteTmp, bin); err != nil {
+		s.failInstall(ctx, id, "upload_failed", "не удалось загрузить agent")
+		return
+	}
+
+	set("installing_service", "Замена бинарника и перезапуск")
+	script := buildAgentUpdateScript(remoteTmp, sum, binRemote, unit)
+	if out, err := sshRun(client, script); err != nil {
+		_ = s.appendInstallLog(ctx, id, "error", truncateLog(out, 500))
+		s.failInstall(ctx, id, "update_failed", "ошибка обновления agent")
+		return
+	}
+	_ = s.appendInstallLog(ctx, id, "info", "Сервис перезапущен: "+unit)
+
+	set("waiting_for_registration", "Ожидание heartbeat после обновления")
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			s.failInstall(context.Background(), id, "cancelled", "обновление отменено")
+			return
+		case <-time.After(3 * time.Second):
+		}
+		node, err := s.q.GetServersNodeByUID(ctx, inst.ExpectedNodeUid)
+		if err != nil {
+			continue
+		}
+		if !node.LastHeartbeatAt.Valid {
+			continue
+		}
+		if node.LastHeartbeatAt.Time.After(prevHB) {
+			_, _ = s.q.UpdateServersInstallation(ctx, db.UpdateServersInstallationParams{
+				ID: id, Status: "completed", CurrentStep: "Агент обновлён",
+				SshFingerprint: "", NodeID: pgUUID(node.ID),
+				ErrorCode: "", ErrorMessage: "",
+				CompletedAt: pgTimestamptz(time.Now().UTC()),
+			})
+			ver := node.AgentVersion
+			if ver == "" {
+				ver = "ok"
+			}
+			_ = s.appendInstallLog(ctx, id, "info", "Heartbeat получен, версия агента: "+ver)
+			s.clearInstallSecret(id)
+			return
+		}
+	}
+	s.failInstall(ctx, id, "heartbeat_timeout", "агент не прислал heartbeat после обновления")
 }
 
 func (s *Service) runAgentInstall(ctx context.Context, client *ssh.Client, id uuid.UUID, inst db.ServersInstallation, set func(status, step string)) {
@@ -805,6 +979,32 @@ rm -f %s
 		strconv.Quote(masterURL), strconv.Quote(regToken), strconv.Quote(nodeUID),
 		strconv.Quote(masterURL), strconv.Quote(regToken), strconv.Quote(nodeUID),
 		strconv.Quote(tmpPath))
+}
+
+// buildAgentUpdateScript replaces the agent binary and restarts the unit.
+// Does not touch config.json (keeps node_uid + token).
+func buildAgentUpdateScript(tmpPath, checksum, binRemote, unit string) string {
+	return fmt.Sprintf(`set -euo pipefail
+SUM=$(sha256sum %s | awk '{print $1}')
+test "$SUM" = %s
+mkdir -p "$(dirname %s)"
+systemctl stop %s || true
+install -o root -g root -m 0755 %s %s
+systemctl daemon-reload
+systemctl enable %s || true
+systemctl restart %s
+systemctl is-active %s
+rm -f %s
+`,
+		strconv.Quote(tmpPath), strconv.Quote(checksum),
+		strconv.Quote(binRemote),
+		strconv.Quote(unit),
+		strconv.Quote(tmpPath), strconv.Quote(binRemote),
+		strconv.Quote(unit),
+		strconv.Quote(unit),
+		strconv.Quote(unit),
+		strconv.Quote(tmpPath),
+	)
 }
 
 // prevent unused rand import complaint in some builds

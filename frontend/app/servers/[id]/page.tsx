@@ -2,14 +2,19 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ServerNodeBadges, ServerStatusBadge } from "@/components/ServerBadges";
 import { api, ApiError } from "@/lib/api";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { isBarnPanel } from "@/lib/servers-utils";
 import { useI18n } from "@/lib/i18n/context";
-import type { BillingAccount, ServerNode } from "@/lib/types";
+import type {
+  BillingAccount,
+  ServerInstallation,
+  ServerInstallationLog,
+  ServerNode,
+} from "@/lib/types";
 
 function formatUptime(seconds: number | undefined): string {
   if (!seconds || seconds <= 0) return "—";
@@ -20,6 +25,8 @@ function formatUptime(seconds: number | undefined): string {
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
 }
+
+const TERMINAL_INSTALL = new Set(["completed", "failed", "cancelled"]);
 
 export default function ServerDetailPage() {
   const params = useParams();
@@ -44,6 +51,15 @@ export default function ServerDetailPage() {
   const [billingMsg, setBillingMsg] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [nameMsg, setNameMsg] = useState<string | null>(null);
+  const [updateHost, setUpdateHost] = useState("");
+  const [updatePort, setUpdatePort] = useState("22");
+  const [updateUser, setUpdateUser] = useState("root");
+  const [updatePassword, setUpdatePassword] = useState("");
+  const [updateInstall, setUpdateInstall] = useState<ServerInstallation | null>(
+    null,
+  );
+  const [updateLogs, setUpdateLogs] = useState<ServerInstallationLog[]>([]);
+  const updatePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const applyBillingForm = (row: ServerNode) => {
     setBillingAccountId(row.billing?.billing_account_id || "");
@@ -70,6 +86,13 @@ export default function ServerDetailPage() {
     }
   };
 
+  const stopUpdatePolling = useCallback(() => {
+    if (updatePollRef.current) {
+      clearInterval(updatePollRef.current);
+      updatePollRef.current = null;
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -81,6 +104,7 @@ export default function ServerDetailPage() {
       setEditName(row.name);
       setAccounts(list);
       applyBillingForm(row);
+      setUpdateHost((prev) => prev || row.hostname || "");
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("servers.nodeLoadFailed"));
@@ -89,11 +113,49 @@ export default function ServerDetailPage() {
     }
   }, [id, t]);
 
+  const pollUpdate = useCallback(
+    async (installId: string) => {
+      try {
+        const [inst, logRows] = await Promise.all([
+          api.getAgentInstall(installId),
+          api
+            .listAgentInstallLogs(installId)
+            .catch(() => [] as ServerInstallationLog[]),
+        ]);
+        setUpdateInstall(inst);
+        setUpdateLogs(logRows);
+        if (TERMINAL_INSTALL.has(inst.status)) {
+          stopUpdatePolling();
+          if (inst.status === "completed") {
+            void load();
+          }
+        }
+      } catch (e) {
+        setError(
+          e instanceof ApiError ? e.message : t("servers.installPollFailed"),
+        );
+        stopUpdatePolling();
+      }
+    },
+    [load, stopUpdatePolling, t],
+  );
+
+  const startUpdatePolling = useCallback(
+    (installId: string) => {
+      stopUpdatePolling();
+      void pollUpdate(installId);
+      updatePollRef.current = setInterval(() => void pollUpdate(installId), 3000);
+    },
+    [pollUpdate, stopUpdatePolling],
+  );
+
   useEffect(() => {
     void load();
     const timer = setInterval(() => void load(), 30_000);
     return () => clearInterval(timer);
   }, [load]);
+
+  useEffect(() => () => stopUpdatePolling(), [stopUpdatePolling]);
 
   const handleDelete = async () => {
     if (!id) return;
@@ -122,6 +184,65 @@ export default function ServerDetailPage() {
       setNameMsg(t("servers.nameSaved"));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("servers.nameSaveFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitAgentUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body: Parameters<typeof api.startAgentUpdate>[1] = {
+        host: updateHost.trim(),
+        password: updatePassword,
+      };
+      const portNum = parseInt(updatePort, 10);
+      if (Number.isFinite(portNum) && portNum > 0) body.port = portNum;
+      if (updateUser.trim()) body.username = updateUser.trim();
+      const inst = await api.startAgentUpdate(id, body);
+      setUpdatePassword("");
+      setUpdateInstall(inst);
+      setUpdateLogs([]);
+      startUpdatePolling(inst.id);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : t("servers.updateAgentFailed"),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmUpdateHostKey = async () => {
+    if (!updateInstall) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const inst = await api.confirmAgentInstallHostKey(updateInstall.id);
+      setUpdateInstall(inst);
+      startUpdatePolling(inst.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("servers.hostKeyFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelUpdate = async () => {
+    if (!updateInstall) return;
+    setBusy(true);
+    try {
+      await api.cancelAgentInstall(updateInstall.id);
+      stopUpdatePolling();
+      setUpdateInstall(null);
+      setUpdateLogs([]);
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : t("servers.installCancelFailed"),
+      );
     } finally {
       setBusy(false);
     }
@@ -241,6 +362,168 @@ export default function ServerDetailPage() {
           </button>
         </div>
       </form>
+
+      {node.connection_type === "agent" && (
+        <div className="card">
+          <h2 className="section-title">{t("servers.updateAgent")}</h2>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {t("servers.updateAgentHint")}
+          </p>
+          {node.agent_version && (
+            <p className="muted" style={{ marginTop: 0 }}>
+              {t("servers.agentVersion")}: <strong>{node.agent_version}</strong>
+            </p>
+          )}
+
+          {!updateInstall && (
+            <form onSubmit={submitAgentUpdate}>
+              <div className="form-grid">
+                <div className="field">
+                  <label className="label" htmlFor="update-host">
+                    {t("servers.sshHost")}
+                  </label>
+                  <input
+                    id="update-host"
+                    className="input"
+                    value={updateHost}
+                    onChange={(e) => setUpdateHost(e.target.value)}
+                    required
+                    autoComplete="off"
+                  />
+                  <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.8rem" }}>
+                    {t("servers.sshHostHint")}
+                  </p>
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="update-port">
+                    {t("servers.port")}
+                  </label>
+                  <input
+                    id="update-port"
+                    className="input"
+                    value={updatePort}
+                    onChange={(e) => setUpdatePort(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="update-user">
+                    {t("servers.sshUser")}
+                  </label>
+                  <input
+                    id="update-user"
+                    className="input"
+                    value={updateUser}
+                    onChange={(e) => setUpdateUser(e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="update-password">
+                    {t("servers.sshPassword")}
+                  </label>
+                  <input
+                    id="update-password"
+                    className="input"
+                    type="password"
+                    value={updatePassword}
+                    onChange={(e) => setUpdatePassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button type="submit" className="btn" disabled={busy}>
+                  {busy ? t("common.loading") : t("servers.updateAgentStart")}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {updateInstall && (
+            <div>
+              <h3 className="section-title" style={{ fontSize: "1rem" }}>
+                {t("servers.updateAgentProgress")}
+              </h3>
+              <p>
+                <strong>{updateInstall.current_step}</strong>
+                {" · "}
+                <span className="muted">{updateInstall.status}</span>
+              </p>
+              {updateInstall.status === "awaiting_host_key_confirmation" && (
+                <div className="alert" style={{ marginBottom: "1rem" }}>
+                  <p style={{ marginTop: 0 }}>{t("servers.hostKeyPrompt")}</p>
+                  <code>{updateInstall.ssh_fingerprint}</code>
+                  <div className="form-actions" style={{ marginTop: "0.75rem" }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      onClick={() => void confirmUpdateHostKey()}
+                    >
+                      {t("servers.confirmHostKey")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={busy}
+                      onClick={() => void cancelUpdate()}
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {updateInstall.error_message && (
+                <div className="alert alert-error">{updateInstall.error_message}</div>
+              )}
+              {updateInstall.status === "completed" && (
+                <div className="alert alert-success">
+                  {t("servers.updateAgent")} — OK
+                  {node.agent_version ? ` (${node.agent_version})` : ""}
+                </div>
+              )}
+              {!!updateInstall &&
+                !TERMINAL_INSTALL.has(updateInstall.status) &&
+                updateInstall.status !== "awaiting_host_key_confirmation" && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={busy}
+                    onClick={() => void cancelUpdate()}
+                  >
+                    {t("common.cancel")}
+                  </button>
+                )}
+              {TERMINAL_INSTALL.has(updateInstall.status) && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setUpdateInstall(null);
+                    setUpdateLogs([]);
+                  }}
+                >
+                  {t("common.close")}
+                </button>
+              )}
+              {updateLogs.length > 0 && (
+                <pre
+                  style={{
+                    marginTop: "1rem",
+                    maxHeight: 240,
+                    overflow: "auto",
+                    fontSize: "0.8rem",
+                  }}
+                >
+                  {updateLogs.map((l) => `[${l.level}] ${l.message}`).join("\n")}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {node.metrics && (
         <div className="card">

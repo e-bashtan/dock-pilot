@@ -734,6 +734,13 @@ export interface CreateAgentInstallRequest {
   provider_url?: string;
 }
 
+export interface UpdateAgentRequest {
+  host: string;
+  port?: number;
+  username?: string;
+  password: string;
+}
+
 export interface ServerInstallation {
   id: string;
   status: string;

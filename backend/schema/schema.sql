@@ -386,7 +386,7 @@ CREATE TABLE servers_installations (
     error_code TEXT NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
     install_kind TEXT NOT NULL DEFAULT 'agent'
-        CHECK (install_kind IN ('agent', 'barn')),
+        CHECK (install_kind IN ('agent', 'barn', 'agent_update')),
     panel_url TEXT NOT NULL DEFAULT '',
     cert_email TEXT NOT NULL DEFAULT '',
     display_name TEXT NOT NULL DEFAULT '',

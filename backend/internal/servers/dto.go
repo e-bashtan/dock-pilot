@@ -239,6 +239,14 @@ type CreateAgentInstallRequest struct {
 	Comment      string `json:"comment"`
 }
 
+// UpdateAgentRequest redeploys barn-agent binary over SSH without re-registration.
+type UpdateAgentRequest struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type InstallationResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	Status         string     `json:"status"`

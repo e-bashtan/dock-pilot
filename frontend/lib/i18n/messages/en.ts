@@ -876,6 +876,13 @@ export const en = {
     hostname: "Hostname",
     version: "Version",
     agentVersion: "Agent version",
+    updateAgent: "Update agent",
+    updateAgentHint:
+      "Upload the agent binary from this Master over SSH and restart the service. Config and token are kept.",
+    updateAgentStart: "Start update",
+    updateAgentFailed: "Failed to start agent update",
+    updateAgentProgress: "Update progress",
+    sshHostHint: "IP or hostname used for SSH (may differ from the display name)",
     os: "OS",
     kernel: "Kernel",
     architecture: "Architecture",
