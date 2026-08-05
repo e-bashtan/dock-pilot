@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"strings"
 
-	deploysvc "github.com/ebash/barn/backend/internal/deployments"
 	"github.com/ebash/barn/backend/internal/billing"
-	"github.com/ebash/barn/backend/internal/fleet"
+	deploysvc "github.com/ebash/barn/backend/internal/deployments"
 	notifpkg "github.com/ebash/barn/backend/internal/notifications"
 	"github.com/ebash/barn/backend/internal/panelbackup"
 	"github.com/ebash/barn/backend/internal/pgdb"
 	secretpkg "github.com/ebash/barn/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/servers"
 	sitesvc "github.com/ebash/barn/backend/internal/sites"
 	"github.com/ebash/barn/backend/internal/system"
 )
@@ -38,24 +38,24 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, notifpkg.ErrNotFound),
 		errors.Is(err, pgdb.ErrNotFound),
 		errors.Is(err, billing.ErrNotFound),
-		errors.Is(err, fleet.ErrNotFound):
+		errors.Is(err, servers.ErrNotFound):
 		status = http.StatusNotFound
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrSlugConflict),
 		errors.Is(err, pgdb.ErrSlugConflict),
 		errors.Is(err, pgdb.ErrAlreadyConfigured),
 		errors.Is(err, system.ErrUpgradeBusy),
-		errors.Is(err, fleet.ErrConflict),
-		errors.Is(err, fleet.ErrHasRemotes),
-		errors.Is(err, fleet.ErrAlreadyPaired),
-		errors.Is(err, fleet.ErrCannotNest):
+		errors.Is(err, servers.ErrConflict),
+		errors.Is(err, servers.ErrHasRemotes),
+		errors.Is(err, servers.ErrAlreadyPaired),
+		errors.Is(err, servers.ErrCannotNest):
 		status = http.StatusConflict
 		msg = err.Error()
-	case errors.Is(err, fleet.ErrUnauthorized):
+	case errors.Is(err, servers.ErrUnauthorized):
 		status = http.StatusUnauthorized
 		msg = err.Error()
-	case errors.Is(err, fleet.ErrForbidden),
-		errors.Is(err, fleet.ErrScope):
+	case errors.Is(err, servers.ErrForbidden),
+		errors.Is(err, servers.ErrScope):
 		status = http.StatusForbidden
 		msg = err.Error()
 	case errors.Is(err, sitesvc.ErrInvalidInput),
@@ -72,11 +72,11 @@ func writeError(w http.ResponseWriter, err error) {
 		errors.Is(err, billing.ErrNotConfigured),
 		errors.Is(err, system.ErrUpgradeNotAvail),
 		errors.Is(err, system.ErrUpgradeStartFail),
-		errors.Is(err, fleet.ErrInvalidInput),
-		errors.Is(err, fleet.ErrMode),
-		errors.Is(err, fleet.ErrNotConfigured),
-		errors.Is(err, fleet.ErrMigration),
-		errors.Is(err, fleet.ErrPairingExpired):
+		errors.Is(err, servers.ErrInvalidInput),
+		errors.Is(err, servers.ErrMode),
+		errors.Is(err, servers.ErrNotConfigured),
+		errors.Is(err, servers.ErrMigration),
+		errors.Is(err, servers.ErrPairingExpired):
 		status = http.StatusBadRequest
 		msg = err.Error()
 	default:

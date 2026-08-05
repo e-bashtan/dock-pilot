@@ -34,6 +34,8 @@ COPY --from=builder /out/barn-agent-linux-arm64 /app/agents/barn-agent-linux-arm
 COPY --from=builder /out/dockpilot-agent-linux-amd64 /app/agents/dockpilot-agent-linux-amd64
 COPY --from=builder /out/dockpilot-agent-linux-arm64 /app/agents/dockpilot-agent-linux-arm64
 COPY --from=builder /out/agent.sha256 /app/agents/SHA256SUMS
+ENV BARN_AGENT_DIR=/app/agents
+# Legacy alias still read by the API if BARN_AGENT_DIR is unset
 ENV FLEET_AGENT_DIR=/app/agents
 
 # Root required for Docker socket and writing nginx configs on mounted host paths.

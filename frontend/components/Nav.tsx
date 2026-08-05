@@ -7,7 +7,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { MobileQrModal } from "@/components/MobileQrModal";
 import { useLogout } from "@/components/AuthGate";
-import { useFleetMode } from "@/lib/fleet-mode";
+import { useServersMode } from "@/lib/servers-mode";
 import { useI18n } from "@/lib/i18n/context";
 
 type NavItem = {
@@ -18,9 +18,9 @@ type NavItem = {
     | "nav.backups"
     | "nav.payments"
     | "nav.notifications"
-    | "nav.fleetServers"
-    | "nav.fleetEvents"
-    | "nav.fleetSettings";
+    | "nav.servers"
+    | "nav.serverEvents"
+    | "nav.serversSettings";
   match: string;
 };
 
@@ -30,21 +30,21 @@ const STANDALONE_LINKS: NavItem[] = [
   { href: "/backups", labelKey: "nav.backups", match: "backups" },
   { href: "/payments", labelKey: "nav.payments", match: "payments" },
   { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
-  { href: "/fleet/settings", labelKey: "nav.fleetSettings", match: "fleet-settings" },
+  { href: "/servers/settings", labelKey: "nav.serversSettings", match: "servers-settings" },
 ];
 
 const MASTER_PRIMARY: NavItem[] = [
   { href: "/sites", labelKey: "nav.sites", match: "sites" },
-  { href: "/fleet", labelKey: "nav.fleetServers", match: "fleet" },
+  { href: "/servers", labelKey: "nav.servers", match: "servers" },
   { href: "/payments", labelKey: "nav.payments", match: "payments" },
 ];
 
 const MASTER_MORE: NavItem[] = [
-  { href: "/fleet/events", labelKey: "nav.fleetEvents", match: "fleet-events" },
+  { href: "/servers/events", labelKey: "nav.serverEvents", match: "servers-events" },
   { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
   { href: "/databases", labelKey: "nav.databases", match: "databases-only" },
   { href: "/backups", labelKey: "nav.backups", match: "backups-only" },
-  { href: "/fleet/settings", labelKey: "nav.fleetSettings", match: "fleet-settings" },
+  { href: "/servers/settings", labelKey: "nav.serversSettings", match: "servers-settings" },
 ];
 
 function isPrimaryActive(pathname: string, match: string): boolean {
@@ -60,15 +60,23 @@ function isPrimaryActive(pathname: string, match: string): boolean {
   if (match === "backups-only") {
     return pathname === "/backups" || pathname.startsWith("/backups/");
   }
-  if (match === "fleet") {
-    return pathname === "/fleet" || pathname.startsWith("/fleet/servers");
+  if (match === "servers") {
+    if (
+      pathname === "/servers/events" ||
+      pathname.startsWith("/servers/events/") ||
+      pathname === "/servers/settings" ||
+      pathname.startsWith("/servers/settings/")
+    ) {
+      return false;
+    }
+    return pathname === "/servers" || pathname.startsWith("/servers/");
   }
-  if (match === "fleet-events") {
-    return pathname === "/fleet/events" || pathname.startsWith("/fleet/events/");
+  if (match === "servers-events") {
+    return pathname === "/servers/events" || pathname.startsWith("/servers/events/");
   }
-  if (match === "fleet-settings") {
+  if (match === "servers-settings") {
     return (
-      pathname === "/fleet/settings" || pathname.startsWith("/fleet/settings/")
+      pathname === "/servers/settings" || pathname.startsWith("/servers/settings/")
     );
   }
   return pathname === `/${match}` || pathname.startsWith(`/${match}/`);
@@ -77,7 +85,7 @@ function isPrimaryActive(pathname: string, match: string): boolean {
 export function Nav() {
   const logout = useLogout();
   const { t } = useI18n();
-  const { isMaster } = useFleetMode();
+  const { isMaster } = useServersMode();
   const pathname = usePathname() || "";
   const [qrOpen, setQrOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);

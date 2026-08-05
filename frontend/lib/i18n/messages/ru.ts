@@ -47,12 +47,12 @@ export const ru: Messages = {
     language: "Язык",
     langEn: "English",
     langRu: "Русский",
-    fleetServers: "Серверы",
-    fleetEvents: "События",
-    fleetSettings: "Настройки Амбара",
-    fleetThisServer: "Сайты",
-    fleetContextAll: "Все серверы",
-    fleetContextLocal: "Этот сервер · MASTER",
+    servers: "Серверы",
+    serverEvents: "События",
+    serversSettings: "Настройки Амбара",
+    thisServer: "Сайты",
+    serversContextAll: "Все серверы",
+    serversContextLocal: "Этот сервер · MASTER",
     more: "Ещё",
   },
   auth: {
@@ -744,7 +744,7 @@ export const ru: Messages = {
       "Сохраните пароль сейчас — он показывается один раз при создании. Позже его можно снова открыть через «Подключение» / «Админ / пароль».",
     createdPassword: "Сгенерированный пароль",
   },
-  fleet: {
+  servers: {
     title: "Серверы",
     subtitle: "Мониторинг всех серверов Амбар и агентов из одной панели.",
     settingsLink: "Настройки Амбара",

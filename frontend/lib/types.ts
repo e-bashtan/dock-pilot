@@ -548,33 +548,33 @@ export interface UpdateBillingAccountRequest {
   enabled?: boolean;
 }
 
-export type FleetMode = "standalone" | "master" | "managed_node";
-export type FleetNotificationMode = "local" | "master" | "disabled";
-export type FleetNodeRole = "master" | "node" | "agent";
-export type FleetConnectionType = "local" | "barn" | "dockpilot" | "agent";
-export type FleetNodeStatus = "online" | "warning" | "offline";
+export type ServersMode = "standalone" | "master" | "managed_node";
+export type ServersNotificationMode = "local" | "master" | "disabled";
+export type ServerNodeRole = "master" | "node" | "agent";
+export type ServerConnectionType = "local" | "barn" | "dockpilot" | "agent";
+export type ServerNodeStatus = "online" | "warning" | "offline";
 
-export interface FleetSettings {
-  mode: FleetMode;
+export interface ServersSettings {
+  mode: ServersMode;
   node_uid: string;
   node_name: string;
   public_url: string;
   master_url: string;
-  notification_mode: FleetNotificationMode;
+  notification_mode: ServersNotificationMode;
   has_master_token: boolean;
 }
 
-export interface UpdateFleetSettingsRequest {
-  mode?: FleetMode;
+export interface UpdateServersSettingsRequest {
+  mode?: ServersMode;
   node_name?: string;
   public_url?: string;
   master_url?: string;
-  notification_mode?: FleetNotificationMode;
+  notification_mode?: ServersNotificationMode;
   enable_master?: boolean;
   disable_master?: boolean;
 }
 
-export interface FleetMetrics {
+export interface ServerMetrics {
   cpu_percent: number;
   memory_used_bytes: number;
   memory_total_bytes: number;
@@ -585,13 +585,13 @@ export interface FleetMetrics {
   load_15?: number;
 }
 
-export interface FleetApplications {
+export interface ServerApplications {
   total: number;
   running: number;
   unhealthy: number;
 }
 
-export interface FleetBilling {
+export interface ServerBilling {
   cost_minor: number;
   currency: string;
   period?: string;
@@ -608,11 +608,11 @@ export interface FleetBilling {
   alert_days?: number;
 }
 
-export interface UpdateFleetNodeRequest {
+export interface UpdateServerNodeRequest {
   name: string;
 }
 
-export interface UpdateFleetNodeBillingRequest {
+export interface UpdateServerNodeBillingRequest {
   billing_account_id?: string;
   cost_minor?: number;
   currency?: string;
@@ -625,7 +625,7 @@ export interface UpdateFleetNodeBillingRequest {
   comment?: string;
 }
 
-export interface FleetFilesystem {
+export interface ServerFilesystem {
   mountpoint: string;
   device: string;
   filesystem: string;
@@ -634,37 +634,37 @@ export interface FleetFilesystem {
   used_percent: number;
 }
 
-export interface FleetServiceStatus {
+export interface ServerServiceStatus {
   unit_name: string;
   state: string;
 }
 
-export interface FleetNode {
+export interface ServerNode {
   id: string;
   node_uid: string;
   name: string;
-  role: FleetNodeRole;
-  connection_type: FleetConnectionType;
+  role: ServerNodeRole;
+  connection_type: ServerConnectionType;
   base_url: string;
-  status: FleetNodeStatus;
+  status: ServerNodeStatus;
   version: string;
   agent_version?: string;
   last_seen_at?: string;
   capabilities: string[];
-  metrics?: FleetMetrics;
-  applications?: FleetApplications;
-  billing?: FleetBilling;
+  metrics?: ServerMetrics;
+  applications?: ServerApplications;
+  billing?: ServerBilling;
   open_incidents: number;
   hostname?: string;
   os_name?: string;
   os_version?: string;
   kernel?: string;
   architecture?: string;
-  filesystems?: FleetFilesystem[];
-  services?: FleetServiceStatus[];
+  filesystems?: ServerFilesystem[];
+  services?: ServerServiceStatus[];
 }
 
-export interface FleetOverview {
+export interface ServersOverview {
   servers_total: number;
   servers_online: number;
   servers_warning: number;
@@ -678,7 +678,7 @@ export interface FleetOverview {
   open_incidents: number;
 }
 
-export interface FleetEvent {
+export interface ServerEvent {
   id: string;
   event_id: string;
   node_id?: string;
@@ -692,7 +692,7 @@ export interface FleetEvent {
   occurred_at: string;
 }
 
-export interface FleetIncident {
+export interface ServerIncident {
   id: string;
   node_id?: string;
   event_type: string;
@@ -704,7 +704,7 @@ export interface FleetIncident {
   resolved_at?: string;
 }
 
-export interface FleetPairingCode {
+export interface ServersPairingCode {
   code: string;
   expires_at: string;
 }
@@ -734,7 +734,7 @@ export interface CreateAgentInstallRequest {
   provider_url?: string;
 }
 
-export interface FleetInstallation {
+export interface ServerInstallation {
   id: string;
   status: string;
   current_step: string;
@@ -749,7 +749,7 @@ export interface FleetInstallation {
   node_id?: string;
 }
 
-export interface FleetInstallationLog {
+export interface ServerInstallationLog {
   id: number;
   level: string;
   message: string;

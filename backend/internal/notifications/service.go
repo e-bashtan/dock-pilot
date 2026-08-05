@@ -19,23 +19,23 @@ import (
 )
 
 // LocalAlertGate optionally suppresses local Telegram user alerts
-// (e.g. when Fleet notification_mode is "master" on a managed node).
+// (e.g. when servers notification_mode is "master" on a managed node).
 type LocalAlertGate interface {
 	SuppressLocalAlerts(ctx context.Context) bool
 }
 
 type Service struct {
-	queries     *db.Queries
-	cipher      *secrets.Cipher
-	sites       *sitesvc.Service
-	pgdb        *pgdb.Service
-	telegram    *TelegramClient
-	alertGate   LocalAlertGate
-	fleetEvents FleetEventSink
+	queries       *db.Queries
+	cipher        *secrets.Cipher
+	sites         *sitesvc.Service
+	pgdb          *pgdb.Service
+	telegram      *TelegramClient
+	alertGate     LocalAlertGate
+	serversEvents ServersEventSink
 }
 
-// FleetEventSink forwards local incidents to Fleet outbox when notifications are centralized.
-type FleetEventSink interface {
+// ServersEventSink forwards local incidents to the master outbox when notifications are centralized.
+type ServersEventSink interface {
 	OnLocalIncident(ctx context.Context, kind, resourceID, name, overall, message string) error
 }
 
@@ -53,8 +53,8 @@ func (s *Service) SetLocalAlertGate(g LocalAlertGate) {
 	s.alertGate = g
 }
 
-func (s *Service) SetFleetEventSink(sink FleetEventSink) {
-	s.fleetEvents = sink
+func (s *Service) SetServersEventSink(sink ServersEventSink) {
+	s.serversEvents = sink
 }
 
 func (s *Service) suppressLocal(ctx context.Context) bool {
@@ -213,8 +213,8 @@ func (s *Service) RunCheck(ctx context.Context) error {
 				name = item.Key
 			}
 			if suppress {
-				if s.fleetEvents != nil {
-					_ = s.fleetEvents.OnLocalIncident(ctx, item.Kind, item.Key, name, item.Overall, item.Message)
+				if s.serversEvents != nil {
+					_ = s.serversEvents.OnLocalIncident(ctx, item.Kind, item.Key, name, item.Overall, item.Message)
 				}
 				continue
 			}

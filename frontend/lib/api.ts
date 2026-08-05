@@ -47,19 +47,19 @@ import type {
   BillingAccount,
   CreateBillingAccountRequest,
   UpdateBillingAccountRequest,
-  FleetSettings,
-  UpdateFleetSettingsRequest,
-  FleetOverview,
-  FleetNode,
-  FleetEvent,
-  FleetIncident,
-  FleetPairingCode,
+  ServersSettings,
+  UpdateServersSettingsRequest,
+  ServersOverview,
+  ServerNode,
+  ServerEvent,
+  ServerIncident,
+  ServersPairingCode,
   PairBarnRequest,
   CreateAgentInstallRequest,
-  UpdateFleetNodeRequest,
-  UpdateFleetNodeBillingRequest,
-  FleetInstallation,
-  FleetInstallationLog,
+  UpdateServerNodeRequest,
+  UpdateServerNodeBillingRequest,
+  ServerInstallation,
+  ServerInstallationLog,
 } from "./types";
 
 import { resolveApiBase } from "./api-base";
@@ -568,71 +568,71 @@ export const api = {
       method: "POST",
     }),
 
-  getFleetSettings: () => request<FleetSettings>("/api/fleet/settings"),
+  getServersSettings: () => request<ServersSettings>("/api/servers/settings"),
 
-  updateFleetSettings: (body: UpdateFleetSettingsRequest) =>
-    request<FleetSettings>("/api/fleet/settings", {
+  updateServersSettings: (body: UpdateServersSettingsRequest) =>
+    request<ServersSettings>("/api/servers/settings", {
       method: "PUT",
       body: JSON.stringify(body),
     }),
 
-  getFleetOverview: () => request<FleetOverview>("/api/fleet/overview"),
+  getServersOverview: () => request<ServersOverview>("/api/servers/overview"),
 
-  listFleetNodes: () => request<FleetNode[]>("/api/fleet/nodes"),
+  listServerNodes: () => request<ServerNode[]>("/api/servers/nodes"),
 
-  getFleetNode: (id: string) => request<FleetNode>(`/api/fleet/nodes/${id}`),
+  getServerNode: (id: string) => request<ServerNode>(`/api/servers/nodes/${id}`),
 
-  updateFleetNode: (id: string, body: UpdateFleetNodeRequest) =>
-    request<FleetNode>(`/api/fleet/nodes/${id}`, {
+  updateServerNode: (id: string, body: UpdateServerNodeRequest) =>
+    request<ServerNode>(`/api/servers/nodes/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
 
-  updateFleetNodeBilling: (id: string, body: UpdateFleetNodeBillingRequest) =>
-    request<FleetNode>(`/api/fleet/nodes/${id}/billing`, {
+  updateServerNodeBilling: (id: string, body: UpdateServerNodeBillingRequest) =>
+    request<ServerNode>(`/api/servers/nodes/${id}/billing`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
 
-  deleteFleetNode: (id: string) =>
-    request<void>(`/api/fleet/nodes/${id}`, { method: "DELETE" }),
+  deleteServerNode: (id: string) =>
+    request<void>(`/api/servers/nodes/${id}`, { method: "DELETE" }),
 
   pairBarnNode: (body: PairBarnRequest) =>
-    request<FleetNode>("/api/fleet/nodes/barn", {
+    request<ServerNode>("/api/servers/nodes/barn", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
-  createFleetPairingCode: () =>
-    request<FleetPairingCode>("/api/fleet/pairing-code", { method: "POST" }),
+  createServersPairingCode: () =>
+    request<ServersPairingCode>("/api/servers/pairing-code", { method: "POST" }),
 
-  disconnectFleetMaster: () =>
-    request<void>("/api/fleet/master", { method: "DELETE" }),
+  disconnectServersMaster: () =>
+    request<void>("/api/servers/master", { method: "DELETE" }),
 
-  listFleetEvents: () => request<FleetEvent[]>("/api/fleet/events"),
+  listServerEvents: () => request<ServerEvent[]>("/api/servers/events"),
 
-  listFleetIncidents: () => request<FleetIncident[]>("/api/fleet/incidents"),
+  listServerIncidents: () => request<ServerIncident[]>("/api/servers/incidents"),
 
   startAgentInstall: (body: CreateAgentInstallRequest) =>
-    request<FleetInstallation>("/api/fleet/installations/agent", {
+    request<ServerInstallation>("/api/servers/installations/agent", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
   confirmAgentInstallHostKey: (id: string) =>
-    request<FleetInstallation>(
-      `/api/fleet/installations/${id}/confirm-host-key`,
+    request<ServerInstallation>(
+      `/api/servers/installations/${id}/confirm-host-key`,
       { method: "POST" },
     ),
 
   getAgentInstall: (id: string) =>
-    request<FleetInstallation>(`/api/fleet/installations/${id}`),
+    request<ServerInstallation>(`/api/servers/installations/${id}`),
 
   cancelAgentInstall: (id: string) =>
-    request<void>(`/api/fleet/installations/${id}`, { method: "DELETE" }),
+    request<void>(`/api/servers/installations/${id}`, { method: "DELETE" }),
 
   listAgentInstallLogs: (id: string) =>
-    request<FleetInstallationLog[]>(`/api/fleet/installations/${id}/logs`),
+    request<ServerInstallationLog[]>(`/api/servers/installations/${id}/logs`),
 };
 
 export async function exchangeQRCode(code: string): Promise<string> {

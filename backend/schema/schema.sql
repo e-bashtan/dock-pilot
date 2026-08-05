@@ -221,7 +221,7 @@ CREATE TABLE billing_accounts (
 CREATE INDEX idx_billing_accounts_enabled ON billing_accounts(enabled);
 
 
-CREATE TABLE fleet_settings (
+CREATE TABLE servers_settings (
     id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     mode TEXT NOT NULL DEFAULT 'standalone'
         CHECK (mode IN ('standalone', 'master', 'managed_node')),
@@ -236,7 +236,7 @@ CREATE TABLE fleet_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE fleet_nodes (
+CREATE TABLE servers_nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     node_uid UUID NOT NULL,
     name TEXT NOT NULL,
@@ -260,13 +260,13 @@ CREATE TABLE fleet_nodes (
     deleted_at TIMESTAMPTZ
 );
 
-CREATE UNIQUE INDEX idx_fleet_nodes_uid_active ON fleet_nodes (node_uid) WHERE deleted_at IS NULL;
-CREATE INDEX idx_fleet_nodes_status ON fleet_nodes (status) WHERE deleted_at IS NULL;
-CREATE INDEX idx_fleet_nodes_connection ON fleet_nodes (connection_type) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX idx_servers_nodes_uid_active ON servers_nodes (node_uid) WHERE deleted_at IS NULL;
+CREATE INDEX idx_servers_nodes_status ON servers_nodes (status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_servers_nodes_connection ON servers_nodes (connection_type) WHERE deleted_at IS NULL;
 
-CREATE TABLE fleet_node_credentials (
+CREATE TABLE servers_node_credentials (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    node_id UUID NOT NULL REFERENCES fleet_nodes(id) ON DELETE CASCADE,
+    node_id UUID NOT NULL REFERENCES servers_nodes(id) ON DELETE CASCADE,
     direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
     purpose TEXT NOT NULL DEFAULT '',
     scopes TEXT[] NOT NULL DEFAULT '{}',
@@ -276,10 +276,10 @@ CREATE TABLE fleet_node_credentials (
     revoked_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_fleet_node_credentials_node ON fleet_node_credentials (node_id);
-CREATE INDEX idx_fleet_node_credentials_hash ON fleet_node_credentials (token_hash) WHERE revoked_at IS NULL AND token_hash IS NOT NULL;
+CREATE INDEX idx_servers_node_credentials_node ON servers_node_credentials (node_id);
+CREATE INDEX idx_servers_node_credentials_hash ON servers_node_credentials (token_hash) WHERE revoked_at IS NULL AND token_hash IS NOT NULL;
 
-CREATE TABLE fleet_pairing_codes (
+CREATE TABLE servers_pairing_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code_hash BYTEA NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
@@ -287,9 +287,9 @@ CREATE TABLE fleet_pairing_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_fleet_pairing_codes_hash ON fleet_pairing_codes (code_hash) WHERE used_at IS NULL;
+CREATE INDEX idx_servers_pairing_codes_hash ON servers_pairing_codes (code_hash) WHERE used_at IS NULL;
 
-CREATE TABLE fleet_registration_tokens (
+CREATE TABLE servers_registration_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     installation_id UUID,
     expected_node_uid UUID NOT NULL,
@@ -299,11 +299,11 @@ CREATE TABLE fleet_registration_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_fleet_registration_tokens_hash ON fleet_registration_tokens (token_hash) WHERE used_at IS NULL;
+CREATE INDEX idx_servers_registration_tokens_hash ON servers_registration_tokens (token_hash) WHERE used_at IS NULL;
 
-CREATE TABLE fleet_snapshots (
+CREATE TABLE servers_snapshots (
     id BIGSERIAL PRIMARY KEY,
-    node_id UUID NOT NULL REFERENCES fleet_nodes(id) ON DELETE CASCADE,
+    node_id UUID NOT NULL REFERENCES servers_nodes(id) ON DELETE CASCADE,
     collected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     cpu_percent DOUBLE PRECISION,
     memory_used_bytes BIGINT,
@@ -316,12 +316,12 @@ CREATE TABLE fleet_snapshots (
     payload JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_fleet_snapshots_node_collected ON fleet_snapshots (node_id, collected_at DESC);
+CREATE INDEX idx_servers_snapshots_node_collected ON servers_snapshots (node_id, collected_at DESC);
 
-CREATE TABLE fleet_events (
+CREATE TABLE servers_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id UUID NOT NULL UNIQUE,
-    node_id UUID REFERENCES fleet_nodes(id) ON DELETE SET NULL,
+    node_id UUID REFERENCES servers_nodes(id) ON DELETE SET NULL,
     node_uid UUID,
     event_type TEXT NOT NULL,
     severity TEXT NOT NULL DEFAULT 'info'
@@ -335,13 +335,13 @@ CREATE TABLE fleet_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_fleet_events_node_occurred ON fleet_events (node_id, occurred_at DESC);
-CREATE INDEX idx_fleet_events_type_occurred ON fleet_events (event_type, occurred_at DESC);
-CREATE INDEX idx_fleet_events_severity_occurred ON fleet_events (severity, occurred_at DESC);
+CREATE INDEX idx_servers_events_node_occurred ON servers_events (node_id, occurred_at DESC);
+CREATE INDEX idx_servers_events_type_occurred ON servers_events (event_type, occurred_at DESC);
+CREATE INDEX idx_servers_events_severity_occurred ON servers_events (severity, occurred_at DESC);
 
-CREATE TABLE fleet_incidents (
+CREATE TABLE servers_incidents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    node_id UUID REFERENCES fleet_nodes(id) ON DELETE SET NULL,
+    node_id UUID REFERENCES servers_nodes(id) ON DELETE SET NULL,
     dedup_key TEXT NOT NULL,
     event_type TEXT NOT NULL,
     resource_type TEXT NOT NULL DEFAULT '',
@@ -357,10 +357,10 @@ CREATE TABLE fleet_incidents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX idx_fleet_incidents_open_dedup ON fleet_incidents (dedup_key) WHERE status = 'open';
-CREATE INDEX idx_fleet_incidents_node_status ON fleet_incidents (node_id, status);
+CREATE UNIQUE INDEX idx_servers_incidents_open_dedup ON servers_incidents (dedup_key) WHERE status = 'open';
+CREATE INDEX idx_servers_incidents_node_status ON servers_incidents (node_id, status);
 
-CREATE TABLE fleet_outbox (
+CREATE TABLE servers_outbox (
     id BIGSERIAL PRIMARY KEY,
     event_id UUID NOT NULL UNIQUE,
     payload JSONB NOT NULL,
@@ -371,11 +371,11 @@ CREATE TABLE fleet_outbox (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_fleet_outbox_pending ON fleet_outbox (next_attempt_at) WHERE delivered_at IS NULL;
+CREATE INDEX idx_servers_outbox_pending ON servers_outbox (next_attempt_at) WHERE delivered_at IS NULL;
 
-CREATE TABLE fleet_installations (
+CREATE TABLE servers_installations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    node_id UUID REFERENCES fleet_nodes(id) ON DELETE SET NULL,
+    node_id UUID REFERENCES servers_nodes(id) ON DELETE SET NULL,
     host TEXT NOT NULL,
     port INT NOT NULL DEFAULT 22,
     username TEXT NOT NULL DEFAULT 'root',
@@ -395,21 +395,21 @@ CREATE TABLE fleet_installations (
     completed_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_fleet_installations_status ON fleet_installations (status);
+CREATE INDEX idx_servers_installations_status ON servers_installations (status);
 
-CREATE TABLE fleet_installation_logs (
+CREATE TABLE servers_installation_logs (
     id BIGSERIAL PRIMARY KEY,
-    installation_id UUID NOT NULL REFERENCES fleet_installations(id) ON DELETE CASCADE,
+    installation_id UUID NOT NULL REFERENCES servers_installations(id) ON DELETE CASCADE,
     level TEXT NOT NULL DEFAULT 'info',
     message TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_fleet_installation_logs_inst ON fleet_installation_logs (installation_id, id);
+CREATE INDEX idx_servers_installation_logs_inst ON servers_installation_logs (installation_id, id);
 
-CREATE TABLE fleet_node_billing (
+CREATE TABLE servers_node_billing (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    node_id UUID NOT NULL UNIQUE REFERENCES fleet_nodes(id) ON DELETE CASCADE,
+    node_id UUID NOT NULL UNIQUE REFERENCES servers_nodes(id) ON DELETE CASCADE,
     billing_account_id UUID REFERENCES billing_accounts(id) ON DELETE SET NULL,
     mode TEXT NOT NULL DEFAULT 'manual' CHECK (mode IN ('manual', 'planetahost', 'external')),
     provider_name TEXT NOT NULL DEFAULT '',
@@ -427,15 +427,15 @@ CREATE TABLE fleet_node_billing (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE fleet_monitored_services (
+CREATE TABLE servers_monitored_services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    node_id UUID NOT NULL REFERENCES fleet_nodes(id) ON DELETE CASCADE,
+    node_id UUID NOT NULL REFERENCES servers_nodes(id) ON DELETE CASCADE,
     unit_name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (node_id, unit_name)
 );
 
-CREATE TABLE fleet_known_hosts (
+CREATE TABLE servers_known_hosts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host TEXT NOT NULL,
     port INT NOT NULL DEFAULT 22,

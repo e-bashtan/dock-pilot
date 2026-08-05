@@ -15,13 +15,13 @@ import (
 	"github.com/ebash/barn/backend/internal/config"
 	"github.com/ebash/barn/backend/internal/deployments"
 	"github.com/ebash/barn/backend/internal/docker"
-	"github.com/ebash/barn/backend/internal/fleet"
 	"github.com/ebash/barn/backend/internal/healthcheck"
 	"github.com/ebash/barn/backend/internal/nginx"
 	"github.com/ebash/barn/backend/internal/notifications"
 	"github.com/ebash/barn/backend/internal/panelbackup"
 	"github.com/ebash/barn/backend/internal/pgdb"
 	"github.com/ebash/barn/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/servers"
 	"github.com/ebash/barn/backend/internal/sites"
 	"github.com/ebash/barn/backend/internal/ssl"
 	"github.com/ebash/barn/backend/internal/storage"
@@ -101,17 +101,23 @@ func main() {
 	if appVersion == "" {
 		appVersion = "dev"
 	}
-	agentDir := os.Getenv("FLEET_AGENT_DIR")
+	agentDir := os.Getenv("BARN_AGENT_DIR")
+	if agentDir == "" {
+		agentDir = os.Getenv("SERVERS_AGENT_DIR")
+	}
+	if agentDir == "" {
+		agentDir = os.Getenv("FLEET_AGENT_DIR")
+	}
 	if agentDir == "" {
 		agentDir = "/app/agents"
 	}
-	fleetSvc := fleet.NewService(
+	serversSvc := servers.NewService(
 		queries,
 		pool,
 		cipher,
 		logger,
 		cfg.Deploy.HostRoot,
-		fleet.SitesAppCounter{Sites: sitesSvc},
+		servers.SitesAppCounter{Sites: sitesSvc},
 		notifSvc,
 		appVersion,
 		agentDir,
@@ -119,8 +125,8 @@ func main() {
 			return systemSvc.GetHostInfo(ctx).IP
 		},
 	)
-	notifSvc.SetLocalAlertGate(fleetSvc)
-	notifSvc.SetFleetEventSink(fleetSvc)
+	notifSvc.SetLocalAlertGate(serversSvc)
+	notifSvc.SetServersEventSink(serversSvc)
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()
@@ -128,14 +134,14 @@ func main() {
 	pgBackupWorker.Start(workerCtx)
 	panelBackupWorker.Start(workerCtx)
 	billingWorker.Start(workerCtx)
-	fleet.NewPollingWorker(fleetSvc).Start(workerCtx)
-	fleet.NewOutboxWorker(fleetSvc).Start(workerCtx)
-	fleet.NewHeartbeatWorker(fleetSvc).Start(workerCtx)
-	fleet.NewRetentionWorker(fleetSvc).Start(workerCtx)
+	servers.NewPollingWorker(serversSvc).Start(workerCtx)
+	servers.NewOutboxWorker(serversSvc).Start(workerCtx)
+	servers.NewHeartbeatWorker(serversSvc).Start(workerCtx)
+	servers.NewRetentionWorker(serversSvc).Start(workerCtx)
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, fleetSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, serversSvc, api.NewQRHandler(qrSvc))
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,

@@ -18,7 +18,7 @@ import (
 
 const defaultHTTPTimeout = 15 * time.Second
 
-// Client talks to the Barn Master fleet ingest/register APIs.
+// Client talks to the Barn Master servers ingest/register APIs.
 type Client struct {
 	MasterURL  string
 	NodeToken  string
@@ -89,21 +89,21 @@ type EventsBatchRequest struct {
 
 func (c *Client) Register(ctx context.Context, req RegisterRequest) (RegisterResponse, error) {
 	var out RegisterResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/api/fleet/agent/register", "", req, &out); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/servers/agent/register", "", req, &out); err != nil {
 		return RegisterResponse{}, err
 	}
 	return out, nil
 }
 
 func (c *Client) Heartbeat(ctx context.Context, req HeartbeatRequest) error {
-	return c.doJSON(ctx, http.MethodPost, "/api/fleet/ingest/heartbeat", c.NodeToken, req, nil)
+	return c.doJSON(ctx, http.MethodPost, "/api/servers/ingest/heartbeat", c.NodeToken, req, nil)
 }
 
 func (c *Client) PostEventsBatch(ctx context.Context, events []Event) error {
 	if len(events) == 0 {
 		return nil
 	}
-	return c.doJSON(ctx, http.MethodPost, "/api/fleet/ingest/events/batch", c.NodeToken, EventsBatchRequest{Events: events}, nil)
+	return c.doJSON(ctx, http.MethodPost, "/api/servers/ingest/events/batch", c.NodeToken, EventsBatchRequest{Events: events}, nil)
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path, bearer string, body any, out any) error {

@@ -8,13 +8,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	deploysvc "github.com/ebash/barn/backend/internal/deployments"
 	"github.com/ebash/barn/backend/internal/billing"
-	"github.com/ebash/barn/backend/internal/fleet"
+	deploysvc "github.com/ebash/barn/backend/internal/deployments"
 	notifpkg "github.com/ebash/barn/backend/internal/notifications"
 	"github.com/ebash/barn/backend/internal/panelbackup"
 	"github.com/ebash/barn/backend/internal/pgdb"
 	secretpkg "github.com/ebash/barn/backend/internal/secrets"
+	"github.com/ebash/barn/backend/internal/servers"
 	sitesvc "github.com/ebash/barn/backend/internal/sites"
 	syspkg "github.com/ebash/barn/backend/internal/system"
 )
@@ -29,8 +29,8 @@ type Handlers struct {
 	Databases     *DatabasesHandler
 	Backups       *BackupsHandler
 	Billing       *BillingHandler
-	Fleet         *FleetHandler
-	FleetSvc      *fleet.Service
+	Servers       *ServersHandler
+	ServersSvc    *servers.Service
 }
 
 func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
@@ -43,7 +43,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Token", "X-Fleet-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Token", "X-Barn-Token", "X-Fleet-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -56,34 +56,34 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/qr/exchange", h.QR.Exchange)
 
-		if h.Fleet != nil && h.FleetSvc != nil {
-			r.Post("/fleet/node/pair", h.Fleet.AcceptPair)
+		if h.Servers != nil && h.ServersSvc != nil {
+			r.Post("/servers/node/pair", h.Servers.AcceptPair)
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeStatusRead))
-				r.Get("/fleet/node/status", h.Fleet.NodeStatus)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeStatusRead))
+				r.Get("/servers/node/status", h.Servers.NodeStatus)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeAppsRead))
-				r.Get("/fleet/node/apps", h.Fleet.NodeApps)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeAppsRead))
+				r.Get("/servers/node/apps", h.Servers.NodeApps)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeBackupsRead))
-				r.Get("/fleet/node/backups", h.Fleet.NodeBackups)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeBackupsRead))
+				r.Get("/servers/node/backups", h.Servers.NodeBackups)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeVersionRead))
-				r.Get("/fleet/node/version", h.Fleet.NodeVersion)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeVersionRead))
+				r.Get("/servers/node/version", h.Servers.NodeVersion)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeHeartbeatWrite))
-				r.Post("/fleet/ingest/heartbeat", h.Fleet.IngestHeartbeat)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeHeartbeatWrite))
+				r.Post("/servers/ingest/heartbeat", h.Servers.IngestHeartbeat)
 			})
 			r.Group(func(r chi.Router) {
-				r.Use(h.FleetSvc.FleetTokenAuth(fleet.ScopeEventsWrite))
-				r.Post("/fleet/ingest/events", h.Fleet.IngestEvent)
-				r.Post("/fleet/ingest/events/batch", h.Fleet.IngestEventBatch)
+				r.Use(h.ServersSvc.ServersTokenAuth(servers.ScopeEventsWrite))
+				r.Post("/servers/ingest/events", h.Servers.IngestEvent)
+				r.Post("/servers/ingest/events/batch", h.Servers.IngestEventBatch)
 			})
-			r.Post("/fleet/agent/register", h.Fleet.AgentRegister)
+			r.Post("/servers/agent/register", h.Servers.AgentRegister)
 		}
 
 		r.Group(func(r chi.Router) {
@@ -91,27 +91,27 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 
 			r.Post("/auth/qr", h.QR.Create)
 
-			if h.Fleet != nil {
-				r.Route("/fleet", func(r chi.Router) {
-					r.Get("/settings", h.Fleet.GetSettings)
-					r.Put("/settings", h.Fleet.UpdateSettings)
-					r.Get("/overview", h.Fleet.Overview)
-					r.Get("/nodes", h.Fleet.ListNodes)
-					r.Post("/nodes/barn", h.Fleet.PairBarn)
-					r.Post("/nodes/dockpilot", h.Fleet.PairDockpilot)
-					r.Get("/nodes/{id}", h.Fleet.GetNode)
-					r.Patch("/nodes/{id}", h.Fleet.UpdateNode)
-					r.Put("/nodes/{id}/billing", h.Fleet.UpdateNodeBilling)
-					r.Delete("/nodes/{id}", h.Fleet.DeleteNode)
-					r.Get("/events", h.Fleet.ListEvents)
-					r.Get("/incidents", h.Fleet.ListIncidents)
-					r.Post("/pairing-code", h.Fleet.CreatePairingCode)
-					r.Delete("/master", h.Fleet.DisconnectMaster)
-					r.Post("/installations/agent", h.Fleet.StartAgentInstall)
-					r.Get("/installations/{id}", h.Fleet.GetInstallation)
-					r.Post("/installations/{id}/confirm-host-key", h.Fleet.ConfirmHostKey)
-					r.Delete("/installations/{id}", h.Fleet.CancelInstallation)
-					r.Get("/installations/{id}/logs", h.Fleet.ListInstallationLogs)
+			if h.Servers != nil {
+				r.Route("/servers", func(r chi.Router) {
+					r.Get("/settings", h.Servers.GetSettings)
+					r.Put("/settings", h.Servers.UpdateSettings)
+					r.Get("/overview", h.Servers.Overview)
+					r.Get("/nodes", h.Servers.ListNodes)
+					r.Post("/nodes/barn", h.Servers.PairBarn)
+					r.Post("/nodes/dockpilot", h.Servers.PairDockpilot)
+					r.Get("/nodes/{id}", h.Servers.GetNode)
+					r.Patch("/nodes/{id}", h.Servers.UpdateNode)
+					r.Put("/nodes/{id}/billing", h.Servers.UpdateNodeBilling)
+					r.Delete("/nodes/{id}", h.Servers.DeleteNode)
+					r.Get("/events", h.Servers.ListEvents)
+					r.Get("/incidents", h.Servers.ListIncidents)
+					r.Post("/pairing-code", h.Servers.CreatePairingCode)
+					r.Delete("/master", h.Servers.DisconnectMaster)
+					r.Post("/installations/agent", h.Servers.StartAgentInstall)
+					r.Get("/installations/{id}", h.Servers.GetInstallation)
+					r.Post("/installations/{id}/confirm-host-key", h.Servers.ConfirmHostKey)
+					r.Delete("/installations/{id}", h.Servers.CancelInstallation)
+					r.Get("/installations/{id}/logs", h.Servers.ListInstallationLogs)
 				})
 			}
 
@@ -225,7 +225,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	return r
 }
 
-func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, fleetSvc *fleet.Service, qr *QRHandler) http.Handler {
+func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, serversSvc *servers.Service, qr *QRHandler) http.Handler {
 	_ = logger
 	h := Handlers{
 		Sites:         NewSitesHandler(sites),
@@ -238,9 +238,9 @@ func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *si
 		Backups:       NewBackupsHandler(backups),
 		Billing:       NewBillingHandler(billingSvc),
 	}
-	if fleetSvc != nil {
-		h.Fleet = NewFleetHandler(fleetSvc)
-		h.FleetSvc = fleetSvc
+	if serversSvc != nil {
+		h.Servers = NewServersHandler(serversSvc)
+		h.ServersSvc = serversSvc
 	}
 	return NewRouter(h, apiToken, corsOrigins)
 }

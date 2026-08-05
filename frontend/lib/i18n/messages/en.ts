@@ -45,12 +45,12 @@ export const en = {
     language: "Language",
     langEn: "English",
     langRu: "Русский",
-    fleetServers: "Servers",
-    fleetEvents: "Events",
-    fleetSettings: "Barn settings",
-    fleetThisServer: "Sites",
-    fleetContextAll: "All servers",
-    fleetContextLocal: "This server · MASTER",
+    servers: "Servers",
+    serverEvents: "Events",
+    serversSettings: "Barn settings",
+    thisServer: "Sites",
+    serversContextAll: "All servers",
+    serversContextLocal: "This server · MASTER",
     more: "More",
   },
   auth: {
@@ -741,7 +741,7 @@ export const en = {
       "Save this password now — it is shown only once after creation. You can reveal it later via Connection / Admin credentials.",
     createdPassword: "Generated password",
   },
-  fleet: {
+  servers: {
     title: "Servers",
     subtitle: "Monitor all Barn servers and agents from one place.",
     settingsLink: "Barn settings",

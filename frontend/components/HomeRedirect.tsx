@@ -2,13 +2,13 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useFleetMode } from "@/lib/fleet-mode";
+import { useServersMode } from "@/lib/servers-mode";
 import { resolveHomePath } from "@/lib/home-path";
 import { useI18n } from "@/lib/i18n/context";
 
 export function HomeRedirect() {
   const router = useRouter();
-  const { loading } = useFleetMode();
+  const { loading } = useServersMode();
   const { t } = useI18n();
 
   useEffect(() => {
