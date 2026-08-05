@@ -633,7 +633,8 @@ func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database d
 
 	// Finish operation record
 	if op.ID != (uuid.UUID{}) {
-		opStatus := "success"
+		// backup_operations.status CHECK allows only: running | ok | failed
+		opStatus := "ok"
 		opMsg := ""
 		opKey := key
 		opSize := size
@@ -642,13 +643,16 @@ func (s *Service) runBackup(ctx context.Context, inst db.PdbInstance, database d
 			firstError := firstErr(dumpErr, uploadErr)
 			opMsg = truncate(firstError.Error(), 2000)
 		}
-		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+		if _, finErr := s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
 			ID:        op.ID,
 			Status:    opStatus,
 			Message:   opMsg,
 			S3Key:     opKey,
 			SizeBytes: opSize,
-		})
+		}); finErr != nil {
+			s.logger.Warn("pg backup: finish operation failed",
+				"operation_id", op.ID, "error", finErr)
+		}
 	}
 
 	if dumpErr != nil || uploadErr != nil {

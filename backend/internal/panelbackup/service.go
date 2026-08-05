@@ -183,7 +183,8 @@ func (s *Service) CreateFullBackup(ctx context.Context) (FullBackupInfo, error) 
 
 	// Finish operation record
 	if op.ID != (uuid.UUID{}) {
-		opStatus := "success"
+		// backup_operations.status CHECK allows only: running | ok | failed
+		opStatus := "ok"
 		opMsg := ""
 		opKey := ""
 		opSize := int64(0)
@@ -194,13 +195,16 @@ func (s *Service) CreateFullBackup(ctx context.Context) (FullBackupInfo, error) 
 			opKey = info.S3Key
 			opSize = info.SizeBytes
 		}
-		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+		if _, finErr := s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
 			ID:        op.ID,
 			Status:    opStatus,
 			Message:   opMsg,
 			S3Key:     opKey,
 			SizeBytes: opSize,
-		})
+		}); finErr != nil {
+			s.logger.WarnContext(ctx, "panel backup: finish operation failed",
+				"operation_id", op.ID, "error", finErr)
+		}
 	}
 
 	if err != nil {
@@ -399,13 +403,16 @@ func (s *Service) RestoreFullBackupWithLog(ctx context.Context, req RestoreFullR
 
 	// Finish operation record
 	if op.ID != (uuid.UUID{}) {
-		_, _ = s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
+		if _, finErr := s.queries.FinishBackupOperation(ctx, db.FinishBackupOperationParams{
 			ID:        op.ID,
-			Status:    "success",
+			Status:    "ok",
 			Message:   "Restore completed",
 			S3Key:     key,
 			SizeBytes: 0,
-		})
+		}); finErr != nil {
+			s.logger.WarnContext(ctx, "panel restore: finish operation failed",
+				"operation_id", op.ID, "error", finErr)
+		}
 	}
 
 	log("info", "Full restore completed — redeploy sites from git if needed")
