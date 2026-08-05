@@ -29,6 +29,7 @@ export const en = {
     id: "ID",
     edit: "Edit",
     close: "Close",
+    typeToConfirm: 'Type "{name}" to confirm',
   },
   nav: {
     sites: "Sites",
@@ -647,6 +648,9 @@ export const en = {
     delete: "Delete",
     deleteConfirm:
       "Remove Postgres «{name}»? The container will be stopped; the data volume stays on disk.",
+    deleteDatabase: "Delete database",
+    deleteDatabaseConfirm:
+      "Delete database «{name}»? This cannot be undone: all tables and data in it will be destroyed.",
     deploying: "Deploying…",
     deployLog: "Deploy log",
     waitingDeployLog: "Waiting for deploy logs…",

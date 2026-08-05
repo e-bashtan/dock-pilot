@@ -31,6 +31,7 @@ export const ru: Messages = {
     id: "ID",
     edit: "Изменить",
     close: "Закрыть",
+    typeToConfirm: "Введите «{name}» для подтверждения",
   },
   nav: {
     sites: "Сайты",
@@ -650,6 +651,9 @@ export const ru: Messages = {
     delete: "Удалить",
     deleteConfirm:
       "Удалить Postgres «{name}»? Контейнер будет остановлен; volume с данными останется на диске.",
+    deleteDatabase: "Удалить базу",
+    deleteDatabaseConfirm:
+      "Удалить базу «{name}»? Это необратимо: все таблицы и данные в ней будут уничтожены.",
     deploying: "Деплой…",
     deployLog: "Лог деплоя",
     waitingDeployLog: "Ожидание логов деплоя…",

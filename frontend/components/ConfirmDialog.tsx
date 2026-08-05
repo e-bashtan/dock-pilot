@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n/context";
 
 type ConfirmDialogProps = {
@@ -9,6 +10,9 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   danger?: boolean;
   busy?: boolean;
+  /** If set, confirm stays disabled until the user types this exact string. */
+  confirmText?: string;
+  confirmTextLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -20,12 +24,22 @@ export function ConfirmDialog({
   confirmLabel,
   danger = false,
   busy = false,
+  confirmText,
+  confirmTextLabel,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const { t } = useI18n();
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    if (open) setTyped("");
+  }, [open, confirmText]);
 
   if (!open) return null;
+
+  const needsType = !!confirmText;
+  const typedOk = !needsType || typed === confirmText;
 
   return (
     <div className="modal-backdrop" onClick={onCancel} role="presentation">
@@ -40,6 +54,22 @@ export function ConfirmDialog({
         <p id="confirm-dialog-message" className="confirm-dialog-message">
           {message}
         </p>
+        {needsType ? (
+          <div className="field" style={{ marginTop: "1rem" }}>
+            <label className="label" htmlFor="confirm-dialog-type">
+              {confirmTextLabel || t("common.typeToConfirm", { name: confirmText! })}
+            </label>
+            <input
+              id="confirm-dialog-type"
+              className="input"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              autoFocus
+              disabled={busy}
+            />
+          </div>
+        ) : null}
         <div className="confirm-dialog-actions">
           <button
             type="button"
@@ -53,7 +83,7 @@ export function ConfirmDialog({
             type="button"
             className={`btn${danger ? " btn-danger" : ""}`}
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || !typedOk}
           >
             {confirmLabel ?? t("common.continue")}
           </button>

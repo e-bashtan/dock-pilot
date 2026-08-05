@@ -36,6 +36,7 @@ export function PostgresManager({
   const [deploying, setDeploying] = useState(false);
   const [deploySession, setDeploySession] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteDb, setConfirmDeleteDb] = useState<PgDatabase | null>(null);
   const [adminInfo, setAdminInfo] = useState<PgConnectionInfo | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -294,26 +295,6 @@ export function PostgresManager({
                             owner: {db.owner_role} · {formatDateTime(db.created_at)}
                           </div>
                         </div>
-                        <div className="stack-item-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            disabled={busy}
-                            onClick={() =>
-                              run(async () => {
-                                await api.deletePgDatabase(id, db.id);
-                                setTablesByDb((prev) => {
-                                  const next = { ...prev };
-                                  delete next[db.id];
-                                  return next;
-                                });
-                                if (expandedDbId === db.id) setExpandedDbId(null);
-                              })
-                            }
-                          >
-                            {t("databases.delete")}
-                          </button>
-                        </div>
                       </div>
                       {expanded ? (
                         <div className="db-tables">
@@ -386,6 +367,22 @@ export function PostgresManager({
                               </button>
                             </>
                           )}
+                          <div
+                            style={{
+                              marginTop: "1rem",
+                              paddingTop: "0.75rem",
+                              borderTop: "1px solid var(--border)",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              disabled={busy}
+                              onClick={() => setConfirmDeleteDb(db)}
+                            >
+                              {t("databases.deleteDatabase")}
+                            </button>
+                          </div>
                         </div>
                       ) : null}
                     </div>
@@ -538,6 +535,33 @@ export function PostgresManager({
             await api.deletePgInstance(id);
             setConfirmDelete(false);
             onDeleted?.();
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!confirmDeleteDb}
+        title={t("databases.deleteDatabase")}
+        message={t("databases.deleteDatabaseConfirm", {
+          name: confirmDeleteDb?.name ?? "",
+        })}
+        confirmLabel={t("databases.deleteDatabase")}
+        confirmText={confirmDeleteDb?.name}
+        danger
+        busy={busy}
+        onCancel={() => setConfirmDeleteDb(null)}
+        onConfirm={() => {
+          const db = confirmDeleteDb;
+          if (!db) return;
+          run(async () => {
+            await api.deletePgDatabase(id, db.id);
+            setTablesByDb((prev) => {
+              const next = { ...prev };
+              delete next[db.id];
+              return next;
+            });
+            if (expandedDbId === db.id) setExpandedDbId(null);
+            setConfirmDeleteDb(null);
           });
         }}
       />
