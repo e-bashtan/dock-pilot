@@ -78,7 +78,7 @@ export default function SiteDeploymentsPage() {
       <SiteTabs siteId={id} active="deployments" />
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="grid-2" style={{ alignItems: "start" }}>
+      <div className="grid-2">
         <div className="card" style={{ padding: 0 }}>
           <table className="table">
             <thead>

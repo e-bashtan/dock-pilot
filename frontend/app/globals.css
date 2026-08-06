@@ -236,6 +236,14 @@ h3 {
   margin-top: 1rem;
 }
 
+/* Adjacent cards in a horizontal grid must not get the stacked margin
+   (gap already spaces columns; margin would push the 2nd column down). */
+.grid-2 > .card + .card,
+.backup-status-grid > .card + .card,
+.server-status-grid > .card + .card {
+  margin-top: 0;
+}
+
 .choice-list {
   display: flex;
   flex-direction: column;
@@ -1395,6 +1403,11 @@ h3 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+  align-items: start;
+}
+
+.grid-2 > .card + .card {
+  margin-top: 0;
 }
 
 @media (max-width: 640px) {
