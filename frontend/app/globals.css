@@ -1401,9 +1401,14 @@ h3 {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
+}
+
+.grid-2 > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .grid-2 > .card + .card {
@@ -1412,7 +1417,56 @@ h3 {
 
 @media (max-width: 640px) {
   .grid-2 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.deployments-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.deployments-layout > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.deployments-list,
+.deployments-side-logs {
+  overflow: hidden;
+}
+
+.deployments-log-id {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.deployments-side-logs .log-viewer,
+.deployments-inline-logs .log-viewer {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.deployments-inline-logs td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  background: var(--surface);
+}
+
+.deployments-inline-logs h3 {
+  font-size: 0.95rem;
+}
+
+@media (max-width: 768px) {
+  .deployments-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deployments-inline-logs .log-viewer {
+    max-height: 200px;
   }
 }
 

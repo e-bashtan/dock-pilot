@@ -19,6 +19,8 @@ export function DeploymentLogStream({
   const viewerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setLogs([]);
+    setStatus(initialStatus ?? "pending");
     const es = api.streamDeploymentLogs(deploymentId);
 
     es.addEventListener("log", (ev) => {

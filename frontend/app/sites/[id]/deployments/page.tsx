@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { DeploymentLogStream } from "@/components/DeploymentLogStream";
 import { SiteTabs } from "@/components/SiteTabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import type { Deployment, Site } from "@/lib/types";
 
 export default function SiteDeploymentsPage() {
   const { id } = useParams<{ id: string }>();
   const { t, formatDateTime } = useI18n();
+  const isMobile = useIsMobile();
   const [site, setSite] = useState<Site | null>(null);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,6 +57,22 @@ export default function SiteDeploymentsPage() {
 
   const selected = deployments.find((d) => d.id === selectedId);
 
+  const logsPanel = selected ? (
+    <>
+      <h3 style={{ marginTop: 0 }}>{t("siteDeployments.deploymentLogs")}</h3>
+      <p style={{ fontSize: "0.875rem", color: "var(--muted)", marginBottom: "0.75rem" }}>
+        {t("common.id")}: <code className="deployments-log-id">{selected.id}</code>
+      </p>
+      <DeploymentLogStream
+        key={selected.id}
+        deploymentId={selected.id}
+        initialStatus={selected.status}
+      />
+    </>
+  ) : (
+    <p style={{ color: "var(--muted)" }}>{t("siteDeployments.selectDeployment")}</p>
+  );
+
   return (
     <div>
       <div
@@ -78,8 +96,8 @@ export default function SiteDeploymentsPage() {
       <SiteTabs siteId={id} active="deployments" />
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="grid-2">
-        <div className="card" style={{ padding: 0 }}>
+      <div className="deployments-layout">
+        <div className="card deployments-list" style={{ padding: 0 }}>
           <table className="table">
             <thead>
               <tr>
@@ -89,23 +107,29 @@ export default function SiteDeploymentsPage() {
             </thead>
             <tbody>
               {deployments.map((d) => (
-                <tr
-                  key={d.id}
-                  onClick={() => setSelectedId(d.id)}
-                  style={{
-                    cursor: "pointer",
-                    background:
-                      d.id === selectedId ? "var(--surface-hover)" : undefined,
-                  }}
-                >
-                  <td>
-                    <StatusBadge status={d.status} />
-                    <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                      {d.message}
-                    </div>
-                  </td>
-                  <td>{formatDateTime(d.created_at)}</td>
-                </tr>
+                <Fragment key={d.id}>
+                  <tr
+                    onClick={() => setSelectedId(d.id)}
+                    style={{
+                      cursor: "pointer",
+                      background:
+                        d.id === selectedId ? "var(--surface-hover)" : undefined,
+                    }}
+                  >
+                    <td>
+                      <StatusBadge status={d.status} />
+                      <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                        {d.message}
+                      </div>
+                    </td>
+                    <td>{formatDateTime(d.created_at)}</td>
+                  </tr>
+                  {isMobile && d.id === selectedId && selected && (
+                    <tr className="deployments-inline-logs">
+                      <td colSpan={2}>{logsPanel}</td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -116,22 +140,9 @@ export default function SiteDeploymentsPage() {
           )}
         </div>
 
-        <div className="card">
-          {selected ? (
-            <>
-              <h3 style={{ marginTop: 0 }}>{t("siteDeployments.deploymentLogs")}</h3>
-              <p style={{ fontSize: "0.875rem", color: "var(--muted)" }}>
-                {t("common.id")}: <code>{selected.id}</code>
-              </p>
-              <DeploymentLogStream
-                deploymentId={selected.id}
-                initialStatus={selected.status}
-              />
-            </>
-          ) : (
-            <p style={{ color: "var(--muted)" }}>{t("siteDeployments.selectDeployment")}</p>
-          )}
-        </div>
+        {!isMobile && (
+          <div className="card deployments-side-logs">{logsPanel}</div>
+        )}
       </div>
 
       <Link href={`/sites/${id}`} style={{ marginTop: "1rem", display: "inline-block" }}>
