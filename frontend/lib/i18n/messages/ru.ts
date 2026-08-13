@@ -133,7 +133,7 @@ export const ru: Messages = {
     templateBotHint: "Только Docker — BOT_TOKEN в секретах",
     importTitle: "Импорт сайта из JSON",
     importHint:
-      "Вставьте заполненный barn.site JSON или выберите файл. Создаст сайт, сохранит секреты и запустит деплой, если deploy: true.",
+      "Вставьте заполненный barn.site JSON или выберите файл. Создаст сайт и сохранит секреты. Деплой только если deploy: true (по умолчанию false).",
     chooseFile: "JSON-файл",
     jsonLabel: "JSON",
     jsonPlaceholder: '{ "format": "barn.site", "site_type": "web", ... }',

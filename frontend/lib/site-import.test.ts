@@ -55,7 +55,7 @@ describe("site-import", () => {
     assert.equal(parsed.request.nginx_ssl_enabled, false);
     assert.equal(parsed.request.nginx_force_https, false);
     assert.deepEqual(parsed.secrets, { BOT_TOKEN: "123:abc" });
-    assert.equal(parsed.deploy, true);
+    assert.equal(parsed.deploy, false);
   });
 
   it("rejects invalid JSON and missing website primary_url", () => {

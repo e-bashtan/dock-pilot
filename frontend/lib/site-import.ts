@@ -30,7 +30,7 @@ export type SiteImportDocument = {
   env_vars?: EnvVar[];
   /** Encrypted after save; fill real values before import. */
   secrets?: SiteImportSecrets;
-  /** If true (default), start deploy after create. */
+  /** If true, start deploy after create (default false). */
   deploy?: boolean;
 };
 
@@ -56,7 +56,7 @@ const WEB_INSTRUCTIONS = [
   "domains: extra hostnames (aliases), is_primary false unless it is the main host.",
   "env_vars: non-secret KEY=VALUE pairs for the container.",
   "secrets: sensitive values (GIT_TOKEN / GIT_SSH_KEY for private repos). Never commit real secrets to git.",
-  "Set deploy to true to create and deploy immediately after import.",
+  "Leave deploy false to only create the site; set true to deploy immediately after import.",
 ].join(" ");
 
 const BOT_INSTRUCTIONS = [
@@ -67,7 +67,7 @@ const BOT_INSTRUCTIONS = [
   "nginx/ssl/domains/container_port are ignored for bots.",
   "Put BOT_TOKEN in secrets (recommended), not in env_vars.",
   "env_vars: non-secret KEY=VALUE pairs for the container.",
-  "Set deploy to true to create and deploy immediately after import.",
+  "Leave deploy false to only create the site; set true to deploy immediately after import.",
 ].join(" ");
 
 export function buildSiteImportTemplate(siteType: SiteType): SiteImportDocument {
@@ -89,7 +89,7 @@ export function buildSiteImportTemplate(siteType: SiteType): SiteImportDocument 
       docker_named_volumes: [],
       env_vars: [{ key: "LOG_LEVEL", value: "info" }],
       secrets: [{ key: "BOT_TOKEN", value: "REPLACE_WITH_TELEGRAM_BOT_TOKEN" }],
-      deploy: true,
+      deploy: false,
     };
   }
 
@@ -115,7 +115,7 @@ export function buildSiteImportTemplate(siteType: SiteType): SiteImportDocument 
     domains: [{ domain: "www.example.com", is_primary: false }],
     env_vars: [{ key: "NODE_ENV", value: "production" }],
     secrets: [{ key: "GIT_TOKEN", value: "REPLACE_WITH_GITHUB_PAT_IF_PRIVATE" }],
-    deploy: true,
+    deploy: false,
   };
 }
 
@@ -338,7 +338,7 @@ export function parseSiteImportJson(text: string): ParsedSiteImport {
     request.nginx_force_https = false;
   }
 
-  const deploy = asBool(obj.deploy, "deploy", true);
+  const deploy = asBool(obj.deploy, "deploy", false);
 
   return { request, secrets, deploy, siteType };
 }

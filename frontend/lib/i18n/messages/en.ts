@@ -131,7 +131,7 @@ export const en = {
     templateBotHint: "Docker only — BOT_TOKEN in secrets",
     importTitle: "Import site from JSON",
     importHint:
-      "Paste a filled barn.site JSON or choose a file. Creates the site, saves secrets, and starts deploy when deploy is true.",
+      "Paste a filled barn.site JSON or choose a file. Creates the site and saves secrets. Deploy runs only if deploy is true (default: false).",
     chooseFile: "JSON file",
     jsonLabel: "JSON",
     jsonPlaceholder: '{ "format": "barn.site", "site_type": "web", ... }',
