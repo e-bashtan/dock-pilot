@@ -70,4 +70,37 @@ describe("site-import", () => {
       );
     }, /primary_url/);
   });
+
+  it("accepts flexible docker volume shapes from LLM-filled JSON", () => {
+    const parsed = parseSiteImportJson(
+      JSON.stringify({
+        site_type: "web",
+        name: "Vol Site",
+        primary_url: "https://vol.example",
+        git_repo_url: "https://github.com/acme/vol.git",
+        docker_volume_mounts: {
+          "dict-data": "/data",
+          cache: { path: "/cache", read_only: true },
+        },
+        docker_named_volumes: [{ name: "dict-data" }, "cache"],
+      }),
+    );
+    assert.deepEqual(parsed.request.docker_volume_mounts, [
+      "dict-data:/data",
+      "cache:/cache:ro",
+    ]);
+    assert.deepEqual(parsed.request.docker_named_volumes, ["dict-data", "cache"]);
+
+    const fromString = parseSiteImportJson(
+      JSON.stringify({
+        site_type: "telegram_bot",
+        name: "Bot",
+        git_repo_url: "https://github.com/acme/bot.git",
+        docker_volume_mounts: "data:/app/data\n",
+        docker_named_volumes: "data",
+      }),
+    );
+    assert.deepEqual(fromString.request.docker_volume_mounts, ["data:/app/data"]);
+    assert.deepEqual(fromString.request.docker_named_volumes, ["data"]);
+  });
 });

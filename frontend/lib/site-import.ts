@@ -56,6 +56,8 @@ const WEB_INSTRUCTIONS = [
   "domains: extra hostnames (aliases), is_primary false unless it is the main host.",
   "env_vars: non-secret KEY=VALUE pairs for the container.",
   "secrets: sensitive values (GIT_TOKEN / GIT_SSH_KEY for private repos). Never commit real secrets to git.",
+  "docker_volume_mounts: array of compose-style strings, e.g. [\"dict-data:/data\", \"/host/cache:/cache:ro\"].",
+  "docker_named_volumes: array of volume names as strings, e.g. [\"dict-data\"].",
   "Leave deploy false to only create the site; set true to deploy immediately after import.",
 ].join(" ");
 
@@ -67,6 +69,8 @@ const BOT_INSTRUCTIONS = [
   "nginx/ssl/domains/container_port are ignored for bots.",
   "Put BOT_TOKEN in secrets (recommended), not in env_vars.",
   "env_vars: non-secret KEY=VALUE pairs for the container.",
+  "docker_volume_mounts: array of compose-style strings, e.g. [\"data:/app/data\"].",
+  "docker_named_volumes: array of volume names as strings, e.g. [\"data\"].",
   "Leave deploy false to only create the site; set true to deploy immediately after import.",
 ].join(" ");
 
@@ -182,17 +186,156 @@ function asOptionalInt(value: unknown, field: string): number | undefined {
   return value;
 }
 
-function asStringArray(value: unknown, field: string): string[] | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value)) {
-    throw new SiteImportError(`Field ${field} must be an array of strings`);
+function firstString(
+  obj: Record<string, unknown>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
   }
-  return value.map((item, i) => {
-    if (typeof item !== "string") {
-      throw new SiteImportError(`Field ${field}[${i}] must be a string`);
+  return undefined;
+}
+
+/** Normalize one volume mount/name entry from LLM-friendly shapes into a compose line. */
+function volumeEntryToLine(
+  item: unknown,
+  field: string,
+  index: number,
+  kind: "mount" | "named",
+): string | null {
+  if (item === undefined || item === null || item === false) return null;
+  if (typeof item === "string") {
+    const line = item.trim();
+    return line || null;
+  }
+  if (typeof item === "number" || typeof item === "boolean") {
+    throw new SiteImportError(
+      `Field ${field}[${index}] must be a string or object (got ${typeof item})`,
+    );
+  }
+  if (Array.isArray(item)) {
+    throw new SiteImportError(
+      `Field ${field}[${index}] must be a string or object, not an array`,
+    );
+  }
+
+  const obj = item as Record<string, unknown>;
+  const name = firstString(obj, [
+    "name",
+    "volume",
+    "source",
+    "host",
+    "host_path",
+    "from",
+  ]);
+  const target = firstString(obj, [
+    "target",
+    "path",
+    "container",
+    "container_path",
+    "destination",
+    "mount_path",
+    "to",
+  ]);
+  const mode = firstString(obj, ["mode", "options", "read_only"]);
+  const line = firstString(obj, ["line", "value", "mount", "spec"]);
+
+  if (line) return line;
+
+  if (kind === "named") {
+    if (name) return name;
+    throw new SiteImportError(
+      `Field ${field}[${index}] needs a volume name string (e.g. "dict-data") or {"name":"dict-data"}`,
+    );
+  }
+
+  if (name && target) {
+    const ro =
+      obj.read_only === true ||
+      obj.readonly === true ||
+      mode === "ro" ||
+      mode === "read_only" ||
+      mode === "readonly";
+    return ro ? `${name}:${target}:ro` : `${name}:${target}`;
+  }
+
+  throw new SiteImportError(
+    `Field ${field}[${index}] needs a compose string (e.g. "dict-data:/data") or {"name":"dict-data","path":"/data"}`,
+  );
+}
+
+/**
+ * Accept common LLM/editor shapes for volume fields:
+ * - ["dict-data:/data"]
+ * - "dict-data:/data\\nother:/x"
+ * - {"dict-data": "/data"}
+ * - [{"name":"dict-data","path":"/data"}] / [{"name":"dict-data"}]
+ */
+function parseVolumeLines(
+  value: unknown,
+  field: string,
+  kind: "mount" | "named",
+): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value === "") return [];
+
+  const out: string[] = [];
+
+  if (typeof value === "string") {
+    for (const line of value.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed) out.push(trimmed);
     }
-    return item.trim();
-  }).filter(Boolean);
+    return out;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => {
+      const line = volumeEntryToLine(item, field, i, kind);
+      if (line) out.push(line);
+    });
+    return out;
+  }
+
+  if (typeof value === "object") {
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      const name = key.trim();
+      if (!name) continue;
+      if (kind === "named") {
+        if (raw === false || raw === null) continue;
+        out.push(name);
+        continue;
+      }
+      if (typeof raw === "string" && raw.trim()) {
+        out.push(`${name}:${raw.trim()}`);
+        continue;
+      }
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const line = volumeEntryToLine(
+          { name, ...(raw as Record<string, unknown>) },
+          field,
+          out.length,
+          kind,
+        );
+        if (line) out.push(line);
+        continue;
+      }
+      if (raw === true || raw === null || raw === undefined || raw === "") {
+        throw new SiteImportError(
+          `Field ${field}.${name} needs a container path string (e.g. "/data")`,
+        );
+      }
+      throw new SiteImportError(
+        `Field ${field}.${name} must be a path string or mount object`,
+      );
+    }
+    return out;
+  }
+
+  throw new SiteImportError(
+    `Field ${field} must be an array of strings, a newline-separated string, or an object map`,
+  );
 }
 
 function parseEnvList(value: unknown, field: string): EnvVar[] {
@@ -322,8 +465,16 @@ export function parseSiteImportJson(text: string): ParsedSiteImport {
     dockerfile_path: asOptionalString(obj.dockerfile_path, "dockerfile_path"),
     build_context: asOptionalString(obj.build_context, "build_context"),
     docker_network_host: asBool(obj.docker_network_host, "docker_network_host", false),
-    docker_volume_mounts: asStringArray(obj.docker_volume_mounts, "docker_volume_mounts"),
-    docker_named_volumes: asStringArray(obj.docker_named_volumes, "docker_named_volumes"),
+    docker_volume_mounts: parseVolumeLines(
+      obj.docker_volume_mounts,
+      "docker_volume_mounts",
+      "mount",
+    ),
+    docker_named_volumes: parseVolumeLines(
+      obj.docker_named_volumes,
+      "docker_named_volumes",
+      "named",
+    ),
     env_vars: envVars.filter((e) => e.key),
   };
 
