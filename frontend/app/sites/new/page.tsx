@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { EnvVarList } from "@/components/EnvVarList";
 import { KeyValueEditor } from "@/components/KeyValueEditor";
+import { SiteJsonActions } from "@/components/SiteJsonActions";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
 import type { WizardState } from "@/lib/types";
@@ -109,7 +110,12 @@ export default function NewSiteWizardPage() {
 
   return (
     <div>
-      <h1>{t("wizard.title")}</h1>
+      <div className="page-header">
+        <h1>{t("wizard.title")}</h1>
+        <div className="page-actions">
+          <SiteJsonActions />
+        </div>
+      </div>
       <div className="wizard-steps">
         {stepKeys.map((key, i) => (
           <span

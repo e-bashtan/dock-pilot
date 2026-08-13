@@ -119,6 +119,27 @@ export const en = {
       "Delete «{name}»? The container, nginx config, and SSL certificate will be removed. This cannot be undone.",
     deleteFailed: "Failed to delete site",
   },
+  siteImport: {
+    downloadTemplate: "Download template",
+    importJson: "Import JSON",
+    templateTitle: "Download JSON template",
+    templateHint:
+      "Download a blank template, fill it in Cursor (or any editor), then import it back into Barn.",
+    templateWebsite: "Website",
+    templateWebsiteHint: "nginx, SSL, domain, container port",
+    templateBot: "Telegram bot",
+    templateBotHint: "Docker only — BOT_TOKEN in secrets",
+    importTitle: "Import site from JSON",
+    importHint:
+      "Paste a filled barn.site JSON or choose a file. Creates the site, saves secrets, and starts deploy when deploy is true.",
+    chooseFile: "JSON file",
+    jsonLabel: "JSON",
+    jsonPlaceholder: '{ "format": "barn.site", "site_type": "web", ... }',
+    importAndCreate: "Import & create",
+    importing: "Importing…",
+    importFailed: "Import failed",
+    readFileFailed: "Could not read the file",
+  },
   system: {
     title: "Server",
     loadFailed: "Failed to load server status",
