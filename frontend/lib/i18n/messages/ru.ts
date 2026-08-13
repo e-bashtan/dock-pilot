@@ -121,6 +121,27 @@ export const ru: Messages = {
       "Удалить «{name}»? Контейнер, nginx-конфиг и SSL-сертификат будут удалены. Это нельзя отменить.",
     deleteFailed: "Не удалось удалить сайт",
   },
+  siteImport: {
+    downloadTemplate: "Скачать шаблон",
+    importJson: "Импорт JSON",
+    templateTitle: "Скачать JSON-шаблон",
+    templateHint:
+      "Скачайте пустой шаблон, заполните в Cursor (или редакторе), затем импортируйте обратно в Амбар.",
+    templateWebsite: "Сайт",
+    templateWebsiteHint: "nginx, SSL, домен, порт контейнера",
+    templateBot: "Telegram-бот",
+    templateBotHint: "Только Docker — BOT_TOKEN в секретах",
+    importTitle: "Импорт сайта из JSON",
+    importHint:
+      "Вставьте заполненный barn.site JSON или выберите файл. Создаст сайт и сохранит секреты. Деплой только если deploy: true (по умолчанию false).",
+    chooseFile: "JSON-файл",
+    jsonLabel: "JSON",
+    jsonPlaceholder: '{ "format": "barn.site", "site_type": "web", ... }',
+    importAndCreate: "Импортировать и создать",
+    importing: "Импорт…",
+    importFailed: "Не удалось импортировать",
+    readFileFailed: "Не удалось прочитать файл",
+  },
   system: {
     title: "Сервер",
     loadFailed: "Не удалось загрузить статус сервера",

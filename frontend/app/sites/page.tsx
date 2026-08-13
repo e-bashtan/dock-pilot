@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { HealthBadge } from "@/components/HealthBadge";
 import { PostgresHealthSummary } from "@/components/PostgresHealthSummary";
 import { ServerStatusPanel } from "@/components/ServerStatusPanel";
+import { SiteJsonActions } from "@/components/SiteJsonActions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
@@ -76,9 +77,12 @@ export default function SitesPage() {
 
       <div className="page-header">
         <h1>{t("sites.title")}</h1>
-        <Link href="/sites/new" className="btn">
-          {t("nav.newSite")}
-        </Link>
+        <div className="page-actions">
+          <SiteJsonActions />
+          <Link href="/sites/new" className="btn">
+            {t("nav.newSite")}
+          </Link>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -88,9 +92,12 @@ export default function SitesPage() {
       ) : sites.length === 0 ? (
         <div className="card">
           <p>{t("sites.empty")}</p>
-          <Link href="/sites/new" className="btn" style={{ marginTop: "1rem" }}>
-            {t("sites.createSite")}
-          </Link>
+          <div className="page-actions" style={{ marginTop: "1rem", justifyContent: "flex-start" }}>
+            <SiteJsonActions />
+            <Link href="/sites/new" className="btn">
+              {t("sites.createSite")}
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
