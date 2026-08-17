@@ -109,7 +109,7 @@ export const en = {
     tableUrl: "URL",
     tableHealth: "Health",
     tableStatus: "Status",
-    tableUpdated: "Updated",
+    tableUpdated: "Last deploy",
     typeWebsite: "Website",
     typeTelegramBot: "Telegram bot",
     delete: "Delete",

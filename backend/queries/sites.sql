@@ -16,7 +16,15 @@ SELECT * FROM sites WHERE id = $1;
 SELECT * FROM sites WHERE slug = $1;
 
 -- name: ListSites :many
-SELECT * FROM sites ORDER BY created_at DESC;
+SELECT * FROM sites
+ORDER BY (
+    SELECT MAX(created_at) FROM deployments WHERE deployments.site_id = sites.id
+) DESC NULLS LAST, created_at DESC;
+
+-- name: ListLatestDeployTimes :many
+SELECT DISTINCT ON (site_id) site_id, created_at
+FROM deployments
+ORDER BY site_id, created_at DESC;
 
 -- name: UpdateSite :one
 UPDATE sites SET

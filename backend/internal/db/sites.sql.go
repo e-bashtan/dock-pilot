@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -163,8 +164,42 @@ func (q *Queries) GetSiteBySlug(ctx context.Context, slug string) (Site, error) 
 	return i, err
 }
 
+const listLatestDeployTimes = `-- name: ListLatestDeployTimes :many
+SELECT DISTINCT ON (site_id) site_id, created_at
+FROM deployments
+ORDER BY site_id, created_at DESC
+`
+
+type ListLatestDeployTimesRow struct {
+	SiteID    uuid.UUID `json:"site_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListLatestDeployTimes(ctx context.Context) ([]ListLatestDeployTimesRow, error) {
+	rows, err := q.db.Query(ctx, listLatestDeployTimes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLatestDeployTimesRow{}
+	for rows.Next() {
+		var i ListLatestDeployTimesRow
+		if err := rows.Scan(&i.SiteID, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSites = `-- name: ListSites :many
-SELECT id, name, slug, primary_url, git_repo_url, git_branch, dockerfile_path, build_context, container_port, host_port, nginx_ssl_enabled, nginx_force_https, site_type, docker_volume_mounts, docker_named_volumes, docker_network_host, health_check_path, status, created_at, updated_at FROM sites ORDER BY created_at DESC
+SELECT id, name, slug, primary_url, git_repo_url, git_branch, dockerfile_path, build_context, container_port, host_port, nginx_ssl_enabled, nginx_force_https, site_type, docker_volume_mounts, docker_named_volumes, docker_network_host, health_check_path, status, created_at, updated_at FROM sites
+ORDER BY (
+    SELECT MAX(created_at) FROM deployments WHERE deployments.site_id = sites.id
+) DESC NULLS LAST, created_at DESC
 `
 
 func (q *Queries) ListSites(ctx context.Context) ([]Site, error) {

@@ -157,7 +157,11 @@ export default function SitesPage() {
                   <td className="col-hide-mobile">
                     <StatusBadge status={site.status} />
                   </td>
-                  <td className="col-hide-mobile">{formatDateTime(site.updated_at)}</td>
+                  <td className="col-hide-mobile">
+                    {site.last_deployed_at
+                      ? formatDateTime(site.last_deployed_at)
+                      : t("common.emDash")}
+                  </td>
                   <td>
                     <button
                       type="button"

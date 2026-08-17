@@ -111,7 +111,7 @@ export const ru: Messages = {
     tableUrl: "URL",
     tableHealth: "Состояние",
     tableStatus: "Статус",
-    tableUpdated: "Обновлено",
+    tableUpdated: "Последний деплой",
     typeWebsite: "Сайт",
     typeTelegramBot: "Telegram-бот",
     delete: "Удалить",

@@ -6,6 +6,7 @@ export interface SiteListItem {
   primary_url: string;
   status: string;
   updated_at: string;
+  last_deployed_at?: string;
 }
 
 export interface SiteHealthContainer {

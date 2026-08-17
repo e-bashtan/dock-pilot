@@ -93,11 +93,12 @@ type SiteResponse struct {
 }
 
 type SiteListItem struct {
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Slug       string    `json:"slug"`
-	SiteType   string    `json:"site_type"`
-	PrimaryURL string    `json:"primary_url"`
-	Status     string    `json:"status"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	Name           string     `json:"name"`
+	Slug           string     `json:"slug"`
+	SiteType       string     `json:"site_type"`
+	PrimaryURL     string     `json:"primary_url"`
+	Status         string     `json:"status"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
 }

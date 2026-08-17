@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -153,9 +154,21 @@ func (s *Service) List(ctx context.Context) ([]SiteListItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list sites: %w", err)
 	}
+	deployTimes, err := s.queries.ListLatestDeployTimes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list latest deploys: %w", err)
+	}
+	lastDeploy := make(map[uuid.UUID]time.Time, len(deployTimes))
+	for _, row := range deployTimes {
+		lastDeploy[row.SiteID] = row.CreatedAt
+	}
 	items := make([]SiteListItem, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, toListItem(row))
+		item := toListItem(row)
+		if t, ok := lastDeploy[row.ID]; ok {
+			item.LastDeployedAt = &t
+		}
+		items = append(items, item)
 	}
 	return items, nil
 }
