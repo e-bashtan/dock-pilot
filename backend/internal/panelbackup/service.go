@@ -871,11 +871,8 @@ func (s *Service) resolvePanelDumpConn(ctx context.Context) (panelDumpConn, erro
 
 	adminUser, adminPass, adminTCP := "", "", false
 	if s.pgdb != nil {
-		if c, u, p, tcp, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil {
+		if _, u, p, tcp, adminErr := s.pgdb.AdminExecCreds(ctx); adminErr == nil {
 			adminUser, adminPass, adminTCP = u, p, tcp
-			if c != "" {
-				container = c
-			}
 		}
 	}
 
