@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { MobileQrModal } from "@/components/MobileQrModal";
+import { ServerStatusPanel } from "@/components/ServerStatusPanel";
 import { api, ApiError } from "@/lib/api";
 import { useServersMode } from "@/lib/servers-mode";
 import { useI18n } from "@/lib/i18n/context";
@@ -157,6 +158,8 @@ export default function ServersSettingsPage() {
           </div>
         </div>
       </div>
+
+      <ServerStatusPanel />
 
       <div className="card" style={{ marginBottom: "1rem" }}>
         <p>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BillingExpiryPanel } from "@/components/BillingExpiryPanel";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { HealthBadge } from "@/components/HealthBadge";
+import { HomeSystemSummary } from "@/components/HomeSystemSummary";
 import { PostgresHealthSummary } from "@/components/PostgresHealthSummary";
 import { ServerStatusPanel } from "@/components/ServerStatusPanel";
 import { SiteJsonActions } from "@/components/SiteJsonActions";
@@ -22,6 +23,7 @@ export default function SitesPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<SiteListItem | null>(null);
+  const [query, setQuery] = useState("");
 
   const loadSites = useCallback(async () => {
     try {
@@ -69,20 +71,43 @@ export default function SitesPage() {
     }
   };
 
-  return (
-    <div>
-      <ServerStatusPanel />
-      <BillingExpiryPanel />
-      <PostgresHealthSummary />
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleSites = normalizedQuery
+    ? sites.filter((site) =>
+        [site.name, site.slug, site.primary_url, site.site_type]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(normalizedQuery),
+      )
+    : sites;
+  const healthyCount = sites.filter((site) => healthBySite[site.id]?.overall === "healthy").length;
+  const attentionCount = sites.filter((site) => {
+    const overall = healthBySite[site.id]?.overall;
+    return overall && overall !== "healthy";
+  }).length;
 
-      <div className="page-header">
-        <h1>{t("sites.title")}</h1>
+  return (
+    <div className="sites-dashboard">
+      <HomeSystemSummary />
+      <div className="page-header sites-dashboard-header">
+        <div>
+          <h1>{t("sites.title")}</h1>
+          <p className="muted sites-dashboard-subtitle">{t("sites.dashboardSubtitle")}</p>
+        </div>
         <div className="page-actions">
           <SiteJsonActions />
           <Link href="/sites/new" className="btn">
             {t("nav.newSite")}
           </Link>
         </div>
+      </div>
+
+      <div className="sites-summary-strip" aria-label={t("sites.summaryLabel")}>
+        <div><span>{t("sites.summaryTotal")}</span><strong>{sites.length}</strong></div>
+        <div><span>{t("sites.summaryHealthy")}</span><strong className="sites-summary-good">{healthyCount}</strong></div>
+        <div><span>{t("sites.summaryAttention")}</span><strong className={attentionCount ? "sites-summary-warn" : ""}>{attentionCount}</strong></div>
+        <div><span>{t("sites.summaryWeb")}</span><strong>{sites.filter((site) => site.site_type === "web").length}</strong></div>
+        <div><span>{t("sites.summaryBots")}</span><strong>{sites.filter((site) => site.site_type === "telegram_bot").length}</strong></div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
@@ -100,33 +125,48 @@ export default function SitesPage() {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div className="card sites-table-card">
+          <div className="sites-table-toolbar">
+            <div>
+              <h2>{t("sites.allSites")}</h2>
+              <span className="muted">{t("sites.itemsCount", { count: visibleSites.length })}</span>
+            </div>
+            <input
+              className="input sites-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("sites.searchPlaceholder")}
+              aria-label={t("sites.searchPlaceholder")}
+            />
+          </div>
           <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th>{t("sites.tableName")}</th>
-                <th className="col-hide-mobile">{t("sites.tableType")}</th>
                 <th>{t("sites.tableUrl")}</th>
                 <th>{t("sites.tableHealth")}</th>
                 <th className="col-hide-mobile">{t("sites.tableStatus")}</th>
                 <th className="col-hide-mobile">{t("sites.tableUpdated")}</th>
-                <th>{t("sites.delete")}</th>
+                <th aria-label={t("common.actions")}></th>
               </tr>
             </thead>
             <tbody>
-              {sites.map((site) => (
+              {visibleSites.map((site) => (
                 <tr key={site.id}>
                   <td>
-                    <Link href={`/sites/${site.id}`}>{site.name}</Link>
-                    <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                      {site.slug}
+                    <div className="site-name-cell">
+                      <span className={`site-type-icon site-type-icon-${site.site_type}`} aria-hidden>
+                        {site.site_type === "telegram_bot" ? "B" : "W"}
+                      </span>
+                      <div>
+                        <Link href={`/sites/${site.id}`}>{site.name}</Link>
+                        <div className="site-row-meta">
+                          {site.slug} · {site.site_type === "telegram_bot" ? t("sites.typeTelegramBot") : t("sites.typeWebsite")}
+                        </div>
+                      </div>
                     </div>
-                  </td>
-                  <td className="col-hide-mobile">
-                    {site.site_type === "telegram_bot"
-                      ? t("sites.typeTelegramBot")
-                      : t("sites.typeWebsite")}
                   </td>
                   <td>
                     {site.site_type === "telegram_bot" ? (
@@ -163,16 +203,15 @@ export default function SitesPage() {
                       : t("common.emDash")}
                   </td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={deletingId !== null}
-                      onClick={() => setPendingDelete(site)}
-                    >
-                      {deletingId === site.id
-                        ? t("sites.deleting")
-                        : t("sites.delete")}
-                    </button>
+                    <details className="site-row-menu">
+                      <summary aria-label={t("common.actions")}>•••</summary>
+                      <div>
+                        <Link href={`/sites/${site.id}`}>{t("sites.openSite")}</Link>
+                        <button type="button" disabled={deletingId !== null} onClick={() => setPendingDelete(site)}>
+                          {deletingId === site.id ? t("sites.deleting") : t("sites.delete")}
+                        </button>
+                      </div>
+                    </details>
                   </td>
                 </tr>
               ))}
@@ -181,6 +220,15 @@ export default function SitesPage() {
           </div>
         </div>
       )}
+
+      <details className="dashboard-system-details">
+        <summary>{t("sites.infrastructure")}</summary>
+        <div className="dashboard-system-content">
+          <ServerStatusPanel showUpdate={false} />
+          <BillingExpiryPanel />
+          <PostgresHealthSummary />
+        </div>
+      </details>
 
       <ConfirmDialog
         open={pendingDelete !== null}

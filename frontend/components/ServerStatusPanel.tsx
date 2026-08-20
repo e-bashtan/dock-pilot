@@ -27,7 +27,7 @@ function diskTone(pct: number): string {
   return "var(--ok, #15803d)";
 }
 
-export function ServerStatusPanel() {
+export function ServerStatusPanel({ showUpdate = true }: { showUpdate?: boolean }) {
   const { t, formatDateTime } = useI18n();
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,10 +82,10 @@ export function ServerStatusPanel() {
 
   useEffect(() => {
     load();
-    void loadUpdate();
+    if (showUpdate) void loadUpdate();
     const timer = setInterval(load, 30_000);
     return () => clearInterval(timer);
-  }, [load, loadUpdate]);
+  }, [load, loadUpdate, showUpdate]);
 
   useEffect(() => {
     if (!watchingUpgrade.current && updateInfo?.upgrade_status !== "running") {
@@ -289,7 +289,7 @@ export function ServerStatusPanel() {
           {pruneMsg}
         </div>
       )}
-      {updateMsg && (
+      {showUpdate && updateMsg && (
         <div
           className={`alert ${updateJob?.status === "failed" ? "alert-error" : "alert-success"}`}
           style={{ marginTop: "0.75rem" }}
@@ -308,7 +308,7 @@ export function ServerStatusPanel() {
         </div>
       )}
 
-      {updateInfo && (
+      {showUpdate && updateInfo && (
         <div className="server-status-update">
           <div>
             <div className="server-status-label">{t("system.updateTitle")}</div>
@@ -381,7 +381,7 @@ export function ServerStatusPanel() {
         </div>
       )}
 
-      {(updateJob?.log || updateJob?.status === "running") && (
+      {showUpdate && (updateJob?.log || updateJob?.status === "running") && (
         <details open={updateJob?.status === "running" || updateJob?.status === "failed"} style={{ marginTop: "0.75rem" }}>
           <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: "0.8125rem" }}>
             {t("system.updateLog")}
@@ -595,7 +595,7 @@ export function ServerStatusPanel() {
       )}
 
       <ConfirmDialog
-        open={updateConfirm}
+        open={showUpdate && updateConfirm}
         title={t("system.updateTitle")}
         message={
           updateInfo?.latest
