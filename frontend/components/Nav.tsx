@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/BrandLogo";
-import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { MobileQrModal } from "@/components/MobileQrModal";
 import { useLogout } from "@/components/AuthGate";
 import { useServersMode } from "@/lib/servers-mode";
 import { useI18n } from "@/lib/i18n/context";
@@ -102,15 +100,10 @@ export function Nav() {
   const { t } = useI18n();
   const { isMaster } = useServersMode();
   const pathname = usePathname() || "";
-  const [qrOpen, setQrOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const moreMenuId = useId();
 
   useEffect(() => {
     setMenuOpen(false);
-    setMoreOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -127,31 +120,12 @@ export function Nav() {
     };
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [moreOpen]);
-
   const closeMenu = () => {
     setMenuOpen(false);
-    setMoreOpen(false);
   };
 
-  const primaryLinks = isMaster ? MASTER_PRIMARY : STANDALONE_LINKS;
+  const primaryLinks = isMaster ? [...MASTER_PRIMARY, ...MASTER_MORE] : STANDALONE_LINKS;
   const mobileLinks = isMaster ? [...MASTER_PRIMARY, ...MASTER_MORE] : STANDALONE_LINKS;
-  const moreActive =
-    isMaster && MASTER_MORE.some((item) => isPrimaryActive(pathname, item.match));
 
   return (
     <>
@@ -212,42 +186,6 @@ export function Nav() {
                 </Link>
               );
             })}
-            {isMaster && (
-              <div className="nav-more" ref={moreRef}>
-                <button
-                  type="button"
-                  className={`nav-link nav-more-btn${moreActive || moreOpen ? " nav-link-active" : ""}`}
-                  aria-expanded={moreOpen}
-                  aria-controls={moreMenuId}
-                  onClick={() => setMoreOpen((v) => !v)}
-                >
-                  {t("nav.more")}
-                  <span className="nav-more-caret" aria-hidden>
-                    ▾
-                  </span>
-                </button>
-                {moreOpen && (
-                  <div id={moreMenuId} className="nav-more-menu" role="menu">
-                    {MASTER_MORE.map((item) => {
-                      const active = isPrimaryActive(pathname, item.match);
-                      return (
-                        <Link
-                          key={`${item.href}-${item.match}`}
-                          href={item.href}
-                          role="menuitem"
-                          className={`nav-more-item${active ? " nav-more-item-active" : ""}`}
-                          aria-current={active ? "page" : undefined}
-                          onClick={closeMenu}
-                        >
-                          <NavIcon name={item.icon} />
-                          {t(item.labelKey)}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Mobile drawer: flat list, no nested More */}
@@ -270,24 +208,6 @@ export function Nav() {
           </div>
 
           <div className="nav-actions">
-            <Link
-              href="/sites/new"
-              className="btn nav-new-site"
-              onClick={closeMenu}
-            >
-              {t("nav.newSite")}
-            </Link>
-            <button
-              type="button"
-              className="btn btn-secondary nav-mobile-qr"
-              onClick={() => {
-                closeMenu();
-                setQrOpen(true);
-              }}
-            >
-              {t("nav.mobile")}
-            </button>
-            <LocaleSwitcher />
             <button
               type="button"
               className="btn btn-secondary nav-logout"
@@ -301,7 +221,6 @@ export function Nav() {
           </div>
         </div>
       </nav>
-      <MobileQrModal open={qrOpen} onClose={() => setQrOpen(false)} />
     </>
   );
 }

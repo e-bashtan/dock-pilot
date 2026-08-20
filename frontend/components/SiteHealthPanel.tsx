@@ -40,26 +40,19 @@ export function SiteHealthPanel({
 
   if (loading && !health) {
     return (
-      <div className="card">
-        <h3>{t("health.title")}</h3>
+      <div className="card site-health-summary">
+        <span className="site-metric-label">{t("health.title")}</span>
         <p style={{ color: "var(--muted)", margin: 0 }}>{t("health.checking")}</p>
       </div>
     );
   }
 
   return (
-    <div className="card">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "0.75rem",
-        }}
-      >
-        <h3 style={{ margin: 0 }}>{t("health.title")}</h3>
-        <button type="button" className="btn btn-secondary" onClick={() => load()}>
-          {t("common.refresh")}
+    <div className="card site-health-summary">
+      <div className="site-health-summary-head">
+        <span className="site-metric-label">{t("health.title")}</span>
+        <button type="button" className="site-icon-button" onClick={() => load()} title={t("common.refresh")} aria-label={t("common.refresh")}>
+          ↻
         </button>
       </div>
 
@@ -67,13 +60,13 @@ export function SiteHealthPanel({
 
       {health && (
         <>
-          <p style={{ margin: "0 0 0.75rem" }}>
+          <div className="site-health-state">
             <HealthBadge overall={health.overall} />{" "}
-            <span style={{ color: "var(--muted)", fontSize: "0.875rem" }}>
+            <span className="site-metric-meta">
               {health.message}
             </span>
-          </p>
-          <dl style={{ margin: 0, fontSize: "0.875rem" }}>
+          </div>
+          <dl className="site-health-metrics">
             {health.container && (
               <HealthRow
                 label={t("health.container")}
@@ -113,9 +106,9 @@ export function SiteHealthPanel({
 
 function HealthRow({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ marginBottom: "0.35rem" }}>
-      <span style={{ color: "var(--muted)" }}>{label}: </span>
-      {value}
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }

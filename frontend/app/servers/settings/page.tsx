@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { MobileQrModal } from "@/components/MobileQrModal";
 import { api, ApiError } from "@/lib/api";
 import { useServersMode } from "@/lib/servers-mode";
 import { useI18n } from "@/lib/i18n/context";
@@ -22,6 +24,7 @@ export default function ServersSettingsPage() {
   const [pairing, setPairing] = useState<ServersPairingCode | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [mobileQrOpen, setMobileQrOpen] = useState(false);
 
   useEffect(() => {
     setNodeName(settings.node_name);
@@ -133,6 +136,27 @@ export default function ServersSettingsPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
       {message && <div className="alert alert-success">{message}</div>}
+
+      <div className="card" style={{ marginBottom: "1rem" }}>
+        <h2 className="section-title">{t("servers.interfaceSettings")}</h2>
+        <p className="muted">{t("servers.interfaceSettingsHint")}</p>
+        <div className="form-grid" style={{ alignItems: "end" }}>
+          <div className="field">
+            <span className="label">{t("nav.language")}</span>
+            <LocaleSwitcher />
+          </div>
+          <div className="field">
+            <span className="label">{t("servers.mobileAccess")}</span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setMobileQrOpen(true)}
+            >
+              {t("servers.shareMobileAuth")}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="card" style={{ marginBottom: "1rem" }}>
         <p>
@@ -400,6 +424,8 @@ export default function ServersSettingsPage() {
         onCancel={() => setConfirmDisconnect(false)}
         busy={busy}
       />
+
+      <MobileQrModal open={mobileQrOpen} onClose={() => setMobileQrOpen(false)} />
     </div>
   );
 }

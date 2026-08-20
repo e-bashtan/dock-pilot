@@ -16,7 +16,7 @@ type PendingAction = "start" | "stop" | "restart" | "delete";
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, formatDateTime } = useI18n();
   const [site, setSite] = useState<Site | null>(null);
   const [latestDep, setLatestDep] = useState<Deployment | null>(null);
   const [containerState, setContainerState] = useState<SiteHealthContainer | null>(null);
@@ -148,16 +148,22 @@ export default function SiteDetailPage() {
   const pendingCopy = pendingAction ? confirmCopy(pendingAction, site.name) : null;
 
   return (
-    <div>
-      <div className="page-header page-header-tight">
-        <div>
+    <div className="site-overview-page">
+      <div className="site-overview-header">
+        <div className="site-overview-identity">
           <h1>{site.name}</h1>
           <p className="page-header-meta">
-            {site.site_type === "telegram_bot" ? typeLabel : site.primary_url}{" "}
-            · <StatusBadge status={site.status} />
+            {site.site_type === "telegram_bot" ? (
+              typeLabel
+            ) : (
+              <a href={site.primary_url} target="_blank" rel="noreferrer">
+                {site.primary_url} ↗
+              </a>
+            )}{" "}
+            <span aria-hidden>·</span> <StatusBadge status={site.status} />
           </p>
         </div>
-        <div className="page-actions">
+        <div className="site-overview-actions">
           <button
             type="button"
             className="btn"
@@ -166,24 +172,15 @@ export default function SiteDetailPage() {
           >
             {deploying ? t("site.starting") : t("site.deploy")}
           </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setPendingAction("start")}
-            disabled={busy || !canControlContainer || !stateKnown || containerRunning}
-            title={containerRunning ? t("site.startAlreadyRunning") : undefined}
-          >
-            {containerBusy === "start" ? t("site.starting") : t("site.start")}
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setPendingAction("stop")}
-            disabled={busy || !canControlContainer || !stateKnown || !containerRunning}
-            title={!containerRunning ? t("site.stopNotRunning") : undefined}
-          >
-            {containerBusy === "stop" ? t("site.stopping") : t("site.stop")}
-          </button>
+          {containerRunning ? (
+            <button type="button" className="btn btn-secondary" onClick={() => setPendingAction("stop")} disabled={busy || !canControlContainer}>
+              {containerBusy === "stop" ? t("site.stopping") : t("site.stop")}
+            </button>
+          ) : (
+            <button type="button" className="btn btn-secondary" onClick={() => setPendingAction("start")} disabled={busy || !canControlContainer || !stateKnown}>
+              {containerBusy === "start" ? t("site.starting") : t("site.start")}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-secondary"
@@ -193,14 +190,15 @@ export default function SiteDetailPage() {
           >
             {containerBusy === "restart" ? t("site.restarting") : t("site.restart")}
           </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            onClick={() => setPendingAction("delete")}
-            disabled={busy}
-          >
-            {containerBusy === "delete" ? t("common.loading") : t("common.delete")}
-          </button>
+          <details className="site-overview-more">
+            <summary className="btn btn-secondary" aria-label={t("common.actions")}>•••</summary>
+            <div className="site-overview-more-menu">
+              <Link href={`/sites/${id}/settings`}>{t("site.editSettings")}</Link>
+              <button type="button" onClick={() => setPendingAction("delete")} disabled={busy}>
+                {containerBusy === "delete" ? t("common.loading") : t("common.delete")}
+              </button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -208,10 +206,24 @@ export default function SiteDetailPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <SiteHealthPanel key={healthRefreshKey} siteId={id} />
+      <div className="site-overview-status-grid">
+        <SiteHealthPanel key={healthRefreshKey} siteId={id} />
+        <div className="card site-deployment-summary">
+          <div>
+            <span className="site-metric-label">{t("site.latestDeployment")}</span>
+            {latestDep ? (
+              <div className="site-metric-value"><StatusBadge status={latestDep.status} /> {latestDep.message}</div>
+            ) : (
+              <div className="site-metric-value">{t("common.emDash")}</div>
+            )}
+          </div>
+          {latestDep && <span className="site-metric-meta">{formatDateTime(latestDep.created_at)}</span>}
+          <Link href={`/sites/${id}/deployments`}>{t("site.allDeployments")}</Link>
+        </div>
+      </div>
 
-      <div className="grid-2" style={{ marginTop: "1.5rem" }}>
-        <div className="card">
+      <div className="grid-2 site-overview-details">
+        <div className="card site-configuration-card">
           <h3>{t("site.configuration")}</h3>
           <dl>
             <Info label={t("common.type")} value={typeLabel} />
@@ -248,7 +260,7 @@ export default function SiteDetailPage() {
         {site.site_type === "web" && (
           <div className="card">
             <h3>{t("site.domains")}</h3>
-            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+            <ul className="site-domain-list">
               {site.domains.map((d) => (
                 <li key={d.id ?? d.domain}>
                   {d.domain}
@@ -282,24 +294,6 @@ export default function SiteDetailPage() {
         )}
       </div>
 
-      {latestDep && (
-        <div className="card" style={{ marginTop: "1.5rem" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <h3 style={{ margin: 0 }}>{t("site.latestDeployment")}</h3>
-            <Link href={`/sites/${id}/deployments`}>{t("site.allDeployments")}</Link>
-          </div>
-          <p style={{ margin: "0.5rem 0 0" }}>
-            <StatusBadge status={latestDep.status} /> {latestDep.message}
-          </p>
-        </div>
-      )}
-
       {pendingCopy && (
         <ConfirmDialog
           open
@@ -326,9 +320,9 @@ export default function SiteDetailPage() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ marginBottom: "0.5rem" }}>
-      <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>{label}</span>
-      <div style={{ fontSize: "0.9rem" }}>{value}</div>
+    <div className="site-config-row">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }
