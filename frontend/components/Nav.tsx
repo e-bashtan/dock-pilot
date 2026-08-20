@@ -12,6 +12,7 @@ import { useI18n } from "@/lib/i18n/context";
 
 type NavItem = {
   href: string;
+  icon: "projects" | "servers" | "database" | "backup" | "payments" | "notifications" | "settings" | "events";
   labelKey:
     | "nav.sites"
     | "nav.databases"
@@ -25,27 +26,41 @@ type NavItem = {
 };
 
 const STANDALONE_LINKS: NavItem[] = [
-  { href: "/sites", labelKey: "nav.sites", match: "sites" },
-  { href: "/databases", labelKey: "nav.databases", match: "databases" },
-  { href: "/backups", labelKey: "nav.backups", match: "backups" },
-  { href: "/payments", labelKey: "nav.payments", match: "payments" },
-  { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
-  { href: "/servers/settings", labelKey: "nav.serversSettings", match: "servers-settings" },
+  { href: "/sites", icon: "projects", labelKey: "nav.sites", match: "sites" },
+  { href: "/databases", icon: "database", labelKey: "nav.databases", match: "databases" },
+  { href: "/backups", icon: "backup", labelKey: "nav.backups", match: "backups" },
+  { href: "/payments", icon: "payments", labelKey: "nav.payments", match: "payments" },
+  { href: "/notifications", icon: "notifications", labelKey: "nav.notifications", match: "notifications" },
+  { href: "/servers/settings", icon: "settings", labelKey: "nav.serversSettings", match: "servers-settings" },
 ];
 
 const MASTER_PRIMARY: NavItem[] = [
-  { href: "/sites", labelKey: "nav.sites", match: "sites" },
-  { href: "/servers", labelKey: "nav.servers", match: "servers" },
-  { href: "/payments", labelKey: "nav.payments", match: "payments" },
+  { href: "/sites", icon: "projects", labelKey: "nav.sites", match: "sites" },
+  { href: "/servers", icon: "servers", labelKey: "nav.servers", match: "servers" },
+  { href: "/payments", icon: "payments", labelKey: "nav.payments", match: "payments" },
 ];
 
 const MASTER_MORE: NavItem[] = [
-  { href: "/servers/events", labelKey: "nav.serverEvents", match: "servers-events" },
-  { href: "/notifications", labelKey: "nav.notifications", match: "notifications" },
-  { href: "/databases", labelKey: "nav.databases", match: "databases-only" },
-  { href: "/backups", labelKey: "nav.backups", match: "backups-only" },
-  { href: "/servers/settings", labelKey: "nav.serversSettings", match: "servers-settings" },
+  { href: "/servers/events", icon: "events", labelKey: "nav.serverEvents", match: "servers-events" },
+  { href: "/notifications", icon: "notifications", labelKey: "nav.notifications", match: "notifications" },
+  { href: "/databases", icon: "database", labelKey: "nav.databases", match: "databases-only" },
+  { href: "/backups", icon: "backup", labelKey: "nav.backups", match: "backups-only" },
+  { href: "/servers/settings", icon: "settings", labelKey: "nav.serversSettings", match: "servers-settings" },
 ];
+
+function NavIcon({ name }: { name: NavItem["icon"] }) {
+  const paths: Record<NavItem["icon"], React.ReactNode> = {
+    projects: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+    servers: <><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></>,
+    database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></>,
+    backup: <><path d="M5 5h12l2 3v11H5z"/><path d="M9 5v5h6V5M9 19v-5h6v5"/></>,
+    payments: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></>,
+    notifications: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"/></>,
+    events: <><path d="M4 19V5M4 19h16"/><path d="m7 15 4-4 3 2 5-6"/></>,
+  };
+  return <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
 
 function isPrimaryActive(pathname: string, match: string): boolean {
   if (match === "sites") {
@@ -192,6 +207,7 @@ export function Nav() {
                   aria-current={active ? "page" : undefined}
                   onClick={closeMenu}
                 >
+                  <NavIcon name={item.icon} />
                   {t(item.labelKey)}
                 </Link>
               );
@@ -223,6 +239,7 @@ export function Nav() {
                           aria-current={active ? "page" : undefined}
                           onClick={closeMenu}
                         >
+                          <NavIcon name={item.icon} />
                           {t(item.labelKey)}
                         </Link>
                       );
@@ -245,6 +262,7 @@ export function Nav() {
                   aria-current={active ? "page" : undefined}
                   onClick={closeMenu}
                 >
+                  <NavIcon name={item.icon} />
                   {t(item.labelKey)}
                 </Link>
               );
