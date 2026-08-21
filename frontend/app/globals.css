@@ -52,6 +52,7 @@
 .table tbody tr:hover { background: rgba(255,255,255,.025); }
 .site-tabs { padding: .3rem; border: 1px solid var(--border); border-radius: 12px; background: rgba(15,16,21,.72); }
 
+
 .home-system-summary { margin-bottom: 1.25rem; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: linear-gradient(145deg,rgba(18,19,25,.96),rgba(12,13,17,.96)); }
 .home-system-primary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 48px; padding: .7rem 1rem; border-bottom: 1px solid var(--border); }
 .home-system-server { display: flex; align-items: baseline; gap: .55rem; min-width: 0; }

@@ -1,0 +1,66 @@
+:root {
+  --bg: #10141c;
+  --surface: #1a202b;
+  --surface-hover: #252d3a;
+  --border: #343e4e;
+  --text: #f5f7fb;
+  --muted: #aeb7c6;
+}
+
+body {
+  background:
+    radial-gradient(circle at 72% -10%, rgba(117, 87, 232, 0.13), transparent 35rem),
+    linear-gradient(180deg, #10141c 0%, #0d1118 100%);
+}
+
+.card {
+  background: linear-gradient(145deg, #1c2330, #181e29);
+  border-color: #364153;
+  box-shadow: 0 12px 32px rgba(3, 7, 18, 0.18), inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.btn-secondary {
+  background: #252c38;
+  border-color: #3b4658;
+  color: #f0f3f8;
+}
+
+.btn-secondary:hover {
+  background: #303947;
+  border-color: #4b586d;
+}
+
+.input,
+.select,
+.textarea {
+  background: #151b25;
+  border-color: #3a4557;
+}
+
+.table tbody tr:hover { background: rgba(137, 151, 179, 0.08); }
+.table th { color: #929cad; }
+.site-tabs { background: #181e28; }
+.site-tab-active { background: #283142; }
+.home-system-summary { background: linear-gradient(145deg, #1d2532, #18202b); }
+.sites-summary-strip { background: #1a212c; }
+.dashboard-system-details { background: #181f2a; }
+.site-row-menu > div,
+.site-overview-more-menu,
+.nav-more-menu {
+  background: #242c38;
+  border-color: #414d60;
+}
+.site-domain-list li { background: #151c26; }
+.log-viewer,
+.server-status-update-log {
+  background: #111722;
+  border-color: #344054;
+}
+
+@media (min-width: 769px) {
+  .nav {
+    background: #171d27;
+    border-right-color: #354052;
+    box-shadow: 12px 0 36px rgba(3, 7, 18, 0.2);
+  }
+}

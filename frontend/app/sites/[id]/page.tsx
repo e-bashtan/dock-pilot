@@ -46,6 +46,15 @@ export default function SiteDetailPage() {
     void load();
   }, [load]);
 
+  const deploymentActive =
+    latestDep?.status === "pending" || latestDep?.status === "running";
+
+  useEffect(() => {
+    if (!deploymentActive) return;
+    const timer = window.setInterval(() => void load(), 2_000);
+    return () => window.clearInterval(timer);
+  }, [deploymentActive, load]);
+
   const refreshAfterAction = useCallback(async () => {
     await load();
     setHealthRefreshKey((k) => k + 1);
@@ -144,7 +153,7 @@ export default function SiteDetailPage() {
   const containerRunning = containerState?.found === true && containerState.running === true;
   const containerFound = containerState?.found === true;
   const stateKnown = containerState !== null;
-  const busy = deploying || containerBusy !== null;
+  const busy = deploying || deploymentActive || containerBusy !== null;
   const pendingCopy = pendingAction ? confirmCopy(pendingAction, site.name) : null;
 
   return (
@@ -160,7 +169,8 @@ export default function SiteDetailPage() {
                 {site.primary_url} ↗
               </a>
             )}{" "}
-            <span aria-hidden>·</span> <StatusBadge status={site.status} />
+            <span aria-hidden>·</span>{" "}
+            <StatusBadge status={deploymentActive ? "deploying" : site.status} />
           </p>
         </div>
         <div className="site-overview-actions">
@@ -170,7 +180,7 @@ export default function SiteDetailPage() {
             onClick={() => void handleDeploy()}
             disabled={busy}
           >
-            {deploying ? t("site.starting") : t("site.deploy")}
+            {deploying || deploymentActive ? t("status.deploying") : t("site.deploy")}
           </button>
           {containerRunning ? (
             <button type="button" className="btn btn-secondary" onClick={() => setPendingAction("stop")} disabled={busy || !canControlContainer}>

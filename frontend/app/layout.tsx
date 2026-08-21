@@ -5,6 +5,7 @@ import { LocaleProvider } from "@/lib/i18n/context";
 import { readLocaleCookie } from "@/lib/i18n/locale";
 import { en } from "@/lib/i18n/messages/en";
 import "./globals.css";
+import "./theme-overrides.css";
 
 export const metadata: Metadata = {
   title: en.meta.title,
