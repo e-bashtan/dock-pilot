@@ -9,6 +9,7 @@ import { SiteTabs } from "@/components/SiteTabs";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, ApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n/context";
+import { downloadSiteExport } from "@/lib/site-import";
 import type { Deployment, Site, SiteHealthContainer } from "@/lib/types";
 
 type PendingAction = "start" | "stop" | "restart" | "delete";
@@ -25,6 +26,7 @@ export default function SiteDetailPage() {
   const [containerBusy, setContainerBusy] = useState<PendingAction | null>(null);
   const [healthRefreshKey, setHealthRefreshKey] = useState(0);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +73,19 @@ export default function SiteDetailPage() {
       setError(e instanceof ApiError ? e.message : t("site.deployFailed"));
     } finally {
       setDeploying(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const doc = await api.exportSite(id);
+      downloadSiteExport(doc);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t("siteImport.exportFailed"));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -204,6 +219,9 @@ export default function SiteDetailPage() {
             <summary className="btn btn-secondary" aria-label={t("common.actions")}>•••</summary>
             <div className="site-overview-more-menu">
               <Link href={`/sites/${id}/settings`}>{t("site.editSettings")}</Link>
+              <button type="button" onClick={() => void handleExport()} disabled={exporting}>
+                {exporting ? t("siteImport.exporting") : t("siteImport.exportJson")}
+              </button>
               <button type="button" onClick={() => setPendingAction("delete")} disabled={busy}>
                 {containerBusy === "delete" ? t("common.loading") : t("common.delete")}
               </button>

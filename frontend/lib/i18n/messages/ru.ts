@@ -142,6 +142,9 @@ export const ru: Messages = {
   siteImport: {
     downloadTemplate: "Скачать шаблон",
     importJson: "Импорт JSON",
+    exportJson: "Экспорт JSON с секретами",
+    exporting: "Экспорт…",
+    exportFailed: "Не удалось экспортировать сайт",
     templateTitle: "Скачать JSON-шаблон",
     templateHint:
       "Скачайте пустой шаблон, заполните в Cursor (или редакторе), затем импортируйте обратно в Амбар.",

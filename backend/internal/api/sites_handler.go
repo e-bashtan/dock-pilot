@@ -5,20 +5,52 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/ebash/barn/backend/internal/healthcheck"
+	secretpkg "github.com/ebash/barn/backend/internal/secrets"
 	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
 type SitesHandler struct {
-	sites *sitesvc.Service
+	sites   *sitesvc.Service
+	secrets *secretpkg.Service
 }
 
-func NewSitesHandler(sites *sitesvc.Service) *SitesHandler {
-	return &SitesHandler{sites: sites}
+func NewSitesHandler(sites *sitesvc.Service, secrets *secretpkg.Service) *SitesHandler {
+	return &SitesHandler{sites: sites, secrets: secrets}
+}
+
+type siteExportSecret struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+type siteExportDocument struct {
+	Format             string                `json:"format"`
+	FormatVersion      int                   `json:"format_version"`
+	SiteType           string                `json:"site_type"`
+	Name               string                `json:"name"`
+	Slug               string                `json:"slug"`
+	PrimaryURL         string                `json:"primary_url"`
+	GitRepoURL         string                `json:"git_repo_url"`
+	GitBranch          string                `json:"git_branch"`
+	DockerfilePath     string                `json:"dockerfile_path"`
+	BuildContext       string                `json:"build_context"`
+	ContainerPort      int32                 `json:"container_port,omitempty"`
+	NginxSSLEnabled    bool                  `json:"nginx_ssl_enabled"`
+	NginxForceHTTPS    bool                  `json:"nginx_force_https"`
+	DockerVolumeMounts []string              `json:"docker_volume_mounts"`
+	DockerNamedVolumes []string              `json:"docker_named_volumes"`
+	DockerNetworkHost  bool                  `json:"docker_network_host"`
+	HealthCheckPath    string                `json:"health_check_path,omitempty"`
+	Domains            []sitesvc.DomainInput `json:"domains"`
+	EnvVars            []sitesvc.EnvVarInput `json:"env_vars"`
+	Secrets            []siteExportSecret    `json:"secrets"`
+	Deploy             bool                  `json:"deploy"`
 }
 
 func (h *SitesHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +93,56 @@ func (h *SitesHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, site)
+}
+
+func (h *SitesHandler) Export(w http.ResponseWriter, r *http.Request) {
+	id, err := parseUUID(chi.URLParam(r, "id"))
+	if err != nil {
+		writeError(w, sitesvc.ErrInvalidInput)
+		return
+	}
+	site, err := h.sites.Get(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	plainSecrets, err := h.secrets.DecryptForDeploy(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	doc := siteExportDocument{
+		Format: "barn.site", FormatVersion: 1, SiteType: site.SiteType,
+		Name: site.Name, Slug: site.Slug, PrimaryURL: site.PrimaryURL,
+		GitRepoURL: site.GitRepoURL, GitBranch: site.GitBranch,
+		DockerfilePath: site.DockerfilePath, BuildContext: site.BuildContext,
+		ContainerPort: site.ContainerPort, NginxSSLEnabled: site.NginxSSLEnabled,
+		NginxForceHTTPS: site.NginxForceHTTPS, DockerVolumeMounts: site.DockerVolumeMounts,
+		DockerNamedVolumes: site.DockerNamedVolumes, DockerNetworkHost: site.DockerNetworkHost,
+		HealthCheckPath: site.HealthCheckPath, Deploy: false,
+		Domains: make([]sitesvc.DomainInput, 0, len(site.Domains)),
+		EnvVars: make([]sitesvc.EnvVarInput, 0, len(site.EnvVars)),
+		Secrets: make([]siteExportSecret, 0, len(plainSecrets)),
+	}
+	for _, domain := range site.Domains {
+		doc.Domains = append(doc.Domains, sitesvc.DomainInput{Domain: domain.Domain, IsPrimary: domain.IsPrimary})
+	}
+	for _, env := range site.EnvVars {
+		doc.EnvVars = append(doc.EnvVars, sitesvc.EnvVarInput{Key: env.Key, Value: env.Value})
+	}
+	keys := make([]string, 0, len(plainSecrets))
+	for key := range plainSecrets {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		doc.Secrets = append(doc.Secrets, siteExportSecret{Key: key, Value: plainSecrets[key]})
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="barn-%s.json"`, site.Slug))
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *SitesHandler) Update(w http.ResponseWriter, r *http.Request) {

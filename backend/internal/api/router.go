@@ -123,6 +123,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.Sites.Get)
+					r.Get("/export", h.Sites.Export)
 					r.Get("/health", h.Sites.Health)
 					r.Get("/logs/stream", h.Sites.StreamContainerLogs)
 					r.Patch("/", h.Sites.Update)
@@ -229,7 +230,7 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, serversSvc *servers.Service, qr *QRHandler) http.Handler {
 	_ = logger
 	h := Handlers{
-		Sites:         NewSitesHandler(sites),
+		Sites:         NewSitesHandler(sites, secrets),
 		Secrets:       NewSecretsHandler(secrets),
 		Deployments:   NewDeploymentsHandler(deployments),
 		Notifications: NewNotificationsHandler(notifications),

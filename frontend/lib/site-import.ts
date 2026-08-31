@@ -144,6 +144,24 @@ export function downloadSiteImportTemplate(siteType: SiteType): void {
   URL.revokeObjectURL(url);
 }
 
+export function downloadSiteExport(doc: SiteImportDocument): void {
+  const safeSlug = (doc.slug || doc.name || "site")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "site";
+  const blob = new Blob([JSON.stringify(doc, null, 2) + "\n"], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `barn-${safeSlug}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function asObject(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new SiteImportError(`${label} must be a JSON object`);

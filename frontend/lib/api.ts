@@ -13,6 +13,7 @@ import type {
   Site,
   SiteHealth,
   SiteListItem,
+  SiteExportDocument,
   SystemStatus,
   SystemProcesses,
   SystemDockerDir,
@@ -179,6 +180,9 @@ export const api = {
 
   getSite: (id: string) =>
     request<Site>(`/api/sites/${id}`).then(normalizeSite),
+
+  exportSite: (id: string) =>
+    request<SiteExportDocument>(`/api/sites/${id}/export`),
 
   createSite: (body: CreateSiteRequest) =>
     request<Site>("/api/sites", {

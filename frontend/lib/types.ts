@@ -244,6 +244,14 @@ export interface CreateSiteRequest {
   env_vars?: EnvVar[];
 }
 
+export interface SiteExportDocument extends CreateSiteRequest {
+  format: "barn.site";
+  format_version: number;
+  site_type: SiteType;
+  secrets: EnvVar[];
+  deploy: boolean;
+}
+
 export interface SecretMeta {
   key: string;
   created_at: string;
@@ -763,4 +771,3 @@ export interface ServerInstallationLog {
   message: string;
   created_at: string;
 }
-

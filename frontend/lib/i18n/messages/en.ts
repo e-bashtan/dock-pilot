@@ -140,6 +140,9 @@ export const en = {
   siteImport: {
     downloadTemplate: "Download template",
     importJson: "Import JSON",
+    exportJson: "Export JSON with secrets",
+    exporting: "Exporting…",
+    exportFailed: "Could not export site",
     templateTitle: "Download JSON template",
     templateHint:
       "Download a blank template, fill it in Cursor (or any editor), then import it back into Barn.",
