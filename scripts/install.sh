@@ -207,14 +207,21 @@ source_install_lib
 
 # GitHub raw CDN can lag; never use `docker compose exec` here (hangs on some hosts).
 wait_for_postgres() {
-  local tries=30 health running
+  local tries=30 container_id health running
   for ((tries=30; tries>0; tries--)); do
-    health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' dock-pilot-postgres 2>/dev/null || echo missing)"
+    # Resolve the container from the compose service.  The current Barn bundle
+    # names it barn-postgres, while older releases used dock-pilot-postgres.
+    container_id="$(docker compose -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || true)"
+    if [[ -z "$container_id" ]]; then
+      sleep 1
+      continue
+    fi
+    health="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || echo missing)"
     if [[ "$health" == "healthy" ]]; then
       return 0
     fi
-    running="$(docker inspect --format='{{.State.Running}}' dock-pilot-postgres 2>/dev/null || echo false)"
-    if [[ "$running" == "true" && "$health" != "missing" && "$health" != "unhealthy" ]]; then
+    running="$(docker inspect --format='{{.State.Running}}' "$container_id" 2>/dev/null || echo false)"
+    if [[ "$running" == "true" && "$health" == "none" ]]; then
       return 0
     fi
     sleep 1
