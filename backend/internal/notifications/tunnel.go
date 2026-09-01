@@ -196,30 +196,21 @@ func (m *TunnelManager) systemctl(ctx context.Context, args ...string) (string, 
 	return out, nil
 }
 
-// runHostCommand enters only namespaces needed to reach the host systemd.
-// Some VPS/container policies deny net, PID, UTS, or user namespaces even with SYS_ADMIN.
+// runHostCommand first enters only the host mount namespace. Some VPS/container
+// policies deny nsenter entirely, so it falls back to executing through /host chroot.
 func (m *TunnelManager) runHostCommand(ctx context.Context, name string, args ...string) (string, error) {
-	attempts := [][]string{
-		{"-t", "1", "-m", "--"},
-		{"-t", "1", "-m", "-u", "--"},
-		{"-t", "1", "-m", "-p", "--"},
-		{"-t", "1", "-m", "-u", "-p", "--"},
+	nsArgs := []string{"-t", "1", "-m", "--", name}
+	nsArgs = append(nsArgs, args...)
+	nsOut, nsErr := m.host.RunHostCombined(ctx, "nsenter", nsArgs...)
+	if nsErr == nil {
+		return nsOut, nil
 	}
-	var lastOut string
-	var lastErr error
-	for _, prefix := range attempts {
-		nsArgs := append(append([]string{}, prefix...), name)
-		nsArgs = append(nsArgs, args...)
-		out, err := m.host.RunHostCombined(ctx, "nsenter", nsArgs...)
-		if err == nil {
-			return out, nil
-		}
-		lastOut, lastErr = out, err
-		if !strings.Contains(err.Error(), "Permission denied") && !strings.Contains(err.Error(), "Operation not permitted") {
-			break
-		}
+
+	chrootOut, chrootErr := m.host.RunCombined(ctx, name, args...)
+	if chrootErr == nil {
+		return chrootOut, nil
 	}
-	return lastOut, lastErr
+	return chrootOut, fmt.Errorf("host %s failed via nsenter (%v) and chroot (%w)", name, nsErr, chrootErr)
 }
 
 func isSystemdState(state string) bool {
