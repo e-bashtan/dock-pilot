@@ -72,7 +72,7 @@ func (m *TunnelManager) Status(ctx context.Context) (TunnelStatus, error) {
 	if configured {
 		out, _ := m.systemctl(ctx, "is-active", tunnelUnitName)
 		state := strings.TrimSpace(out)
-		if state != "" {
+		if isSystemdState(state) {
 			status.Service = state
 		}
 		status.SOCKSReady = socks5Ready(cfg.LocalPort, 700*time.Millisecond)
@@ -181,7 +181,7 @@ func (m *TunnelManager) Delete(ctx context.Context) error {
 }
 
 func (m *TunnelManager) Logs(ctx context.Context) (string, error) {
-	out, err := m.host.RunHostCombined(ctx, "nsenter", "-t", "1", "-m", "-n", "-p", "--", "journalctl", "-u", tunnelUnitName, "-n", "80", "--no-pager")
+	out, err := m.runHostCommand(ctx, "journalctl", "-u", tunnelUnitName, "-n", "80", "--no-pager")
 	if err != nil {
 		return out, err
 	}
@@ -189,13 +189,46 @@ func (m *TunnelManager) Logs(ctx context.Context) (string, error) {
 }
 
 func (m *TunnelManager) systemctl(ctx context.Context, args ...string) (string, error) {
-	nsArgs := []string{"-t", "1", "-m", "-n", "-p", "--", "systemctl"}
-	nsArgs = append(nsArgs, args...)
-	out, err := m.host.RunHostCombined(ctx, "nsenter", nsArgs...)
+	out, err := m.runHostCommand(ctx, "systemctl", args...)
 	if err != nil {
 		return out, fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
 	}
 	return out, nil
+}
+
+// runHostCommand enters only namespaces needed to reach the host systemd.
+// Some VPS/container policies deny net, PID, UTS, or user namespaces even with SYS_ADMIN.
+func (m *TunnelManager) runHostCommand(ctx context.Context, name string, args ...string) (string, error) {
+	attempts := [][]string{
+		{"-t", "1", "-m", "--"},
+		{"-t", "1", "-m", "-u", "--"},
+		{"-t", "1", "-m", "-p", "--"},
+		{"-t", "1", "-m", "-u", "-p", "--"},
+	}
+	var lastOut string
+	var lastErr error
+	for _, prefix := range attempts {
+		nsArgs := append(append([]string{}, prefix...), name)
+		nsArgs = append(nsArgs, args...)
+		out, err := m.host.RunHostCombined(ctx, "nsenter", nsArgs...)
+		if err == nil {
+			return out, nil
+		}
+		lastOut, lastErr = out, err
+		if !strings.Contains(err.Error(), "Permission denied") && !strings.Contains(err.Error(), "Operation not permitted") {
+			break
+		}
+	}
+	return lastOut, lastErr
+}
+
+func isSystemdState(state string) bool {
+	switch state {
+	case "active", "activating", "deactivating", "inactive", "failed", "reloading", "maintenance":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *TunnelManager) readConfig() (TunnelConfig, bool, error) {

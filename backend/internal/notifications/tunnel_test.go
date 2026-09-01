@@ -39,3 +39,15 @@ func TestRenderTunnelUnit(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSystemdState(t *testing.T) {
+	t.Parallel()
+	for _, state := range []string{"active", "inactive", "failed", "activating"} {
+		if !isSystemdState(state) {
+			t.Fatalf("valid systemd state rejected: %q", state)
+		}
+	}
+	if isSystemdState("nsenter: cannot open /proc/1/ns/net: Permission denied") {
+		t.Fatal("nsenter error must not be exposed as a service state")
+	}
+}
