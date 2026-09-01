@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { browserTimezone, listTimezones, resolveDigestTimezone } from "@/lib/timezone";
 import { useI18n } from "@/lib/i18n/context";
 import type { NotificationSettings, UpdateNotificationSettings } from "@/lib/types";
+import TelegramTunnelCard from "@/components/TelegramTunnelCard";
 
 export default function NotificationsPage() {
   const { t } = useI18n();
@@ -134,6 +135,8 @@ export default function NotificationsPage() {
       {testOk && (
         <div className="alert alert-success">{t("notifications.testSent")}</div>
       )}
+
+      <TelegramTunnelCard onProxyConfigured={() => void load()} />
 
       <form onSubmit={handleSave} className="card" style={{ marginTop: "1rem" }}>
         <div className="field">

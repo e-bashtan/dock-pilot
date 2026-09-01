@@ -186,6 +186,23 @@ export interface UpdateNotificationSettings {
   alert_on_incident_enabled: boolean;
 }
 
+export interface TelegramTunnelConfig {
+  host: string;
+  ssh_port: number;
+  ssh_user: string;
+  local_port: number;
+}
+
+export interface TelegramTunnelStatus {
+  configured: boolean;
+  key_created: boolean;
+  public_key?: string;
+  config: TelegramTunnelConfig;
+  service: string;
+  socks_ready: boolean;
+  install_hint?: string;
+}
+
 export interface Domain {
   id?: string;
   domain: string;

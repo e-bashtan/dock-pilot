@@ -9,6 +9,8 @@ import type {
   CreateSiteRequest,
   Deployment,
   NotificationSettings,
+  TelegramTunnelConfig,
+  TelegramTunnelStatus,
   SecretMeta,
   Site,
   SiteHealth,
@@ -244,6 +246,33 @@ export const api = {
 
   sendNotificationTest: () =>
     request<{ status: string }>("/api/notifications/test", { method: "POST" }),
+
+  getTelegramTunnel: () =>
+    request<TelegramTunnelStatus>("/api/notifications/tunnel"),
+
+  generateTelegramTunnelKey: (body: TelegramTunnelConfig) =>
+    request<TelegramTunnelStatus>("/api/notifications/tunnel/key", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  testTelegramTunnelSSH: () =>
+    request<{ status: string }>("/api/notifications/tunnel/test-ssh", { method: "POST" }),
+
+  startTelegramTunnel: () =>
+    request<TelegramTunnelStatus>("/api/notifications/tunnel/start", { method: "POST" }),
+
+  stopTelegramTunnel: () =>
+    request<TelegramTunnelStatus>("/api/notifications/tunnel/stop", { method: "POST" }),
+
+  restartTelegramTunnel: () =>
+    request<TelegramTunnelStatus>("/api/notifications/tunnel/restart", { method: "POST" }),
+
+  deleteTelegramTunnel: () =>
+    request<void>("/api/notifications/tunnel", { method: "DELETE" }),
+
+  getTelegramTunnelLogs: () =>
+    request<{ logs: string }>("/api/notifications/tunnel/logs"),
 
   startSiteContainer: (id: string) =>
     request<ContainerActionResult>(`/api/sites/${id}/container/start`, { method: "POST" }),

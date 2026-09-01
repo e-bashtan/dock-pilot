@@ -141,7 +141,7 @@ func main() {
 
 	logger.Info("cors allowed origins", "origins", cfg.CORSAllowedOrigins)
 	qrSvc := auth.NewQRService(pool, cfg.APIToken)
-	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, serversSvc, api.NewQRHandler(qrSvc))
+	handler := api.Mount(logger, cfg.APIToken, cfg.CORSAllowedOrigins, sitesSvc, secretsSvc, deploySvc, notifSvc, systemSvc, pgdbSvc, panelBackupSvc, billingSvc, serversSvc, api.NewQRHandler(qrSvc), cfg.Deploy.HostRoot)
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           handler,

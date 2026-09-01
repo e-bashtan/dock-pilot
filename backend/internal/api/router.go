@@ -148,6 +148,14 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 				r.Get("/settings", h.Notifications.GetSettings)
 				r.Put("/settings", h.Notifications.UpdateSettings)
 				r.Post("/test", h.Notifications.SendTest)
+				r.Get("/tunnel", h.Notifications.TunnelStatus)
+				r.Post("/tunnel/key", h.Notifications.GenerateTunnelKey)
+				r.Post("/tunnel/test-ssh", h.Notifications.TestTunnelSSH)
+				r.Post("/tunnel/start", h.Notifications.StartTunnel)
+				r.Post("/tunnel/stop", h.Notifications.StopTunnel)
+				r.Post("/tunnel/restart", h.Notifications.RestartTunnel)
+				r.Get("/tunnel/logs", h.Notifications.TunnelLogs)
+				r.Delete("/tunnel", h.Notifications.DeleteTunnel)
 			})
 
 			r.Route("/system", func(r chi.Router) {
@@ -227,13 +235,13 @@ func NewRouter(h Handlers, apiToken string, corsOrigins []string) http.Handler {
 	return r
 }
 
-func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, serversSvc *servers.Service, qr *QRHandler) http.Handler {
+func Mount(logger *slog.Logger, apiToken string, corsOrigins []string, sites *sitesvc.Service, secrets *secretpkg.Service, deployments *deploysvc.Service, notifications *notifpkg.Service, systemSvc *syspkg.Service, databases *pgdb.Service, backups *panelbackup.Service, billingSvc *billing.Service, serversSvc *servers.Service, qr *QRHandler, hostRoot string) http.Handler {
 	_ = logger
 	h := Handlers{
 		Sites:         NewSitesHandler(sites, secrets),
 		Secrets:       NewSecretsHandler(secrets),
 		Deployments:   NewDeploymentsHandler(deployments),
-		Notifications: NewNotificationsHandler(notifications),
+		Notifications: NewNotificationsHandler(notifications, notifpkg.NewTunnelManager(hostRoot)),
 		QR:            qr,
 		System:        NewSystemHandler(systemSvc),
 		Databases:     NewDatabasesHandler(databases),

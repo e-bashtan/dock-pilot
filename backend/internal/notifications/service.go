@@ -108,6 +108,30 @@ func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest)
 	return toSettingsResponse(row), nil
 }
 
+// SetTelegramProxy updates only the Telegram proxy while preserving all other settings.
+func (s *Service) SetTelegramProxy(ctx context.Context, proxyURL string) (SettingsResponse, error) {
+	row, err := s.getSettingsRow(ctx)
+	if err != nil {
+		return SettingsResponse{}, err
+	}
+	if err := validateProxyURL(proxyURL); err != nil {
+		return SettingsResponse{}, err
+	}
+	row, err = s.queries.UpdateNotificationSettings(ctx, db.UpdateNotificationSettingsParams{
+		Enabled:                row.Enabled,
+		TelegramChatID:         row.TelegramChatID,
+		TelegramHttpProxy:      strings.TrimSpace(proxyURL),
+		DailyDigestEnabled:     row.DailyDigestEnabled,
+		DailyDigestHour:        row.DailyDigestHour,
+		DailyDigestTimezone:    row.DailyDigestTimezone,
+		AlertOnIncidentEnabled: row.AlertOnIncidentEnabled,
+	})
+	if err != nil {
+		return SettingsResponse{}, err
+	}
+	return toSettingsResponse(row), nil
+}
+
 func (s *Service) SendTest(ctx context.Context) error {
 	settings, token, err := s.loadTelegramConfig(ctx)
 	if err != nil {
