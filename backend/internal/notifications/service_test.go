@@ -1,11 +1,79 @@
 package notifications
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func TestNotificationTitlesIncludePanelName(t *testing.T) {
+	t.Parallel()
+
+	item := digestItem{Key: "site-1", Kind: "site", Overall: "unhealthy", Message: "down"}
+	digest := formatDailyDigest("panel & one", []digestItem{item}, map[string]string{"site-1": "Site"}, nil, time.Now(), "UTC")
+	incident := formatIncident("panel & one", "Site", item)
+
+	for _, message := range []string{digest, incident} {
+		if !strings.HasPrefix(message, "<b>Barn — panel &amp; one — ") {
+			t.Fatalf("notification title does not contain escaped panel name: %q", message)
+		}
+	}
+}
+
+func TestDailyDigestUsesReadableStatusLists(t *testing.T) {
+	t.Parallel()
+
+	rows := []digestItem{
+		{Key: "site-ok", Kind: "site", Overall: "healthy", Message: "HTTP 200"},
+		{Key: "site-down", Kind: "site", Overall: "unhealthy", Message: "connection refused"},
+		{Key: "pg-main", Kind: "postgres", Overall: "healthy", Message: "Postgres is ready"},
+	}
+	names := map[string]string{
+		"site-ok":   "Магазин",
+		"site-down": "API",
+		"pg-main":   "Основная база",
+	}
+
+	message := formatDailyDigest("panel", rows, names, nil, time.Now(), "UTC")
+	for _, want := range []string{
+		"<b>Сайты</b>\n✅ Магазин\n❌ API\n   └ connection refused",
+		"<b>Базы данных</b>\n✅ Основная база",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("digest does not contain %q:\n%s", want, message)
+		}
+	}
+	if strings.Contains(message, "HTTP 200") || strings.Contains(message, "Postgres is ready") {
+		t.Fatalf("healthy technical details should be hidden:\n%s", message)
+	}
+}
+
+func TestDailyDigestIncludesMasterServersAndBilling(t *testing.T) {
+	t.Parallel()
+
+	ten := 10
+	overdue := -2
+	servers := []ServerSummaryItem{
+		{Name: "Master", Status: "online", DaysLeft: &ten},
+		{Name: "Worker", Status: "warning", DaysLeft: nil},
+		{Name: "Backup", Status: "offline", DaysLeft: &overdue},
+	}
+	message := formatDailyDigest("panel", nil, nil, servers, time.Now(), "UTC")
+
+	for _, want := range []string{
+		"<b>Серверы</b>",
+		"✅ Онлайн: 1 · ⚠️ Нестабильно: 1 · ❌ Не в сети: 1",
+		"✅ Master\n   └ 💳 До оплаты: 10 дн.",
+		"⚠️ Worker\n   └ 💳 Срок оплаты не указан",
+		"❌ Backup\n   └ 💳 Оплата просрочена на 2 дн.",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("digest does not contain %q:\n%s", want, message)
+		}
+	}
+}
 
 func TestIsIncidentTransition(t *testing.T) {
 	t.Parallel()

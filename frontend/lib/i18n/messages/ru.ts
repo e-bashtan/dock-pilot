@@ -449,6 +449,8 @@ export const ru: Messages = {
     testFailed: "Тест не удался",
     saved: "Сохранено",
     testSent: "Тестовое сообщение отправлено в Telegram",
+    panelName: "Название панели",
+    panelNameHint: "Отображается в заголовке уведомлений. По умолчанию используется IP панели.",
     enable: "Включить уведомления в Telegram",
     botToken: "Токен бота Telegram",
     tokenPlaceholderNew: "123456:ABC...",

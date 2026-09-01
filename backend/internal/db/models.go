@@ -66,6 +66,7 @@ type DeploymentLog struct {
 
 type NotificationSetting struct {
 	ID                        int32              `json:"id"`
+	PanelName                 string             `json:"panel_name"`
 	Enabled                   bool               `json:"enabled"`
 	TelegramChatID            string             `json:"telegram_chat_id"`
 	TelegramHttpProxy         string             `json:"telegram_http_proxy"`

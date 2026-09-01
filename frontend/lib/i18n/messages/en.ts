@@ -448,6 +448,8 @@ export const en = {
     testFailed: "Test failed",
     saved: "Saved",
     testSent: "Test message sent to Telegram",
+    panelName: "Panel name",
+    panelNameHint: "Shown in notification titles. The panel IP is used by default.",
     enable: "Enable Telegram notifications",
     botToken: "Telegram bot token",
     tokenPlaceholderNew: "123456:ABC...",

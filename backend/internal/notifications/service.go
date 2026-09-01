@@ -32,11 +32,19 @@ type Service struct {
 	telegram      *TelegramClient
 	alertGate     LocalAlertGate
 	serversEvents ServersEventSink
+	defaultName   func(context.Context) string
+	serverSummary func(context.Context) ([]ServerSummaryItem, bool, error)
 }
 
 // ServersEventSink forwards local incidents to the master outbox when notifications are centralized.
 type ServersEventSink interface {
 	OnLocalIncident(ctx context.Context, kind, resourceID, name, overall, message string) error
+}
+
+type ServerSummaryItem struct {
+	Name     string
+	Status   string
+	DaysLeft *int
 }
 
 func NewService(queries *db.Queries, cipher *secrets.Cipher, sites *sitesvc.Service, pgdbSvc *pgdb.Service) *Service {
@@ -57,6 +65,26 @@ func (s *Service) SetServersEventSink(sink ServersEventSink) {
 	s.serversEvents = sink
 }
 
+func (s *Service) SetDefaultPanelNameProvider(provider func(context.Context) string) {
+	s.defaultName = provider
+}
+
+func (s *Service) SetServerSummaryProvider(provider func(context.Context) ([]ServerSummaryItem, bool, error)) {
+	s.serverSummary = provider
+}
+
+func (s *Service) panelName(ctx context.Context, configured string) string {
+	if name := strings.TrimSpace(configured); name != "" {
+		return name
+	}
+	if s.defaultName != nil {
+		if name := strings.TrimSpace(s.defaultName(ctx)); name != "" {
+			return name
+		}
+	}
+	return "panel"
+}
+
 func (s *Service) suppressLocal(ctx context.Context) bool {
 	return s.alertGate != nil && s.alertGate.SuppressLocalAlerts(ctx)
 }
@@ -66,7 +94,7 @@ func (s *Service) GetSettings(ctx context.Context) (SettingsResponse, error) {
 	if err != nil {
 		return SettingsResponse{}, err
 	}
-	return toSettingsResponse(row), nil
+	return s.toSettingsResponse(ctx, row), nil
 }
 
 func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) (SettingsResponse, error) {
@@ -94,6 +122,7 @@ func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest)
 	}
 
 	row, err := s.queries.UpdateNotificationSettings(ctx, db.UpdateNotificationSettingsParams{
+		PanelName:              strings.TrimSpace(req.PanelName),
 		Enabled:                req.Enabled,
 		TelegramChatID:         strings.TrimSpace(req.TelegramChatID),
 		TelegramHttpProxy:      strings.TrimSpace(req.TelegramHTTPProxy),
@@ -105,7 +134,7 @@ func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest)
 	if err != nil {
 		return SettingsResponse{}, err
 	}
-	return toSettingsResponse(row), nil
+	return s.toSettingsResponse(ctx, row), nil
 }
 
 // SetTelegramProxy updates only the Telegram proxy while preserving all other settings.
@@ -118,6 +147,7 @@ func (s *Service) SetTelegramProxy(ctx context.Context, proxyURL string) (Settin
 		return SettingsResponse{}, err
 	}
 	row, err = s.queries.UpdateNotificationSettings(ctx, db.UpdateNotificationSettingsParams{
+		PanelName:              row.PanelName,
 		Enabled:                row.Enabled,
 		TelegramChatID:         row.TelegramChatID,
 		TelegramHttpProxy:      strings.TrimSpace(proxyURL),
@@ -129,7 +159,7 @@ func (s *Service) SetTelegramProxy(ctx context.Context, proxyURL string) (Settin
 	if err != nil {
 		return SettingsResponse{}, err
 	}
-	return toSettingsResponse(row), nil
+	return s.toSettingsResponse(ctx, row), nil
 }
 
 func (s *Service) SendTest(ctx context.Context) error {
@@ -137,7 +167,15 @@ func (s *Service) SendTest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	text := "<b>Barn</b>\nТестовое уведомление — Telegram настроен."
+	items, names, err := s.collectDigestItems(ctx)
+	if err != nil {
+		return err
+	}
+	servers, err := s.collectServerSummary(ctx)
+	if err != nil {
+		return err
+	}
+	text := formatDailyDigest(s.panelName(ctx, settings.PanelName), items, names, servers, time.Now().UTC(), settings.DailyDigestTimezone)
 	if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, text, settings.TelegramHttpProxy); err != nil {
 		return fmt.Errorf("telegram: %w", err)
 	}
@@ -170,54 +208,19 @@ func (s *Service) RunCheck(ctx context.Context) error {
 		// settings still holds the row when Telegram is merely unconfigured
 	}
 
-	healthRows, err := s.sites.HealthAll(ctx)
-	if err != nil {
-		return err
-	}
-
-	var pgRows []pgdb.HealthResult
-	if s.pgdb != nil {
-		pgRows, err = s.pgdb.HealthAll(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
-	siteRows, err := s.queries.ListSites(ctx)
-	if err != nil {
-		return err
-	}
-	names := make(map[string]string, len(siteRows)+len(pgRows))
-	for _, site := range siteRows {
-		names[site.ID.String()] = site.Name
-	}
-	for _, pg := range pgRows {
-		names[pgHealthKey(pg.InstanceID.String())] = pgDisplayName(pg)
-	}
-
 	prev := decodeOverallMap(settings.LastOverallBySite)
 	now := time.Now().UTC()
-
-	digestItems := make([]digestItem, 0, len(healthRows)+len(pgRows))
-	for _, h := range healthRows {
-		digestItems = append(digestItems, digestItem{
-			Key:     h.SiteID.String(),
-			Kind:    "site",
-			Overall: h.Overall,
-			Message: h.Message,
-		})
-	}
-	for _, h := range pgRows {
-		digestItems = append(digestItems, digestItem{
-			Key:     pgHealthKey(h.InstanceID.String()),
-			Kind:    "postgres",
-			Overall: h.Overall,
-			Message: h.Message,
-		})
+	digestItems, names, err := s.collectDigestItems(ctx)
+	if err != nil {
+		return err
 	}
 
 	if !suppress && settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestTimezone, now) {
-		msg := formatDailyDigest(digestItems, names, now, settings.DailyDigestTimezone)
+		servers, err := s.collectServerSummary(ctx)
+		if err != nil {
+			return err
+		}
+		msg := formatDailyDigest(s.panelName(ctx, settings.PanelName), digestItems, names, servers, now, settings.DailyDigestTimezone)
 		if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
 			return fmt.Errorf("daily digest: %w", err)
 		}
@@ -242,7 +245,7 @@ func (s *Service) RunCheck(ctx context.Context) error {
 				}
 				continue
 			}
-			msg := formatIncident(name, item)
+			msg := formatIncident(s.panelName(ctx, settings.PanelName), name, item)
 			if err := s.telegram.SendMessage(ctx, token, settings.TelegramChatID, msg, settings.TelegramHttpProxy); err != nil {
 				return fmt.Errorf("incident alert: %w", err)
 			}
@@ -260,13 +263,27 @@ func (s *Service) RunCheck(ctx context.Context) error {
 	return s.queries.UpdateNotificationLastOverall(ctx, raw)
 }
 
+func (s *Service) collectServerSummary(ctx context.Context) ([]ServerSummaryItem, error) {
+	if s.serverSummary == nil {
+		return nil, nil
+	}
+	items, master, err := s.serverSummary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !master {
+		return nil, nil
+	}
+	return items, nil
+}
+
 func pgHealthKey(instanceID string) string {
 	return "pg:" + instanceID
 }
 
 func pgDisplayName(h pgdb.HealthResult) string {
 	if strings.TrimSpace(h.Name) != "" {
-		return "Postgres: " + h.Name
+		return h.Name
 	}
 	return "Postgres"
 }
@@ -276,6 +293,52 @@ type digestItem struct {
 	Kind    string // site | postgres
 	Overall string
 	Message string
+}
+
+func (s *Service) collectDigestItems(ctx context.Context) ([]digestItem, map[string]string, error) {
+	healthRows, err := s.sites.HealthAll(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var pgRows []pgdb.HealthResult
+	if s.pgdb != nil {
+		pgRows, err = s.pgdb.HealthAll(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	siteRows, err := s.queries.ListSites(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	names := make(map[string]string, len(siteRows)+len(pgRows))
+	for _, site := range siteRows {
+		names[site.ID.String()] = site.Name
+	}
+	for _, pg := range pgRows {
+		names[pgHealthKey(pg.InstanceID.String())] = pgDisplayName(pg)
+	}
+
+	items := make([]digestItem, 0, len(healthRows)+len(pgRows))
+	for _, h := range healthRows {
+		items = append(items, digestItem{
+			Key:     h.SiteID.String(),
+			Kind:    "site",
+			Overall: h.Overall,
+			Message: h.Message,
+		})
+	}
+	for _, h := range pgRows {
+		items = append(items, digestItem{
+			Key:     pgHealthKey(h.InstanceID.String()),
+			Kind:    "postgres",
+			Overall: h.Overall,
+			Message: h.Message,
+		})
+	}
+	return items, names, nil
 }
 
 func (s *Service) loadTelegramConfig(ctx context.Context) (db.NotificationSetting, string, error) {
@@ -361,8 +424,9 @@ func validateUpdate(req UpdateSettingsRequest, current db.NotificationSetting) e
 	return nil
 }
 
-func toSettingsResponse(row db.NotificationSetting) SettingsResponse {
+func (s *Service) toSettingsResponse(ctx context.Context, row db.NotificationSetting) SettingsResponse {
 	return SettingsResponse{
+		PanelName:              s.panelName(ctx, row.PanelName),
 		Enabled:                row.Enabled,
 		TelegramChatID:         row.TelegramChatID,
 		TelegramHTTPProxy:      row.TelegramHttpProxy,
@@ -427,11 +491,11 @@ func isIncidentTransition(prev, current string) bool {
 	return prev == "healthy"
 }
 
-func formatDailyDigest(rows []digestItem, names map[string]string, now time.Time, tz string) string {
+func formatDailyDigest(panelName string, rows []digestItem, names map[string]string, servers []ServerSummaryItem, now time.Time, tz string) string {
 	localNow := now.In(digestLocation(tz))
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>Barn — ежедневный отчёт</b>\n%s\n\n", localNow.Format("2006-01-02 15:04 MST"))
-	if len(rows) == 0 {
+	fmt.Fprintf(&b, "<b>Barn — %s — ежедневный отчёт</b>\n%s\n\n", escapeHTML(panelName), localNow.Format("2006-01-02 15:04 MST"))
+	if len(rows) == 0 && len(servers) == 0 {
 		b.WriteString("Нет сайтов и баз в панели.")
 		return b.String()
 	}
@@ -439,22 +503,102 @@ func formatDailyDigest(rows []digestItem, names map[string]string, now time.Time
 	for _, h := range rows {
 		counts[h.Overall]++
 	}
-	fmt.Fprintf(&b, "Всего: %d\n", len(rows))
-	fmt.Fprintf(&b, "Здоровые: %d\n", counts["healthy"])
-	fmt.Fprintf(&b, "Проблемы: %d\n", counts["degraded"])
-	fmt.Fprintf(&b, "Авария: %d\n", counts["unhealthy"])
-	fmt.Fprintf(&b, "Неизвестно: %d\n\n", counts["unknown"])
-	for _, h := range rows {
-		name := names[h.Key]
-		if name == "" {
-			name = h.Key
-		}
-		fmt.Fprintf(&b, "• %s — <b>%s</b>\n  %s\n", escapeHTML(name), h.Overall, escapeHTML(h.Message))
+	b.WriteString("<b>Сводка</b>\n")
+	fmt.Fprintf(&b, "✅ В норме: %d\n", counts["healthy"])
+	fmt.Fprintf(&b, "⚠️ Есть проблемы: %d\n", counts["degraded"])
+	fmt.Fprintf(&b, "❌ Недоступны: %d\n", counts["unhealthy"])
+	if counts["unknown"] > 0 {
+		fmt.Fprintf(&b, "❔ Статус неизвестен: %d\n", counts["unknown"])
 	}
+
+	appendDigestGroup(&b, "Сайты", "site", rows, names)
+	appendDigestGroup(&b, "Базы данных", "postgres", rows, names)
+	appendServerDigest(&b, servers)
 	return b.String()
 }
 
-func formatIncident(name string, h digestItem) string {
+func appendServerDigest(b *strings.Builder, servers []ServerSummaryItem) {
+	if len(servers) == 0 {
+		return
+	}
+
+	b.WriteString("\n<b>Серверы</b>\n")
+	online, warning, offline := 0, 0, 0
+	for _, server := range servers {
+		switch server.Status {
+		case "online":
+			online++
+		case "warning":
+			warning++
+		default:
+			offline++
+		}
+	}
+	fmt.Fprintf(b, "✅ Онлайн: %d · ⚠️ Нестабильно: %d · ❌ Не в сети: %d\n\n", online, warning, offline)
+	for _, server := range servers {
+		fmt.Fprintf(b, "%s %s\n", serverStatusEmoji(server.Status), escapeHTML(server.Name))
+		switch {
+		case server.DaysLeft == nil:
+			b.WriteString("   └ 💳 Срок оплаты не указан\n")
+		case *server.DaysLeft < 0:
+			fmt.Fprintf(b, "   └ 💳 Оплата просрочена на %d дн.\n", -*server.DaysLeft)
+		case *server.DaysLeft == 0:
+			b.WriteString("   └ 💳 Оплата истекает сегодня\n")
+		default:
+			fmt.Fprintf(b, "   └ 💳 До оплаты: %d дн.\n", *server.DaysLeft)
+		}
+	}
+}
+
+func serverStatusEmoji(status string) string {
+	switch status {
+	case "online":
+		return "✅"
+	case "warning":
+		return "⚠️"
+	default:
+		return "❌"
+	}
+}
+
+func appendDigestGroup(b *strings.Builder, title, kind string, rows []digestItem, names map[string]string) {
+	group := make([]digestItem, 0)
+	for _, item := range rows {
+		if item.Kind == kind {
+			group = append(group, item)
+		}
+	}
+	if len(group) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "\n<b>%s</b>\n", title)
+	for _, item := range group {
+		name := names[item.Key]
+		if name == "" {
+			name = item.Key
+		}
+		fmt.Fprintf(b, "%s %s\n", statusEmoji(item.Overall), escapeHTML(name))
+		if item.Overall != "healthy" && strings.TrimSpace(item.Message) != "" {
+			fmt.Fprintf(b, "   └ %s\n", escapeHTML(item.Message))
+		}
+	}
+}
+
+func statusEmoji(overall string) string {
+	switch overall {
+	case "healthy":
+		return "✅"
+	case "degraded":
+		return "⚠️"
+	case "unhealthy":
+		return "❌"
+	default:
+		return "❔"
+	}
+}
+
+func formatIncident(panelName, name string, h digestItem) string {
 	title := "авария"
 	if h.Overall == "degraded" {
 		title = "проблема"
@@ -464,7 +608,8 @@ func formatIncident(name string, h digestItem) string {
 		label = "Postgres"
 	}
 	return fmt.Sprintf(
-		"<b>Barn — %s</b>\n%s: %s\nСтатус: <b>%s</b>\n%s",
+		"<b>Barn — %s — %s</b>\n%s: %s\nСтатус: <b>%s</b>\n%s",
+		escapeHTML(panelName),
 		title,
 		label,
 		escapeHTML(name),

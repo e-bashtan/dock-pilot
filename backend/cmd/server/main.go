@@ -96,6 +96,9 @@ func main() {
 	panelBackupWorker := panelbackup.NewWorker(panelBackupSvc, logger)
 	billingWorker := billing.NewWorker(billingSvc, logger)
 	systemSvc := system.NewService(cfg.Deploy.HostRoot, dockerClient)
+	notifSvc.SetDefaultPanelNameProvider(func(ctx context.Context) string {
+		return systemSvc.GetHostInfo(ctx).IP
+	})
 
 	appVersion := os.Getenv("APP_VERSION")
 	if appVersion == "" {
@@ -127,6 +130,28 @@ func main() {
 	)
 	notifSvc.SetLocalAlertGate(serversSvc)
 	notifSvc.SetServersEventSink(serversSvc)
+	notifSvc.SetServerSummaryProvider(func(ctx context.Context) ([]notifications.ServerSummaryItem, bool, error) {
+		settings, err := serversSvc.GetSettings(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if settings.Mode != servers.ModeMaster {
+			return nil, false, nil
+		}
+		nodes, err := serversSvc.ListNodes(ctx)
+		if err != nil {
+			return nil, true, err
+		}
+		items := make([]notifications.ServerSummaryItem, 0, len(nodes))
+		for _, node := range nodes {
+			item := notifications.ServerSummaryItem{Name: node.Name, Status: node.Status}
+			if node.Billing != nil {
+				item.DaysLeft = node.Billing.DaysLeft
+			}
+			items = append(items, item)
+		}
+		return items, true, nil
+	})
 
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 	defer workerCancel()

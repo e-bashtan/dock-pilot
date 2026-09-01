@@ -74,6 +74,7 @@ CREATE TABLE deployment_logs (
 
 CREATE TABLE notification_settings (
     id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    panel_name TEXT NOT NULL DEFAULT '',
     enabled BOOLEAN NOT NULL DEFAULT false,
     telegram_chat_id TEXT NOT NULL DEFAULT '',
     telegram_http_proxy TEXT NOT NULL DEFAULT '',

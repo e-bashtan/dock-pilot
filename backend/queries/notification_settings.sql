@@ -8,13 +8,14 @@ SELECT * FROM notification_settings WHERE id = 1;
 
 -- name: UpdateNotificationSettings :one
 UPDATE notification_settings SET
-    enabled = $1,
-    telegram_chat_id = $2,
-    telegram_http_proxy = $3,
-    daily_digest_enabled = $4,
-    daily_digest_hour = $5,
-    daily_digest_timezone = $6,
-    alert_on_incident_enabled = $7,
+    panel_name = $1,
+    enabled = $2,
+    telegram_chat_id = $3,
+    telegram_http_proxy = $4,
+    daily_digest_enabled = $5,
+    daily_digest_hour = $6,
+    daily_digest_timezone = $7,
+    alert_on_incident_enabled = $8,
     updated_at = now()
 WHERE id = 1
 RETURNING *;

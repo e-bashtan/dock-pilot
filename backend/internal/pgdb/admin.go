@@ -100,6 +100,11 @@ func (s *Service) presentManagedContainers(ctx context.Context) []string {
 // listClusterDatabases lists non-template DB names inside the resolved cluster.
 // Used only for diagnostics when an operation fails (never logs passwords).
 func (s *Service) listClusterDatabases(ctx context.Context, creds execCreds) []string {
+	names, _ := s.clusterDatabaseNames(ctx, creds)
+	return names
+}
+
+func (s *Service) clusterDatabaseNames(ctx context.Context, creds execCreds) ([]string, error) {
 	var stdout, stderr bytes.Buffer
 	opts := s.execOpts(creds, []string{
 		"psql",
@@ -118,7 +123,14 @@ func (s *Service) listClusterDatabases(ctx context.Context, creds execCreds) []s
 			"stderr", truncateDiag(stderr.String(), 500),
 			"error", errString(err),
 		)
-		return nil
+		if err != nil {
+			return nil, err
+		}
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = fmt.Sprintf("psql exit %d", code)
+		}
+		return nil, fmt.Errorf("%s", msg)
 	}
 	var names []string
 	for _, line := range strings.Split(stdout.String(), "\n") {
@@ -127,7 +139,7 @@ func (s *Service) listClusterDatabases(ctx context.Context, creds execCreds) []s
 			names = append(names, line)
 		}
 	}
-	return names
+	return names, nil
 }
 
 func truncateDiag(s string, n int) string {

@@ -16,6 +16,7 @@ export default function NotificationsPage() {
   const [testing, setTesting] = useState(false);
   const [testOk, setTestOk] = useState(false);
 
+  const [panelName, setPanelName] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [telegramChatID, setTelegramChatID] = useState("");
   const [telegramHTTPProxy, setTelegramHTTPProxy] = useState("");
@@ -37,6 +38,7 @@ export default function NotificationsPage() {
     try {
       const s = await api.getNotificationSettings();
       setSettings(s);
+      setPanelName(s.panel_name);
       setEnabled(s.enabled);
       setTelegramChatID(s.telegram_chat_id);
       setTelegramHTTPProxy(s.telegram_http_proxy ?? "");
@@ -58,6 +60,7 @@ export default function NotificationsPage() {
   }, [load]);
 
   const buildPayload = (): UpdateNotificationSettings => ({
+    panel_name: panelName.trim(),
     enabled,
     telegram_chat_id: telegramChatID.trim(),
     telegram_http_proxy: telegramHTTPProxy.trim(),
@@ -101,6 +104,7 @@ export default function NotificationsPage() {
       if (
         settings &&
         (telegramBotToken.trim() ||
+          panelName.trim() !== settings.panel_name ||
           telegramChatID.trim() !== settings.telegram_chat_id ||
           telegramHTTPProxy.trim() !== (settings.telegram_http_proxy ?? "") ||
           enabled !== settings.enabled ||
@@ -139,6 +143,22 @@ export default function NotificationsPage() {
       <TelegramTunnelCard onProxyConfigured={() => void load()} />
 
       <form onSubmit={handleSave} className="card" style={{ marginTop: "1rem" }}>
+        <div className="field">
+          <label className="label" htmlFor="panel-name">
+            {t("notifications.panelName")}
+          </label>
+          <input
+            id="panel-name"
+            className="input"
+            type="text"
+            value={panelName}
+            onChange={(e) => setPanelName(e.target.value)}
+          />
+          <p style={{ color: "var(--muted)", fontSize: "0.8125rem", margin: "0.35rem 0 0" }}>
+            {t("notifications.panelNameHint")}
+          </p>
+        </div>
+
         <div className="field">
           <label className="label checkbox-row">
             <input

@@ -164,6 +164,7 @@ export interface SystemHostInfo {
 }
 
 export interface NotificationSettings {
+  panel_name: string;
   enabled: boolean;
   telegram_chat_id: string;
   telegram_http_proxy: string;
@@ -175,6 +176,7 @@ export interface NotificationSettings {
 }
 
 export interface UpdateNotificationSettings {
+  panel_name: string;
   enabled: boolean;
   telegram_chat_id: string;
   telegram_http_proxy: string;

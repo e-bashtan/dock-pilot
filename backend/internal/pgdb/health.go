@@ -3,6 +3,7 @@ package pgdb
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -15,13 +16,13 @@ import (
 
 // HealthResult is a live probe of a managed Postgres instance.
 type HealthResult struct {
-	InstanceID uuid.UUID                 `json:"instance_id"`
-	Name       string                    `json:"name"`
-	Overall    string                    `json:"overall"` // healthy, degraded, unhealthy, unknown
-	Message    string                    `json:"message"`
+	InstanceID uuid.UUID                  `json:"instance_id"`
+	Name       string                     `json:"name"`
+	Overall    string                     `json:"overall"` // healthy, degraded, unhealthy, unknown
+	Message    string                     `json:"message"`
 	Container  *healthcheck.ContainerInfo `json:"container,omitempty"`
-	Ready      *bool                     `json:"ready,omitempty"`
-	CheckedAt  time.Time                 `json:"checked_at"`
+	Ready      *bool                      `json:"ready,omitempty"`
+	CheckedAt  time.Time                  `json:"checked_at"`
 }
 
 func (s *Service) Health(ctx context.Context, id uuid.UUID) (HealthResult, error) {
@@ -119,7 +120,29 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 
 	dbs := []string(nil)
 	if creds, cerr := s.resolveExecCreds(ctx, inst); cerr == nil {
-		dbs = s.listClusterDatabases(ctx, creds)
+		var listErr error
+		dbs, listErr = s.clusterDatabaseNames(ctx, creds)
+		if listErr != nil {
+			res.Overall = "degraded"
+			res.Message = "Postgres is ready, but database check failed: " + truncateDiag(listErr.Error(), 300)
+			return res
+		}
+		failed := make([]string, 0)
+		for _, database := range dbs {
+			if err := s.checkDatabase(ctx, creds, database); err != nil {
+				failed = append(failed, database)
+				s.logger.WarnContext(ctx, "managed postgres database health failed",
+					"instance_id", inst.ID.String(),
+					"database", database,
+					"error", truncateDiag(err.Error(), 300),
+				)
+			}
+		}
+		if len(failed) > 0 {
+			res.Overall = "degraded"
+			res.Message = fmt.Sprintf("Postgres is ready, but database check failed: %s", strings.Join(failed, ", "))
+			return res
+		}
 		s.logger.InfoContext(ctx, "managed postgres health cluster databases",
 			"instance_id", inst.ID.String(),
 			"container", creds.container,
@@ -133,6 +156,9 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 			"container", cname,
 			"error", cerr.Error(),
 		)
+		res.Overall = "degraded"
+		res.Message = "Postgres is ready, but database credentials could not be checked"
+		return res
 	}
 
 	res.Overall = "healthy"
@@ -143,4 +169,27 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 		res.Message = fmt.Sprintf("Postgres is ready · exec→%s · present=%v", cname, present)
 	}
 	return res
+}
+
+func (s *Service) checkDatabase(ctx context.Context, creds execCreds, database string) error {
+	var stderr strings.Builder
+	opts := s.execOpts(creds, []string{
+		"psql",
+		"-v", "ON_ERROR_STOP=1",
+		"-U", creds.user,
+		"-d", database,
+		"-tAc", "SELECT 1",
+	})
+	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = fmt.Sprintf("psql exit %d", code)
+		}
+		return fmt.Errorf("%s", message)
+	}
+	return nil
 }

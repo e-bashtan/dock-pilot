@@ -25,7 +25,7 @@ func (q *Queries) ClearNotificationToken(ctx context.Context) error {
 const ensureNotificationSettings = `-- name: EnsureNotificationSettings :one
 INSERT INTO notification_settings (id) VALUES (1)
 ON CONFLICT (id) DO UPDATE SET updated_at = notification_settings.updated_at
-RETURNING id, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at
+RETURNING id, panel_name, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at
 `
 
 func (q *Queries) EnsureNotificationSettings(ctx context.Context) (NotificationSetting, error) {
@@ -33,6 +33,7 @@ func (q *Queries) EnsureNotificationSettings(ctx context.Context) (NotificationS
 	var i NotificationSetting
 	err := row.Scan(
 		&i.ID,
+		&i.PanelName,
 		&i.Enabled,
 		&i.TelegramChatID,
 		&i.TelegramHttpProxy,
@@ -49,7 +50,7 @@ func (q *Queries) EnsureNotificationSettings(ctx context.Context) (NotificationS
 }
 
 const getNotificationSettings = `-- name: GetNotificationSettings :one
-SELECT id, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at FROM notification_settings WHERE id = 1
+SELECT id, panel_name, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at FROM notification_settings WHERE id = 1
 `
 
 func (q *Queries) GetNotificationSettings(ctx context.Context) (NotificationSetting, error) {
@@ -57,6 +58,7 @@ func (q *Queries) GetNotificationSettings(ctx context.Context) (NotificationSett
 	var i NotificationSetting
 	err := row.Scan(
 		&i.ID,
+		&i.PanelName,
 		&i.Enabled,
 		&i.TelegramChatID,
 		&i.TelegramHttpProxy,
@@ -96,19 +98,21 @@ func (q *Queries) UpdateNotificationLastOverall(ctx context.Context, lastOverall
 
 const updateNotificationSettings = `-- name: UpdateNotificationSettings :one
 UPDATE notification_settings SET
-    enabled = $1,
-    telegram_chat_id = $2,
-    telegram_http_proxy = $3,
-    daily_digest_enabled = $4,
-    daily_digest_hour = $5,
-    daily_digest_timezone = $6,
-    alert_on_incident_enabled = $7,
+    panel_name = $1,
+    enabled = $2,
+    telegram_chat_id = $3,
+    telegram_http_proxy = $4,
+    daily_digest_enabled = $5,
+    daily_digest_hour = $6,
+    daily_digest_timezone = $7,
+    alert_on_incident_enabled = $8,
     updated_at = now()
 WHERE id = 1
-RETURNING id, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at
+RETURNING id, panel_name, enabled, telegram_chat_id, telegram_http_proxy, daily_digest_enabled, daily_digest_hour, daily_digest_timezone, alert_on_incident_enabled, encrypted_telegram_bot_token, last_daily_sent_at, last_overall_by_site, updated_at
 `
 
 type UpdateNotificationSettingsParams struct {
+	PanelName              string `json:"panel_name"`
 	Enabled                bool   `json:"enabled"`
 	TelegramChatID         string `json:"telegram_chat_id"`
 	TelegramHttpProxy      string `json:"telegram_http_proxy"`
@@ -120,6 +124,7 @@ type UpdateNotificationSettingsParams struct {
 
 func (q *Queries) UpdateNotificationSettings(ctx context.Context, arg UpdateNotificationSettingsParams) (NotificationSetting, error) {
 	row := q.db.QueryRow(ctx, updateNotificationSettings,
+		arg.PanelName,
 		arg.Enabled,
 		arg.TelegramChatID,
 		arg.TelegramHttpProxy,
@@ -131,6 +136,7 @@ func (q *Queries) UpdateNotificationSettings(ctx context.Context, arg UpdateNoti
 	var i NotificationSetting
 	err := row.Scan(
 		&i.ID,
+		&i.PanelName,
 		&i.Enabled,
 		&i.TelegramChatID,
 		&i.TelegramHttpProxy,
