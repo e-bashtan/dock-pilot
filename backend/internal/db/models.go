@@ -80,6 +80,16 @@ type NotificationSetting struct {
 	UpdatedAt                 time.Time          `json:"updated_at"`
 }
 
+type PdbDatabaseActivity struct {
+	InstanceID   uuid.UUID          `json:"instance_id"`
+	DatabaseName string             `json:"database_name"`
+	Inserts      int64              `json:"inserts"`
+	Updates      int64              `json:"updates"`
+	Deletes      int64              `json:"deletes"`
+	LastDmlAt    pgtype.Timestamptz `json:"last_dml_at"`
+	CheckedAt    time.Time          `json:"checked_at"`
+}
+
 type PanelBackupSetting struct {
 	ID                   int32              `json:"id"`
 	Enabled              bool               `json:"enabled"`

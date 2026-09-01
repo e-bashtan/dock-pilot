@@ -3,7 +3,7 @@ package pgdb
 import (
 	"context"
 	"fmt"
-	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +23,14 @@ type HealthResult struct {
 	Container  *healthcheck.ContainerInfo `json:"container,omitempty"`
 	Ready      *bool                      `json:"ready,omitempty"`
 	CheckedAt  time.Time                  `json:"checked_at"`
+	Databases  []DatabaseHealth           `json:"databases,omitempty"`
+}
+
+type DatabaseHealth struct {
+	Name      string     `json:"name"`
+	Overall   string     `json:"overall"`
+	Message   string     `json:"message,omitempty"`
+	LastDMLAt *time.Time `json:"last_dml_at,omitempty"`
 }
 
 func (s *Service) Health(ctx context.Context, id uuid.UUID) (HealthResult, error) {
@@ -129,14 +137,27 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 		}
 		failed := make([]string, 0)
 		for _, database := range dbs {
-			if err := s.checkDatabase(ctx, creds, database); err != nil {
+			dbHealth := DatabaseHealth{Name: database, Overall: "healthy"}
+			stats, err := s.databaseDMLStats(ctx, creds, database)
+			if err != nil {
 				failed = append(failed, database)
+				dbHealth.Overall = "unhealthy"
+				dbHealth.Message = truncateDiag(err.Error(), 300)
 				s.logger.WarnContext(ctx, "managed postgres database health failed",
 					"instance_id", inst.ID.String(),
 					"database", database,
 					"error", truncateDiag(err.Error(), 300),
 				)
+			} else if activity, saveErr := s.queries.UpsertPdbDatabaseActivity(ctx, db.UpsertPdbDatabaseActivityParams{
+				InstanceID: inst.ID, DatabaseName: database,
+				Inserts: stats.inserts, Updates: stats.updates, Deletes: stats.deletes, CheckedAt: now,
+			}); saveErr != nil {
+				s.logger.WarnContext(ctx, "save postgres database activity failed", "database", database, "error", saveErr)
+			} else if activity.LastDmlAt.Valid {
+				last := activity.LastDmlAt.Time
+				dbHealth.LastDMLAt = &last
 			}
+			res.Databases = append(res.Databases, dbHealth)
 		}
 		if len(failed) > 0 {
 			res.Overall = "degraded"
@@ -171,25 +192,44 @@ func (s *Service) checkInstance(ctx context.Context, inst db.PdbInstance) Health
 	return res
 }
 
-func (s *Service) checkDatabase(ctx context.Context, creds execCreds, database string) error {
-	var stderr strings.Builder
+type databaseDMLCounters struct {
+	inserts int64
+	updates int64
+	deletes int64
+}
+
+func (s *Service) databaseDMLStats(ctx context.Context, creds execCreds, database string) (databaseDMLCounters, error) {
+	var stdout, stderr strings.Builder
 	opts := s.execOpts(creds, []string{
 		"psql",
 		"-v", "ON_ERROR_STOP=1",
 		"-U", creds.user,
 		"-d", database,
-		"-tAc", "SELECT 1",
+		"-tA", "-F", "|",
+		"-c", "SELECT COALESCE(sum(n_tup_ins),0), COALESCE(sum(n_tup_upd),0), COALESCE(sum(n_tup_del),0) FROM pg_stat_user_tables",
 	})
-	code, err := s.docker.Exec(ctx, opts, nil, io.Discard, &stderr)
+	code, err := s.docker.Exec(ctx, opts, nil, &stdout, &stderr)
 	if err != nil {
-		return err
+		return databaseDMLCounters{}, err
 	}
 	if code != 0 {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = fmt.Sprintf("psql exit %d", code)
 		}
-		return fmt.Errorf("%s", message)
+		return databaseDMLCounters{}, fmt.Errorf("%s", message)
 	}
-	return nil
+	parts := strings.Split(strings.TrimSpace(stdout.String()), "|")
+	if len(parts) != 3 {
+		return databaseDMLCounters{}, fmt.Errorf("unexpected statistics response")
+	}
+	values := make([]int64, 3)
+	for i, raw := range parts {
+		value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil {
+			return databaseDMLCounters{}, fmt.Errorf("parse database statistics: %w", err)
+		}
+		values[i] = value
+	}
+	return databaseDMLCounters{inserts: values[0], updates: values[1], deletes: values[2]}, nil
 }

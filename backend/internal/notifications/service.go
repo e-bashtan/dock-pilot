@@ -281,6 +281,10 @@ func pgHealthKey(instanceID string) string {
 	return "pg:" + instanceID
 }
 
+func pgDatabaseHealthKey(instanceID, database string) string {
+	return pgHealthKey(instanceID) + ":" + database
+}
+
 func pgDisplayName(h pgdb.HealthResult) string {
 	if strings.TrimSpace(h.Name) != "" {
 		return h.Name
@@ -289,10 +293,11 @@ func pgDisplayName(h pgdb.HealthResult) string {
 }
 
 type digestItem struct {
-	Key     string
-	Kind    string // site | postgres
-	Overall string
-	Message string
+	Key          string
+	Kind         string // site | postgres
+	Overall      string
+	Message      string
+	LastActivity *time.Time
 }
 
 func (s *Service) collectDigestItems(ctx context.Context) ([]digestItem, map[string]string, error) {
@@ -317,10 +322,6 @@ func (s *Service) collectDigestItems(ctx context.Context) ([]digestItem, map[str
 	for _, site := range siteRows {
 		names[site.ID.String()] = site.Name
 	}
-	for _, pg := range pgRows {
-		names[pgHealthKey(pg.InstanceID.String())] = pgDisplayName(pg)
-	}
-
 	items := make([]digestItem, 0, len(healthRows)+len(pgRows))
 	for _, h := range healthRows {
 		items = append(items, digestItem{
@@ -331,12 +332,20 @@ func (s *Service) collectDigestItems(ctx context.Context) ([]digestItem, map[str
 		})
 	}
 	for _, h := range pgRows {
-		items = append(items, digestItem{
-			Key:     pgHealthKey(h.InstanceID.String()),
-			Kind:    "postgres",
-			Overall: h.Overall,
-			Message: h.Message,
-		})
+		if len(h.Databases) == 0 {
+			key := pgHealthKey(h.InstanceID.String())
+			names[key] = pgDisplayName(h)
+			items = append(items, digestItem{Key: key, Kind: "postgres", Overall: h.Overall, Message: h.Message})
+			continue
+		}
+		for _, database := range h.Databases {
+			key := pgDatabaseHealthKey(h.InstanceID.String(), database.Name)
+			names[key] = pgDisplayName(h) + " / " + database.Name
+			items = append(items, digestItem{
+				Key: key, Kind: "postgres", Overall: database.Overall,
+				Message: database.Message, LastActivity: database.LastDMLAt,
+			})
+		}
 	}
 	return items, names, nil
 }
@@ -511,8 +520,8 @@ func formatDailyDigest(panelName string, rows []digestItem, names map[string]str
 		fmt.Fprintf(&b, "❔ Статус неизвестен: %d\n", counts["unknown"])
 	}
 
-	appendDigestGroup(&b, "Сайты", "site", rows, names)
-	appendDigestGroup(&b, "Базы данных", "postgres", rows, names)
+	appendDigestGroup(&b, "Сайты", "site", rows, names, localNow.Location())
+	appendDigestGroup(&b, "Базы данных", "postgres", rows, names, localNow.Location())
 	appendServerDigest(&b, servers)
 	return b.String()
 }
@@ -561,7 +570,7 @@ func serverStatusEmoji(status string) string {
 	}
 }
 
-func appendDigestGroup(b *strings.Builder, title, kind string, rows []digestItem, names map[string]string) {
+func appendDigestGroup(b *strings.Builder, title, kind string, rows []digestItem, names map[string]string, loc *time.Location) {
 	group := make([]digestItem, 0)
 	for _, item := range rows {
 		if item.Kind == kind {
@@ -578,7 +587,14 @@ func appendDigestGroup(b *strings.Builder, title, kind string, rows []digestItem
 		if name == "" {
 			name = item.Key
 		}
-		fmt.Fprintf(b, "%s %s\n", statusEmoji(item.Overall), escapeHTML(name))
+		activity := ""
+		if kind == "postgres" {
+			activity = " (нет данных об изменениях)"
+			if item.LastActivity != nil {
+				activity = " (" + item.LastActivity.In(loc).Format("02.01.2006 15:04") + ")"
+			}
+		}
+		fmt.Fprintf(b, "%s %s%s\n", statusEmoji(item.Overall), escapeHTML(name), activity)
 		if item.Overall != "healthy" && strings.TrimSpace(item.Message) != "" {
 			fmt.Fprintf(b, "   └ %s\n", escapeHTML(item.Message))
 		}

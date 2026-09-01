@@ -75,6 +75,27 @@ func TestDailyDigestIncludesMasterServersAndBilling(t *testing.T) {
 	}
 }
 
+func TestDailyDigestShowsDatabaseLastActivity(t *testing.T) {
+	t.Parallel()
+
+	last := time.Date(2026, 9, 1, 12, 34, 0, 0, time.UTC)
+	rows := []digestItem{
+		{Key: "db-active", Kind: "postgres", Overall: "healthy", LastActivity: &last},
+		{Key: "db-idle", Kind: "postgres", Overall: "healthy"},
+	}
+	names := map[string]string{"db-active": "Postgres / app", "db-idle": "Postgres / archive"}
+	message := formatDailyDigest("panel", rows, names, nil, time.Now(), "Europe/Moscow")
+
+	for _, want := range []string{
+		"✅ Postgres / app (01.09.2026 15:34)",
+		"✅ Postgres / archive (нет данных об изменениях)",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("digest does not contain %q:\n%s", want, message)
+		}
+	}
+}
+
 func TestIsIncidentTransition(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
