@@ -18,11 +18,16 @@ import (
 	sitesvc "github.com/ebash/barn/backend/internal/sites"
 )
 
-// LocalAlertGate optionally suppresses local Telegram user alerts
-// (e.g. when servers notification_mode is "master" on a managed node).
+// LocalAlertGate selects where user alerts from this panel must be delivered.
 type LocalAlertGate interface {
-	SuppressLocalAlerts(ctx context.Context) bool
+	LocalAlertRoute(ctx context.Context) string
 }
+
+const (
+	alertRouteLocal    = "local"
+	alertRouteMaster   = "master"
+	alertRouteDisabled = "disabled"
+)
 
 type Service struct {
 	queries       *db.Queries
@@ -39,6 +44,7 @@ type Service struct {
 // ServersEventSink forwards local incidents to the master outbox when notifications are centralized.
 type ServersEventSink interface {
 	OnLocalIncident(ctx context.Context, kind, resourceID, name, overall, message string) error
+	OnLocalMessage(ctx context.Context, text string) error
 }
 
 type ServerSummaryItem struct {
@@ -85,8 +91,11 @@ func (s *Service) panelName(ctx context.Context, configured string) string {
 	return "panel"
 }
 
-func (s *Service) suppressLocal(ctx context.Context) bool {
-	return s.alertGate != nil && s.alertGate.SuppressLocalAlerts(ctx)
+func (s *Service) localAlertRoute(ctx context.Context) string {
+	if s.alertGate == nil {
+		return alertRouteLocal
+	}
+	return s.alertGate.LocalAlertRoute(ctx)
 }
 
 func (s *Service) GetSettings(ctx context.Context) (SettingsResponse, error) {
@@ -128,6 +137,7 @@ func (s *Service) UpdateSettings(ctx context.Context, req UpdateSettingsRequest)
 		TelegramHttpProxy:      strings.TrimSpace(req.TelegramHTTPProxy),
 		DailyDigestEnabled:     req.DailyDigestEnabled,
 		DailyDigestHour:        int32(req.DailyDigestHour),
+		DailyDigestMinute:      int32(req.DailyDigestMinute),
 		DailyDigestTimezone:    strings.TrimSpace(req.DailyDigestTimezone),
 		AlertOnIncidentEnabled: req.AlertOnIncidentEnabled,
 	})
@@ -184,6 +194,16 @@ func (s *Service) SendTest(ctx context.Context) error {
 
 // SendText sends an arbitrary message using the configured Telegram bot (if enabled).
 func (s *Service) SendText(ctx context.Context, text string) error {
+	switch s.localAlertRoute(ctx) {
+	case alertRouteMaster:
+		if s.serversEvents == nil {
+			return fmt.Errorf("master notification route is not configured")
+		}
+		return s.serversEvents.OnLocalMessage(ctx, text)
+	case alertRouteDisabled:
+		return nil
+	}
+
 	settings, token, err := s.loadTelegramConfig(ctx)
 	if err != nil {
 		return err
@@ -195,7 +215,8 @@ func (s *Service) SendText(ctx context.Context, text string) error {
 }
 
 func (s *Service) RunCheck(ctx context.Context) error {
-	suppress := s.suppressLocal(ctx)
+	route := s.localAlertRoute(ctx)
+	suppress := route != alertRouteLocal
 
 	settings, token, err := s.loadTelegramConfig(ctx)
 	if err != nil {
@@ -215,7 +236,7 @@ func (s *Service) RunCheck(ctx context.Context) error {
 		return err
 	}
 
-	if !suppress && settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestTimezone, now) {
+	if !suppress && settings.DailyDigestEnabled && shouldSendDaily(settings.LastDailySentAt, settings.DailyDigestHour, settings.DailyDigestMinute, settings.DailyDigestTimezone, now) {
 		servers, err := s.collectServerSummary(ctx)
 		if err != nil {
 			return err
@@ -240,8 +261,13 @@ func (s *Service) RunCheck(ctx context.Context) error {
 				name = item.Key
 			}
 			if suppress {
+				if route == alertRouteDisabled {
+					continue
+				}
 				if s.serversEvents != nil {
-					_ = s.serversEvents.OnLocalIncident(ctx, item.Kind, item.Key, name, item.Overall, item.Message)
+					if err := s.serversEvents.OnLocalIncident(ctx, item.Kind, item.Key, name, item.Overall, item.Message); err != nil {
+						return fmt.Errorf("forward incident to master: %w", err)
+					}
 				}
 				continue
 			}
@@ -410,6 +436,9 @@ func validateUpdate(req UpdateSettingsRequest, current db.NotificationSetting) e
 	if req.DailyDigestHour < 0 || req.DailyDigestHour > 23 {
 		return ErrInvalidInput
 	}
+	if req.DailyDigestMinute < 0 || req.DailyDigestMinute > 55 || req.DailyDigestMinute%5 != 0 {
+		return ErrInvalidInput
+	}
 	tz := strings.TrimSpace(req.DailyDigestTimezone)
 	if tz == "" {
 		tz = "UTC"
@@ -442,6 +471,7 @@ func (s *Service) toSettingsResponse(ctx context.Context, row db.NotificationSet
 		TelegramBotTokenSet:    len(row.EncryptedTelegramBotToken) > 0,
 		DailyDigestEnabled:     row.DailyDigestEnabled,
 		DailyDigestHour:        int(row.DailyDigestHour),
+		DailyDigestMinute:      int(row.DailyDigestMinute),
 		DailyDigestTimezone:    row.DailyDigestTimezone,
 		AlertOnIncidentEnabled: row.AlertOnIncidentEnabled,
 	}
@@ -468,9 +498,9 @@ func digestLocation(tz string) *time.Location {
 	return loc
 }
 
-func shouldSendDaily(last pgtype.Timestamptz, hour int32, tz string, now time.Time) bool {
+func shouldSendDaily(last pgtype.Timestamptz, hour, minute int32, tz string, now time.Time) bool {
 	localNow := now.In(digestLocation(tz))
-	if localNow.Hour() != int(hour) {
+	if localNow.Hour() != int(hour) || localNow.Minute() < int(minute) || localNow.Minute() >= int(minute)+5 {
 		return false
 	}
 	if !last.Valid {

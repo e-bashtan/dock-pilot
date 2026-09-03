@@ -80,6 +80,7 @@ CREATE TABLE notification_settings (
     telegram_http_proxy TEXT NOT NULL DEFAULT '',
     daily_digest_enabled BOOLEAN NOT NULL DEFAULT false,
     daily_digest_hour INT NOT NULL DEFAULT 9 CHECK (daily_digest_hour >= 0 AND daily_digest_hour <= 23),
+    daily_digest_minute INT NOT NULL DEFAULT 0 CHECK (daily_digest_minute >= 0 AND daily_digest_minute <= 55 AND daily_digest_minute % 5 = 0),
     daily_digest_timezone TEXT NOT NULL DEFAULT 'UTC',
     alert_on_incident_enabled BOOLEAN NOT NULL DEFAULT true,
     encrypted_telegram_bot_token BYTEA,

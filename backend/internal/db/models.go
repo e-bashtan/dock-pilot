@@ -72,6 +72,7 @@ type NotificationSetting struct {
 	TelegramHttpProxy         string             `json:"telegram_http_proxy"`
 	DailyDigestEnabled        bool               `json:"daily_digest_enabled"`
 	DailyDigestHour           int32              `json:"daily_digest_hour"`
+	DailyDigestMinute         int32              `json:"daily_digest_minute"`
 	DailyDigestTimezone       string             `json:"daily_digest_timezone"`
 	AlertOnIncidentEnabled    bool               `json:"alert_on_incident_enabled"`
 	EncryptedTelegramBotToken []byte             `json:"encrypted_telegram_bot_token"`

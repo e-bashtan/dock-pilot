@@ -25,6 +25,7 @@ export default function NotificationsPage() {
   const [clearToken, setClearToken] = useState(false);
   const [dailyDigestEnabled, setDailyDigestEnabled] = useState(false);
   const [dailyDigestHour, setDailyDigestHour] = useState(9);
+  const [dailyDigestMinute, setDailyDigestMinute] = useState(0);
   const [dailyDigestTimezone, setDailyDigestTimezone] = useState(() => browserTimezone());
   const [alertOnIncident, setAlertOnIncident] = useState(true);
 
@@ -45,6 +46,7 @@ export default function NotificationsPage() {
       setTokenSet(s.telegram_bot_token_set);
       setDailyDigestEnabled(s.daily_digest_enabled);
       setDailyDigestHour(s.daily_digest_hour);
+      setDailyDigestMinute(s.daily_digest_minute);
       setDailyDigestTimezone(resolveDigestTimezone(s.daily_digest_timezone));
       setAlertOnIncident(s.alert_on_incident_enabled);
       setTelegramBotToken("");
@@ -66,6 +68,7 @@ export default function NotificationsPage() {
     telegram_http_proxy: telegramHTTPProxy.trim(),
     daily_digest_enabled: dailyDigestEnabled,
     daily_digest_hour: dailyDigestHour,
+    daily_digest_minute: dailyDigestMinute,
     daily_digest_timezone: dailyDigestTimezone,
     alert_on_incident_enabled: alertOnIncident,
     ...(telegramBotToken.trim()
@@ -110,6 +113,7 @@ export default function NotificationsPage() {
           enabled !== settings.enabled ||
           dailyDigestEnabled !== settings.daily_digest_enabled ||
           dailyDigestHour !== settings.daily_digest_hour ||
+          dailyDigestMinute !== settings.daily_digest_minute ||
           dailyDigestTimezone !== resolveDigestTimezone(settings.daily_digest_timezone) ||
           alertOnIncident !== settings.alert_on_incident_enabled)
       ) {
@@ -251,19 +255,19 @@ export default function NotificationsPage() {
           <label className="label" htmlFor="digest-hour">
             {t("notifications.digestHour")}
           </label>
-          <select
+          <input
             id="digest-hour"
             className="input"
-            value={dailyDigestHour}
-            onChange={(e) => setDailyDigestHour(Number(e.target.value))}
+            type="time"
+            step={300}
+            value={`${String(dailyDigestHour).padStart(2, "0")}:${String(dailyDigestMinute).padStart(2, "0")}`}
+            onChange={(e) => {
+              const [hour, minute] = e.target.value.split(":").map(Number);
+              setDailyDigestHour(hour);
+              setDailyDigestMinute(minute);
+            }}
             disabled={!dailyDigestEnabled}
-          >
-            {Array.from({ length: 24 }, (_, h) => (
-              <option key={h} value={h}>
-                {String(h).padStart(2, "0")}:00
-              </option>
-            ))}
-          </select>
+          />
           <p style={{ color: "var(--muted)", fontSize: "0.8125rem", margin: "0.35rem 0 0" }}>
             {t("notifications.digestHourHint")}
           </p>

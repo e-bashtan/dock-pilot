@@ -87,6 +87,10 @@ func (s *Service) RecordEvent(ctx context.Context, nodeID uuid.UUID, ev IngestEv
 	if ev.EventID == uuid.Nil {
 		ev.EventID = NewEventID()
 	}
+	if ev.NotifyOnly {
+		s.notifyIncident(ctx, ev.Title, ev.Message)
+		return true, nil
+	}
 	if _, ok := allowedEventTypes[ev.EventType]; !ok {
 		return false, fmt.Errorf("%w: unknown event type", ErrInvalidInput)
 	}
@@ -304,6 +308,17 @@ func (s *Service) OnLocalIncident(ctx context.Context, kind, resourceID, name, o
 		Title:        title,
 		Message:      message,
 		OccurredAt:   time.Now().UTC(),
+	})
+}
+
+// OnLocalMessage forwards an arbitrary user notification through the master.
+func (s *Service) OnLocalMessage(ctx context.Context, message string) error {
+	return s.EnqueueLocalEvent(ctx, IngestEvent{
+		EventID:    NewEventID(),
+		Title:      "Notification",
+		Message:    message,
+		OccurredAt: time.Now().UTC(),
+		NotifyOnly: true,
 	})
 }
 

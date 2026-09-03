@@ -1,12 +1,52 @@
 package notifications
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type testAlertGate string
+
+func (g testAlertGate) LocalAlertRoute(context.Context) string { return string(g) }
+
+type testEventSink struct {
+	message string
+}
+
+func (s *testEventSink) OnLocalIncident(context.Context, string, string, string, string, string) error {
+	return nil
+}
+
+func (s *testEventSink) OnLocalMessage(_ context.Context, message string) error {
+	s.message = message
+	return nil
+}
+
+func TestSendTextRoutesThroughMaster(t *testing.T) {
+	t.Parallel()
+
+	sink := &testEventSink{}
+	svc := &Service{alertGate: testAlertGate(alertRouteMaster), serversEvents: sink}
+	if err := svc.SendText(context.Background(), "test notification"); err != nil {
+		t.Fatalf("SendText() error = %v", err)
+	}
+	if sink.message != "test notification" {
+		t.Fatalf("forwarded message = %q", sink.message)
+	}
+}
+
+func TestSendTextSkipsDisabledNotifications(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{alertGate: testAlertGate(alertRouteDisabled)}
+	if err := svc.SendText(context.Background(), "test notification"); err != nil {
+		t.Fatalf("SendText() error = %v", err)
+	}
+}
 
 func TestNotificationTitlesIncludePanelName(t *testing.T) {
 	t.Parallel()
@@ -131,22 +171,25 @@ func TestShouldSendDaily(t *testing.T) {
 	now := time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC)
 	last := pgtype.Timestamptz{Time: time.Date(2026, 6, 14, 9, 0, 0, 0, time.UTC), Valid: true}
 
-	if !shouldSendDaily(last, 9, "UTC", now) {
+	if !shouldSendDaily(last, 9, 30, "UTC", now) {
 		t.Fatal("expected daily send on new UTC day at matching hour")
 	}
-	if shouldSendDaily(last, 10, "UTC", now) {
+	if shouldSendDaily(last, 9, 35, "UTC", now) {
+		t.Fatal("expected no send before selected five-minute window")
+	}
+	if shouldSendDaily(last, 10, 0, "UTC", now) {
 		t.Fatal("expected no send when hour mismatches")
 	}
-	if shouldSendDaily(last, 9, "UTC", now.Add(-24*time.Hour)) {
+	if shouldSendDaily(last, 9, 30, "UTC", now.Add(-24*time.Hour)) {
 		t.Fatal("expected no send when already sent today")
 	}
 
 	// 06:30 UTC = 09:30 Europe/Moscow
 	moscowNow := time.Date(2026, 6, 15, 6, 30, 0, 0, time.UTC)
-	if !shouldSendDaily(last, 9, "Europe/Moscow", moscowNow) {
+	if !shouldSendDaily(last, 9, 30, "Europe/Moscow", moscowNow) {
 		t.Fatal("expected daily send when local Moscow hour matches")
 	}
-	if shouldSendDaily(last, 9, "Europe/Moscow", now) {
+	if shouldSendDaily(last, 9, 30, "Europe/Moscow", now) {
 		t.Fatal("expected no send when Moscow local hour is 12, not 9")
 	}
 }

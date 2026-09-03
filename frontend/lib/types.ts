@@ -171,6 +171,7 @@ export interface NotificationSettings {
   telegram_bot_token_set: boolean;
   daily_digest_enabled: boolean;
   daily_digest_hour: number;
+  daily_digest_minute: number;
   daily_digest_timezone: string;
   alert_on_incident_enabled: boolean;
 }
@@ -184,6 +185,7 @@ export interface UpdateNotificationSettings {
   clear_telegram_bot_token?: boolean;
   daily_digest_enabled: boolean;
   daily_digest_hour: number;
+  daily_digest_minute: number;
   daily_digest_timezone: string;
   alert_on_incident_enabled: boolean;
 }

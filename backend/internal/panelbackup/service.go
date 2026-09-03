@@ -31,12 +31,12 @@ import (
 const bundleVersion = "1"
 
 type Service struct {
-	queries              *db.Queries
-	docker               docker.Client
-	cipher               *secrets.Cipher
-	pgdb                 *pgdb.Service
-	logger               *slog.Logger
-	databaseURL          string
+	queries                *db.Queries
+	docker                 docker.Client
+	cipher                 *secrets.Cipher
+	pgdb                   *pgdb.Service
+	logger                 *slog.Logger
+	databaseURL            string
 	panelPostgresContainer string
 }
 
@@ -607,6 +607,7 @@ func (s *Service) dumpPanel(ctx context.Context, w io.Writer) error {
 			"-d", conn.dbName,
 			"--no-owner",
 			"--no-acl",
+			"--exclude-table-data=deployment_logs",
 		),
 		Env: []string{"PGPASSWORD=" + conn.password},
 	}, nil, w, &stderr)

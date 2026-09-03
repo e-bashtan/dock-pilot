@@ -719,18 +719,16 @@ func uuidPtr(id uuid.UUID) *uuid.UUID {
 	return &id
 }
 
-// SuppressLocalAlerts implements notifications.LocalAlertGate.
-// Managed nodes with notification_mode=master|disabled skip local Telegram;
-// events are delivered to Master via outbox instead (when mode=master).
-func (s *Service) SuppressLocalAlerts(ctx context.Context) bool {
+// LocalAlertRoute implements notifications.LocalAlertGate.
+func (s *Service) LocalAlertRoute(ctx context.Context) string {
 	row, err := s.ensureSettings(ctx)
 	if err != nil {
-		return false
+		return NotifyLocal
 	}
 	if row.Mode != ModeManagedNode {
-		return false
+		return NotifyLocal
 	}
-	return row.NotificationMode == NotifyMaster || row.NotificationMode == NotifyDisabled
+	return row.NotificationMode
 }
 
 func (s *Service) Mode(ctx context.Context) (string, error) {

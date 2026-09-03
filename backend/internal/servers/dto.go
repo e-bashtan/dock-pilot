@@ -203,6 +203,7 @@ type IngestEvent struct {
 	Payload      json.RawMessage `json:"payload"`
 	OccurredAt   time.Time       `json:"occurred_at"`
 	NodeUID      string          `json:"node_uid"`
+	NotifyOnly   bool            `json:"notify_only,omitempty"`
 }
 
 type AgentRegisterRequest struct {
