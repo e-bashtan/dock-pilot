@@ -241,7 +241,7 @@ func (s *Service) DisconnectMaster(ctx context.Context) error {
 	return mapErr(err)
 }
 
-func (s *Service) DeleteNode(ctx context.Context, id uuid.UUID) error {
+func (s *Service) DeleteNode(ctx context.Context, id uuid.UUID, req DeleteNodeRequest) error {
 	settings, err := s.ensureSettings(ctx)
 	if err != nil {
 		return err
@@ -255,6 +255,11 @@ func (s *Service) DeleteNode(ctx context.Context, id uuid.UUID) error {
 	}
 	if node.ConnectionType == ConnLocal {
 		return fmt.Errorf("%w: cannot delete local master node", ErrForbidden)
+	}
+	if node.ConnectionType == ConnAgent {
+		if err := s.uninstallAgent(ctx, req); err != nil {
+			return err
+		}
 	}
 	_ = s.q.RevokeNodeCredentials(ctx, id)
 	return mapErr(s.q.SoftDeleteServersNode(ctx, id))

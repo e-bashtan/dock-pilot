@@ -161,7 +161,15 @@ export default function ServerDetailPage() {
     if (!id) return;
     setBusy(true);
     try {
-      await api.deleteServerNode(id);
+      const credentials = node?.connection_type === "agent"
+        ? {
+            host: updateHost.trim(),
+            port: Number.parseInt(updatePort, 10) || 22,
+            username: updateUser.trim() || "root",
+            password: updatePassword,
+          }
+        : undefined;
+      await api.deleteServerNode(id, credentials);
       router.replace("/servers");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t("servers.nodeDeleteFailed"));
@@ -834,7 +842,12 @@ export default function ServerDetailPage() {
       <ConfirmDialog
         open={confirmDelete}
         title={t("servers.removeServer")}
-        message={t("servers.removeServerConfirm", { name: node.name })}
+        message={t(
+          node.connection_type === "agent"
+            ? "servers.removeAgentConfirm"
+            : "servers.removeServerConfirm",
+          { name: node.name },
+        )}
         confirmLabel={t("common.delete")}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}

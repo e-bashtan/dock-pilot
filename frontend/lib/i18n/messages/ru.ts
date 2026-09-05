@@ -949,6 +949,8 @@ export const ru: Messages = {
     nodeDeleteFailed: "Не удалось удалить сервер",
     removeServer: "Удалить сервер",
     removeServerConfirm: "Удалить «{name}» из Амбара?",
+    removeAgentConfirm:
+      "Удалить агент с сервера «{name}» и отвязать его от master? Будут использованы SSH-данные из формы обновления агента.",
     nodeInfo: "Информация о сервере",
     nodeUid: "Node UID",
     hostname: "Hostname",

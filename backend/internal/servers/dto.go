@@ -248,6 +248,15 @@ type UpdateAgentRequest struct {
 	Password string `json:"password"`
 }
 
+// DeleteNodeRequest contains SSH credentials used to uninstall an agent before
+// its node record and master credentials are removed.
+type DeleteNodeRequest struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 type InstallationResponse struct {
 	ID             uuid.UUID  `json:"id"`
 	Status         string     `json:"status"`

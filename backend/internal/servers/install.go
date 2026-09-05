@@ -981,6 +981,53 @@ rm -f %s
 		strconv.Quote(tmpPath))
 }
 
+func (s *Service) uninstallAgent(ctx context.Context, req DeleteNodeRequest) error {
+	host := strings.TrimSpace(req.Host)
+	user := strings.TrimSpace(req.Username)
+	if user == "" {
+		user = "root"
+	}
+	port := req.Port
+	if port <= 0 {
+		port = 22
+	}
+	password := req.Password
+	req.Password = ""
+	if host == "" || password == "" {
+		clearString(&password)
+		return fmt.Errorf("%w: SSH credentials are required to uninstall agent", ErrInvalidInput)
+	}
+	known, err := s.q.GetKnownHost(ctx, db.GetKnownHostParams{Host: host, Port: int32(port)})
+	if err != nil || strings.TrimSpace(known.Fingerprint) == "" {
+		clearString(&password)
+		return fmt.Errorf("%w: SSH host key is not trusted; reinstall or update the agent first", ErrInvalidInput)
+	}
+	client, err := sshDial(host, port, user, password, known.Fingerprint)
+	clearString(&password)
+	if err != nil {
+		return fmt.Errorf("uninstall agent over SSH: %w", err)
+	}
+	defer client.Close()
+	if _, err := sshRun(client, buildAgentUninstallScript()); err != nil {
+		return fmt.Errorf("uninstall agent over SSH: %w", err)
+	}
+	return nil
+}
+
+func buildAgentUninstallScript() string {
+	return `set -euo pipefail
+systemctl disable --now barn-agent.service 2>/dev/null || true
+systemctl disable --now dockpilot-agent.service 2>/dev/null || true
+rm -f /etc/systemd/system/barn-agent.service /etc/systemd/system/dockpilot-agent.service
+rm -rf /opt/barn-agent /etc/barn-agent /var/lib/barn-agent
+rm -rf /opt/dockpilot-agent /etc/dockpilot-agent /var/lib/dockpilot-agent
+rm -f /usr/local/bin/dockpilot-agent
+systemctl daemon-reload
+userdel barn-agent 2>/dev/null || true
+userdel dockpilot-agent 2>/dev/null || true
+`
+}
+
 // buildAgentUpdateScript replaces the agent binary and restarts the unit.
 // Does not touch config.json (keeps node_uid + token).
 func buildAgentUpdateScript(tmpPath, checksum, binRemote, unit string) string {

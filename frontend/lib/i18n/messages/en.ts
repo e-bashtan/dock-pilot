@@ -945,6 +945,8 @@ export const en = {
     nodeDeleteFailed: "Failed to remove server",
     removeServer: "Remove server",
     removeServerConfirm: "Remove «{name}» from Barn?",
+    removeAgentConfirm:
+      "Uninstall the agent from «{name}» and disconnect it from the master? The SSH details from the agent update form will be used.",
     nodeInfo: "Server info",
     nodeUid: "Node UID",
     hostname: "Hostname",

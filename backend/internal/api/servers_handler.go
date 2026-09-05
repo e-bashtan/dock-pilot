@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -79,7 +81,14 @@ func (h *ServersHandler) DeleteNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, servers.ErrInvalidInput)
 		return
 	}
-	if err := h.svc.DeleteNode(r.Context(), id); err != nil {
+	var req servers.DeleteNodeRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, servers.ErrInvalidInput)
+			return
+		}
+	}
+	if err := h.svc.DeleteNode(r.Context(), id, req); err != nil {
 		writeError(w, err)
 		return
 	}

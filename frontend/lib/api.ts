@@ -628,8 +628,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  deleteServerNode: (id: string) =>
-    request<void>(`/api/servers/nodes/${id}`, { method: "DELETE" }),
+  deleteServerNode: (id: string, body?: UpdateAgentRequest) =>
+    request<void>(`/api/servers/nodes/${id}`, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
 
   pairBarnNode: (body: PairBarnRequest) =>
     request<ServerNode>("/api/servers/nodes/barn", {
